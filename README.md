@@ -42,7 +42,7 @@
 ## 快速开始 (Docker)
 
 ```bash
-git clone <repo-url> && cd scrm
+git clone https://github.com/hiylo/scrm.git && cd scrm
 docker compose up -d --build
 ```
 
