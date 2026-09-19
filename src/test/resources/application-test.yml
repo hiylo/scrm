@@ -1,0 +1,41 @@
+# Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+# Project : scrm
+# File : application-test.yml
+# Date : 2026/09/17 00:00:00
+# Author : Hsi Chu
+# Contact : hiylo@live.com
+
+# 测试环境配置: 使用 H2 内存数据库替代 PostgreSQL, 禁用外部依赖
+# 通过 INIT 创建 scrm schema, 与实体 @Table(schema="scrm") 保持一致
+
+spring:
+  # 与主配置一致, 排除 Sentry 自动配置 (Spring Boot 4 下条件装配会因 WebClientCustomizer 缺失而失败)
+  autoconfigure:
+    exclude: io.sentry.spring.boot.jakarta.SentryAutoConfiguration
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;INIT=CREATE SCHEMA IF NOT EXISTS scrm
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        default_schema: scrm
+        dialect: org.hibernate.dialect.H2Dialect
+  flyway:
+    enabled: false
+
+# 测试环境禁用 Sentry 上报
+sentry:
+  dsn:
+
+# 测试环境对象存储 endpoint 留空: 客户端不构造, 存储相关调用确定性快速失败, 不发起任何网络请求
+scrm:
+  storage:
+    provider: minio
+    endpoint: ''
+    access-key: test-access-key
+    secret-key: test-secret-key
+    bucket: test-bucket
