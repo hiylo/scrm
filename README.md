@@ -20,8 +20,9 @@
 | 集成 | 企业微信开放 API (WebClient), 个推 (可选), AI 服务 (可选) |
 | 前端 | React 18 + TypeScript 5 + Vite 5 + Ant Design 5 + ECharts 5 |
 
-规模: 1230 个 Java 源文件, 272 实体 / 260 仓储 / 118 服务 / 103 控制器,
-275 张业务表 (单文件合并版 Flyway 迁移), 1625 个后端测试用例 + 261 个前端测试用例。
+规模: 1409 个 Java 源文件 (src/main), 259 实体 / 260 仓储 / 295 服务 / 103 控制器 /
+385 DTO, 275 张业务表 (Flyway V1 初始化 + V2 全文检索索引), 1625 个后端测试用例 +
+261 个前端测试用例。
 
 ## 目录结构
 
@@ -30,7 +31,7 @@
 ├── src/main/resources/
 │   ├── application.yml             主配置 (全部通过环境变量注入, 无硬编码密钥)
 │   ├── db/migration/V1__init_schema.sql   Flyway 初始化脚本 (含分区表)
-│   ├── api/                        OpenAPI / 接口契约
+│   ├── api/                        API 路径文档 (Markdown)
 │   └── logback-spring.xml
 ├── src/test/java/                  单元测试 + Spring 上下文启动测试
 ├── frontend/                       前端 SPA (React + Vite)
