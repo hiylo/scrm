@@ -1,0 +1,47 @@
+# Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+# Project : scrm
+# File : application-dev.yml
+# Date : 2026/09/17 00:00:00
+# Author : Hsi Chu
+# Contact : hiylo@live.com
+
+# 开发环境配置: 由 docker-compose.yml 提供本地 PostgreSQL, 敏感参数一律走环境变量
+
+spring:
+  # dev 环境使用 validate, 由 Flyway 维护 schema
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+  datasource:
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+  flyway:
+    enabled: true
+
+# 开发环境对象存储凭证, fail-closed: 必须通过环境变量注入
+scrm:
+  storage:
+    access-key: ${SCRM_STORAGE_ACCESS_KEY:}
+    secret-key: ${SCRM_STORAGE_SECRET_KEY:}
+  # CORS 允许的前端来源, 逗号分隔
+  cors:
+    allowed-origins: ${SCRM_CORS_ALLOWED_ORIGINS:http://localhost:3001,http://localhost:3002}
+
+# Actuator 开发环境暴露全部端点便于本地调试
+management:
+  endpoints:
+    web:
+      exposure:
+        include: '*'
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    org.hiylo.scrm: DEBUG
+    org.springframework.web: DEBUG
+    org.hibernate.SQL: DEBUG

@@ -1,0 +1,86 @@
+# Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+# Project : scrm
+# File : application-prod.yml
+# Date : 2026/09/17 00:00:00
+# Author : Hsi Chu
+# Contact : hiylo@live.com
+
+# 生产环境配置: 强制 env 注入敏感参数, ddl-auto=validate 防止 Hibernate 自动改表
+
+server:
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain,text/css,text/javascript,application/javascript
+    min-response-size: 1024
+  shutdown: graceful
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${SPRING_DATASOURCE_HOST:}:${SPRING_DATASOURCE_PORT:5432}/scrm?currentSchema=scrm}
+    username: ${SPRING_DATASOURCE_USERNAME:}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    hikari:
+      minimum-idle: 10
+      maximum-pool-size: 30
+      connection-timeout: 20000
+      idle-timeout: 300000
+      max-lifetime: 1200000
+      leak-detection-threshold: 60000
+      pool-name: ScrmProdPool
+  # ddl-auto=validate: 仅校验 entity 与表结构一致性, schema 变更走 Flyway
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        generate_statistics: false
+        jdbc.batch_size: 100
+        order_inserts: true
+        order_updates: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    schemas: scrm
+    default-schema: scrm
+    baseline-on-migrate: true
+    baseline-version: 0
+
+# Actuator - 生产环境只暴露必要端点
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+    loggers:
+      enabled: false
+    shutdown:
+      enabled: false
+    env:
+      enabled: false
+    beans:
+      enabled: false
+    mappings:
+      enabled: false
+    configprops:
+      enabled: false
+
+logging:
+  level:
+    root: WARN
+    org.hiylo.scrm: INFO
+    org.springframework.security: WARN
+    org.springframework.web: WARN
+    org.hibernate.SQL: WARN
+
+# 对象存储: 生产环境强制环境变量注入, 不留默认值 (endpoint 为空时存储不可用, 相关接口快速失败)
+scrm.storage:
+  provider: ${SCRM_STORAGE_PROVIDER:minio}
+  endpoint: ${SCRM_STORAGE_ENDPOINT:}
+  access-key: ${SCRM_STORAGE_ACCESS_KEY:}
+  secret-key: ${SCRM_STORAGE_SECRET_KEY:}
+  bucket: ${SCRM_STORAGE_BUCKET:scrm-assets}
+  secure: ${SCRM_STORAGE_SECURE:false}
