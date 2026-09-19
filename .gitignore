@@ -1,0 +1,55 @@
+# ---------- Maven / Java ----------
+target/
+*.class
+*.jar
+*.war
+dependency-reduced-pom.xml
+hs_err_pid*.log
+replay_pid*.log
+.mvn/wrapper/maven-wrapper.jar
+
+# ---------- IDE ----------
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+.factorypath
+nb-configuration.xml
+
+# ---------- 前端 ----------
+frontend/node_modules/
+frontend/dist/
+frontend/*.local
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ---------- 运行期产物 ----------
+*.log
+logs/
+data/
+/storage/
+backup/
+*.dump
+*.sql.bak
+
+# ---------- 密钥与本地配置 ----------
+.env
+.env.*
+!.env.example
+application-local.yml
+secrets/
+*.pem
+*.key
+
+# ---------- 操作系统 ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Qoder 代理临时 worktree
+.qoder/

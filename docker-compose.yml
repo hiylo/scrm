@@ -1,0 +1,121 @@
+# Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+# Project : scrm
+# File : docker-compose.yml
+# Date : 2026/09/18 00:00:00
+# Author : Hsi Chu
+# Contact : hiylo@live.com
+#
+# 本地一键启动: docker compose up -d --build
+#   web    http://localhost:3002   前端 + 反向代理
+#   app    http://localhost:8840   后端 API / actuator
+#   postgres 5432 / minio 9000
+#
+# 生产部署必须修改以下占位口令, 并通过 .env 或环境文件注入:
+#   POSTGRES_PASSWORD / SCRM_JWT_SECRET / MINIO_ROOT_PASSWORD
+#   SCRM_ACCOUNT_ENCRYPTION_KEY / SCRM_CALLBACK_AGENT_SECRET
+#
+# 本编排默认使用 dev profile: 下方口令均为占位默认值, 而 prod profile 下
+# JwtTokenProvider 与 CallbackSecretStartupValidator 会拒绝占位密钥与空回调密钥
+# 并阻断启动。确有 prod 容器化部署需求时, 传入 SPRING_PROFILES_ACTIVE=prod 并同时
+# 注入全部真实密钥。
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: scrm-postgres
+    environment:
+      POSTGRES_DB: scrm
+      POSTGRES_USER: scrm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-scrm-dev-password}
+      TZ: Asia/Shanghai
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scrm -d scrm"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - scrm-net
+
+  minio:
+    image: minio/minio:latest
+    container_name: scrm-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-scrm}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-scrm-dev-minio-secret}
+      TZ: Asia/Shanghai
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - scrm-net
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: scrm-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Shanghai
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/scrm?currentSchema=scrm
+      SPRING_DATASOURCE_USERNAME: scrm
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-scrm-dev-password}
+      SCRM_JWT_SECRET: ${SCRM_JWT_SECRET:-scrm-dev-only-change-me-in-production-0123456}
+      SCRM_CORS_ALLOWED_ORIGINS: http://localhost:3002,http://localhost:8840
+      SCRM_STORAGE_PROVIDER: minio
+      SCRM_STORAGE_ENDPOINT: http://minio:9000
+      SCRM_STORAGE_ACCESS_KEY: ${MINIO_ROOT_USER:-scrm}
+      SCRM_STORAGE_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-scrm-dev-minio-secret}
+      SCRM_STORAGE_BUCKET: scrm-assets
+      # 必须是合法 Base64 且解码后 32 字节: AesGcmUtils 用 Base64.getDecoder() 解此值,
+      # 早期默认值 (dev-only-32-bytes-key-change-me!) 含 '-' 与 '!' 会让加密字段写入抛异常
+      SCRM_ACCOUNT_ENCRYPTION_KEY: ${SCRM_ACCOUNT_ENCRYPTION_KEY:-c2NybS1kZXYtYWVzLTI1Ni1rZXktY2hhbmdlLW1lISE=}
+      SCRM_CALLBACK_AGENT_SECRET: ${SCRM_CALLBACK_AGENT_SECRET:-}
+      SEQUENCE_WORKER_ID: "1"
+      SEQUENCE_DATACENTER_ID: "1"
+      WEWORK_MOCK_MODE: "true"
+      WEWORK_REAL_API_ENABLED: "false"
+      SCRM_AI_ENABLED: "false"
+    ports:
+      - "8840:8840"
+    networks:
+      - scrm-net
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: scrm-web
+    depends_on:
+      - app
+    ports:
+      - "3002:80"
+    networks:
+      - scrm-net
+
+volumes:
+  postgres-data:
+  minio-data:
+
+networks:
+  scrm-net:
+    driver: bridge

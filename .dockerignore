@@ -1,0 +1,33 @@
+# 后端镜像 (Dockerfile 多阶段) 只需要 pom.xml 与 src/, 其余全部排除。
+# 不加本文件时构建上下文约 484 MB (target/ + frontend/node_modules/ + .git/),
+# 每次 build 都要把这份上下文完整传给 daemon。
+
+# 版本控制与工具目录
+.git
+.gitignore
+.qoder
+
+# 构建产物 (镜像内由 maven 阶段重新生成)
+target
+**/target
+*.jar
+*.war
+
+# 前端有自己的构建上下文 (docker-compose.yml 里 context: ./frontend),
+# 它的 node_modules 是宿主机 glibc 二进制, 绝不能进后端上下文
+frontend/node_modules
+frontend/dist
+frontend/coverage
+node_modules
+
+# 日志与本地环境变量
+logs
+*.log
+.env
+.env.*
+
+# 文档与编排文件不参与编译
+*.md
+LICENSE
+docker-compose.yml
+.dockerignore
