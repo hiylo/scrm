@@ -1,0 +1,229 @@
+/* Layout 组件样式 */
+
+.app-sider {
+  background: var(--color-bg-container) !important;
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-search {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.menu-search-input {
+  border-radius: 6px;
+}
+
+.nav-menu {
+  flex: 1;
+  padding: 8px 0;
+  overflow-y: auto;
+}
+
+.nav-group-label {
+  padding: 12px 20px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-text-secondary);
+}
+
+.nav-button {
+  display: flex;
+  align-items: center;
+  width: calc(100% - 16px);
+  margin: 2px 8px;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s;
+  font-size: 14px;
+}
+
+.nav-button:hover {
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.nav-button.active {
+  background: var(--color-primary);
+  color: white;
+}
+
+.nav-button.active .nav-icon {
+  filter: brightness(1.2);
+}
+
+.nav-icon {
+  font-size: 16px;
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+
+.nav-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-role {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background: var(--color-bg-container) !important;
+  border-bottom: 1px solid var(--color-border);
+  height: 60px;
+  line-height: 60px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  z-index: 10;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.collapse-btn {
+  font-size: 18px;
+}
+
+.page-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.page-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text);
+  line-height: 1.2;
+}
+
+.page-subtitle {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  line-height: 1.2;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.theme-toggle-btn {
+  font-size: 18px;
+}
+
+.user-dropdown {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.user-dropdown:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.user-display-name {
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.app-content {
+  flex: 1;
+  overflow: auto;
+  background: var(--color-bg-layout);
+  padding: 20px;
+}
+
+/* 页面切换过渡动画 */
+.page-transition {
+  animation: page-fade-in 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes page-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 移动端 Drawer 内部菜单样式覆盖 */
+.app-drawer .menu-search {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.app-drawer .nav-menu {
+  flex: 1;
+  padding: 8px 0;
+  overflow-y: auto;
+}
+
+.app-drawer .user-card {
+  border-top: 1px solid var(--color-border);
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .page-subtitle {
+    display: none;
+  }
+  .user-display-name {
+    display: none;
+  }
+  .global-search {
+    display: none;
+  }
+  .app-content {
+    padding: 12px;
+  }
+  .app-header {
+    padding: 0 12px;
+  }
+}

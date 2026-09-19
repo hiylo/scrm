@@ -1,0 +1,32 @@
+# 前端镜像 (Dockerfile: npm ci -> vite build -> nginx)
+#
+# 关键一项是 node_modules: Dockerfile 先 COPY package*.json 再 RUN npm ci,
+# 之后才 COPY . .。若不排除, 宿主机那份 (glibc 二进制, 约 295 MB) 会覆盖容器内
+# npm ci 装好的 musl 版本, 而镜像基座是 alpine —— 能跑通纯属架构巧合。
+
+node_modules
+**/node_modules
+dist
+build
+coverage
+*.tsbuildinfo
+.vitest
+
+# 本地环境变量不烧进镜像: 未设置时 useScrmWebSocket / client 会回落到
+# window.location.host, 这才是容器化部署想要的行为
+.env
+.env.*
+
+logs
+*.log
+.git
+.gitignore
+.qoder
+
+# 不参与构建的文档与测试
+*.md
+src/**/*.test.ts
+src/**/*.test.tsx
+src/**/__tests__
+
+# nginx.conf 由 Dockerfile 单独 COPY, vite/nginx 配置必须保留在上下文里
