@@ -4,7 +4,7 @@
  * File : ScrmScheduledTaskDto.java
  * Date : 2026/08/05 08:55:12
  * Author : Hsi Chu
- * Version : V1.0
+ * Contact : hiylo@live.com
  */
 package org.hiylo.scrm.dto;
 

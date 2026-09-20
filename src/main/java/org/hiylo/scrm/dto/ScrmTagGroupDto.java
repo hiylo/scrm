@@ -4,7 +4,7 @@
  * File : ScrmTagGroupDto.java
  * Date : 2026/08/04 08:40:58
  * Author : Hsi Chu
- * Version : V1.0
+ * Contact : hiylo@live.com
  */
 package org.hiylo.scrm.dto;
 
