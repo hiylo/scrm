@@ -89,4 +89,27 @@ CI 与容器化部署能力。
 
 ## 未发布 (Unreleased)
 
-后续版本在此追加。
+### Fixed
+
+- 侧边栏会话未读红点永不显示: `Layout.tsx` 算出 `btnWithBadge` 却始终 `return btn`,
+  折叠/展开两种布局都改为返回 `btnWithBadge`。
+- 账号详情抽屉永远打不开: `Accounts.tsx` 的 `setDetailAccount` 从未被调用,
+  操作列补「详情」按钮 (新增 `openDetail`), 登录日志仍由 `detailAccount` 变化的
+  useEffect 自动拉取。
+
+### Changed
+
+- 前端 `package.json` 版本号 `0.1.0` -> `1.0.0`, 与后端 artifact 版本对齐。
+- 清理 5 处 `no-unused-vars` 死代码: `Layout.tsx` 静默 catch 的 `err` 绑定、
+  `Accounts.tsx` 的 `setDetailAccount` (已接线)、`Campaigns.tsx` 只写不读的
+  `templatesLoaded`、`CustomerDetail.tsx` 只赋值不用的 `previous`、
+  `Layout.tsx` 的 `btnWithBadge` (已接线)。lint warning 20 -> 15。
+
+### Chore
+
+- 按「Date 取文件首次提交时间」规约, 修正 31 个 Java 文件 Copyright 头的
+  `Date` 字段 (连字符格式 `2026-09-19 HH:mm:ss` -> 斜杠格式
+  `2026/09/19 21:20:11` / `21:20:19`)。
+- `ObjectMapperConfig.java` 的 `Date` 由错误的 `2025/12/06` 更正为首次提交时间,
+  并移除模板外多出的 `Version : V1.0` 行。
+
