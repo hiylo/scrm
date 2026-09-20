@@ -1,0 +1,88 @@
+# Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+# Project : scrm
+# File : ci.yml
+# Date : 2026/09/20 00:00:00
+# Author : Hsi Chu
+# Contact : hiylo@live.com
+#
+# 主分支与 PR 的持续集成: 后端 mvn test + 前端 tsc/test/lint/build。
+# GitHub-hosted runner 自带 Docker, FlywayPostgresMigrationTest 会通过 Testcontainers
+# 起真实 PostgreSQL 16 执行迁移回归; 若 runner 无 Docker 该类会静默跳过(非失败)。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# 同分支上未完成的运行自动取消, 节省配额
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend / mvn test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # GitHub-hosted ubuntu-latest 自带 Docker daemon, Testcontainers 开箱即用,
+      # FlywayPostgresMigrationTest 会通过它起真实 PostgreSQL 16 执行迁移回归。
+      # 若某次 runner 无 Docker, 该类因 @Testcontainers(disabledWithoutDocker=true)
+      # 会静默跳过而非失败, 不会阻塞 CI。
+      - name: Maven test (full)
+        env:
+          MAVEN_OPTS: -Xmx4g -Xms1g
+        run: mvn -B -ntp test
+
+      - name: Upload surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports
+          path: target/surefire-reports/*.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+  frontend:
+    name: Frontend / typecheck + test + lint + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build

@@ -1,0 +1,10 @@
+# Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+# Project : scrm
+# File : CODEOWNERS
+# Date : 2026/09/20 00:00:00
+# Author : Hsi Chu
+# Contact : hiylo@live.com
+#
+# 默认所有路径由 hiylo 维护; 新增子模块时在此追加更具体的 owner 覆盖。
+
+*            @hiylo
