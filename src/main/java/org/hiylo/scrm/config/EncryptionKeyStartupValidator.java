@@ -4,7 +4,7 @@
  * File : EncryptionKeyStartupValidator.java
  * Date : 2026/09/14 12:00:00
  * Author : Hsi Chu
- * Version : V1.0
+ * Contact : hiylo@live.com
  */
 package org.hiylo.scrm.config;
 

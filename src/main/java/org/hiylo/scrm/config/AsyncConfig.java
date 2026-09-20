@@ -4,7 +4,7 @@
  * File : AsyncConfig.java
  * Date : 2026/06/27 02:52:58
  * Author : Hsi Chu
- * Version : V1.0
+ * Contact : hiylo@live.com
  */
 package org.hiylo.scrm.config;
 
