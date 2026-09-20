@@ -7,6 +7,28 @@
 - 后端 Spring Boot 4 单体 JAR, 前端 React SPA, 一键 `docker compose up` 即可运行
 - 全量功能自带单元测试, 主分支持续保持 `mvn test` 全绿
 
+## 徽章
+
+[![CI](https://github.com/hiylo/scrm/actions/workflows/ci.yml/badge.svg)](https://github.com/hiylo/scrm/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/hiylo/scrm)](https://github.com/hiylo/scrm/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://adoptium.net/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.0.7-green.svg)](https://spring.io/projects/spring-boot)
+[![React](https://img.shields.io/badge/React-18-61DAFB.svg)](https://react.dev/)
+
+## 文档
+
+| 文档 | 说明 |
+| --- | --- |
+| [CHANGELOG.md](CHANGELOG.md) | 版本变更记录 |
+| [SECURITY.md](SECURITY.md) | 安全策略与已实现的安全基线 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 贡献指南 (编码约定 / 提交规范 / 测试) |
+| [.github/workflows/ci.yml](.github/workflows/ci.yml) | CI 工作流 |
+| [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) | PR 模板 |
+| [.env.example](.env.example) | 环境变量模板 |
+| `src/main/resources/api/` | API 路径文档 (Markdown) |
+| `frontend/DESIGN.md` | 前端设计规范 |
+
 ## 技术栈
 
 | 层 | 技术 |
@@ -20,9 +42,9 @@
 | 集成 | 企业微信开放 API (WebClient), 个推 (可选), AI 服务 (可选) |
 | 前端 | React 18 + TypeScript 5 + Vite 5 + Ant Design 5 + ECharts 5 |
 
-规模: 1409 个 Java 源文件 (src/main), 259 实体 / 260 仓储 / 295 服务 / 103 控制器 /
-385 DTO, 275 张业务表 (Flyway V1 初始化 + V2 全文检索索引), 1625 个后端测试用例 +
-261 个前端测试用例。
+规模: 1409 个 Java 源文件 (src/main), 259 实体 / 260 仓储 / 296 服务 / 103 控制器 /
+392 DTO, 275 张业务表 (Flyway V1 初始化 + V2 全文检索索引), 1625 个后端测试用例 +
+261 个前端测试用例 (15 个测试文件)。
 
 ## 目录结构
 
@@ -173,3 +195,9 @@ V2 的 pg_trgm 索引属 PostgreSQL 专有语法, 由 `FlywayPostgresMigrationTe
 ## License
 
 MIT — 详见 [LICENSE](LICENSE)。
+
+## 贡献
+
+欢迎 Issue 与 PR。请阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 了解编码约定与提交流程;
+安全相关请勿开公开 Issue, 走 [SECURITY.md](SECURITY.md) 的私密披露渠道。版本变更记录见
+[CHANGELOG.md](CHANGELOG.md)。
