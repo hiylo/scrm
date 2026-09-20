@@ -44,6 +44,7 @@ import {
   TeamOutlined,
   SyncOutlined,
   MoreOutlined,
+  EyeOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { MenuProps } from 'antd';
@@ -281,6 +282,12 @@ export default function Accounts() {
     setEditing(null);
     form.resetFields();
     setModalOpen(true);
+  };
+
+  /** 打开账号详情抽屉 (登录日志由 detailAccount 变化的 useEffect 自动拉取) */
+  const openDetail = (record: ScrmAccount) => {
+    setDetailAccount(record);
+    setDetailOpen(true);
   };
 
   /** 打开编辑弹窗 */
@@ -625,6 +632,16 @@ export default function Accounts() {
           : [];
         return (
           <Space>
+            <Tooltip title="查看账号详情">
+              <Button
+                type="link"
+                size="small"
+                icon={<EyeOutlined />}
+                onClick={() => openDetail(record)}
+              >
+                详情
+              </Button>
+            </Tooltip>
             {record.platformType === 'wework' && canEdit && (
               <Tooltip title="同步联系人">
                 <Button

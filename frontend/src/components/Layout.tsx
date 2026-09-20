@@ -479,7 +479,7 @@ export default function Layout() {
         }
 
         setGlobalSearchOptions(options);
-      } catch (err) {
+      } catch {
         // 搜索失败时静默清空选项 (响应拦截器已弹错误提示)
         setGlobalSearchOptions([]);
       } finally {
@@ -664,11 +664,11 @@ export default function Layout() {
                     trigger="hover"
                     mouseEnterDelay={0.2}
                   >
-                    {btn}
+                    {btnWithBadge}
                   </Popover>
                 );
               }
-              return btn;
+              return btnWithBadge;
             })}
           </div>
           );
