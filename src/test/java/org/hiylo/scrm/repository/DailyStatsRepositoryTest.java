@@ -4,7 +4,7 @@
  * File : DailyStatsRepositoryTest.java
  * Date : 2026/09/18 10:35:00
  * Author : Hsi Chu
- * Version : V1.0
+ * Contact : hiylo@live.com
  */
 package org.hiylo.scrm.repository;
 

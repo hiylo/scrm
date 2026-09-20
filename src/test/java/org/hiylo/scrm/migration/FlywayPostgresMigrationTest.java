@@ -4,7 +4,7 @@
  * File : FlywayPostgresMigrationTest.java
  * Date : 2026/09/19 06:40:00
  * Author : Hsi Chu
- * Version : V1.0
+ * Contact : hiylo@live.com
  */
 package org.hiylo.scrm.migration;
 

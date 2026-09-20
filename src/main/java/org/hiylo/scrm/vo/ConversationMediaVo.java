@@ -4,7 +4,7 @@
  * File : ConversationMediaVo.java
  * Date : 2026/09/18 11:24:39
  * Author : Hsi Chu
- * Version : V1.0
+ * Contact : hiylo@live.com
  */
 package org.hiylo.scrm.vo;
 

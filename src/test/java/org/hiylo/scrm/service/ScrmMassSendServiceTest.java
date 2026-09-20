@@ -4,7 +4,7 @@
  * File : ScrmMassSendServiceTest.java
  * Date : 2026/08/10 11:01:41
  * Author : Hsi Chu
- * Version : V1.0
+ * Contact : hiylo@live.com
  */
 package org.hiylo.scrm.service;
 
