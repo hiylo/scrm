@@ -4,7 +4,7 @@
  * File : ScrmFunnelStageEntity.java
  * Date : 2026/07/29 21:19:51
  * Author : Hsi Chu
- * Version : V1.0
+ * Contact : hiylo@live.com
  */
 package org.hiylo.scrm.entity;
 
