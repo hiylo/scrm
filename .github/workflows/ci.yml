@@ -6,6 +6,8 @@
 # Contact : hiylo@live.com
 #
 # 主分支与 PR 的持续集成: 后端 mvn test + 前端 tsc/test/lint/build。
+# 固定 ubuntu-26.04 而非 ubuntu-latest: ubuntu-latest 将于 2026-10-19 起逐步迁移到
+# Ubuntu 26.04 (actions/runner-images#14748), 提前显式固定可避免迁移窗口内 CI 行为漂移。
 # GitHub-hosted runner 自带 Docker, FlywayPostgresMigrationTest 会通过 Testcontainers
 # 起真实 PostgreSQL 16 执行迁移回归; 若 runner 无 Docker 该类会静默跳过(非失败)。
 name: CI
@@ -25,7 +27,7 @@ concurrency:
 jobs:
   backend:
     name: Backend / mvn test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -57,7 +59,7 @@ jobs:
 
   frontend:
     name: Frontend / typecheck + test + lint + build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     defaults:
       run:
