@@ -112,4 +112,6 @@ CI 与容器化部署能力。
   `2026/09/19 21:20:11` / `21:20:19`)。
 - `ObjectMapperConfig.java` 的 `Date` 由错误的 `2025/12/06` 更正为首次提交时间,
   并移除模板外多出的 `Version : V1.0` 行。
+- 全量 Copyright 头迁移: 1281 个 Java 文件 `Version : V1.0` ->
+  `Contact : hiylo@live.com` (AGENTS.md 统一模板)。逐文件校验, 零附带改动。
 
