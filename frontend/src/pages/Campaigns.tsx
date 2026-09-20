@@ -242,7 +242,6 @@ export default function Campaigns() {
   // SOP 模板列表
   const [templates, setTemplates] = useState<CampaignTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
-  const [templatesLoaded, setTemplatesLoaded] = useState(false);
   // SOP 模板新建/编辑弹窗
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [templateModalMode, setTemplateModalMode] = useState<'create' | 'edit'>('create');
@@ -428,7 +427,6 @@ export default function Campaigns() {
         { params: { page: 0, size: 20 } },
       );
       setTemplates(data.content || []);
-      setTemplatesLoaded(true);
     } catch {
       // 错误已由 axios 拦截器统一提示
       setTemplates([]);

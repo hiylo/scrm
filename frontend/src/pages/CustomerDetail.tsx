@@ -423,10 +423,9 @@ export default function CustomerDetail() {
       setLifecycleModalOpen(false);
       return;
     }
-    setLifecycleSubmitting(true);
-    try {
-      const previous = customer.lifecycle;
-      // 调用生命周期更新接口: PUT /{id}/lifecycle?lifecycle=&remark=
+      setLifecycleSubmitting(true);
+      try {
+        // 调用生命周期更新接口: PUT /{id}/lifecycle?lifecycle=&remark=
       await apiClient.put(
         `/scrm/customers/${customer.id}/lifecycle?lifecycle=${encodeURIComponent(pendingLifecycle)}&remark=${encodeURIComponent(lifecycleRemark)}`,
       );
