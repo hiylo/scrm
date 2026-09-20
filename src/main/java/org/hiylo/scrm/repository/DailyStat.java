@@ -4,7 +4,7 @@
  * File : DailyStat.java
  * Date : 2026/09/05 14:15:16
  * Author : Hsi Chu
- * Version : V1.0
+ * Contact : hiylo@live.com
  */
 package org.hiylo.scrm.repository;
 

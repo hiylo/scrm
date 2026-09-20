@@ -4,7 +4,7 @@
  * File : RequirePermission.java
  * Date : 2026/04/30 19:48:19
  * Author : Hsi Chu
- * Version : V1.0
+ * Contact : hiylo@live.com
  */
 package org.hiylo.scrm.rbac.annotation;
 

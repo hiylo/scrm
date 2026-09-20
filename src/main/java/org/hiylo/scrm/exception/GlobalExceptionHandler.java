@@ -4,7 +4,7 @@
  * File : GlobalExceptionHandler.java
  * Date : 2026/06/19 02:59:50
  * Author : Hsi Chu
- * Version : V1.0
+ * Contact : hiylo@live.com
  */
 package org.hiylo.scrm.exception;
 
