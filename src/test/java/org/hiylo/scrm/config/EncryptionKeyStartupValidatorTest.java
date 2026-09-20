@@ -2,7 +2,7 @@
  * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
  * Project : scrm
  * File : EncryptionKeyStartupValidatorTest.java
- * Date : 2026-09-19 00:00:00
+ * Date : 2026/09/19 21:20:19
  * Author : Hsi Chu
  * Version : V1.0
  */

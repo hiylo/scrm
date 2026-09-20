@@ -2,9 +2,9 @@
  * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
  * Project : scrm
  * File : ObjectMapperConfig.java
- * Date : 2025/12/06 06:01:29
+ * Date : 2026/09/19 21:20:11
  * Author : Hsi Chu
- * Version : V1.0
+ * Contact : hiylo@live.com
  */
 package org.hiylo.scrm.config;
 
