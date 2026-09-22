@@ -62,6 +62,10 @@ class ScrmAccountServiceTest {
     @Mock
     private org.hiylo.scrm.repository.ScrmCampaignAccountRepository campaignAccountRepository;
 
+    /** 数据隔离服务 Mock (当前用户身份与可访问账号范围) */
+    @Mock
+    private DataScopeService dataScopeService;
+
     /** 营销任务执行引擎扩展点 Mock */
     @Mock
     private TaskExecutionService taskExecutionService;
@@ -79,6 +83,9 @@ class ScrmAccountServiceTest {
      */
     @BeforeEach
     void setUp() {
+        // 默认以 ADMIN 身份操作, 不受数据隔离限制; 各用例可按需覆盖
+        when(dataScopeService.getCurrentRole()).thenReturn("ADMIN");
+        when(dataScopeService.isAdmin("ADMIN")).thenReturn(true);
     }
 
     /**

@@ -110,7 +110,7 @@ public class ScrmPersonaService {
         entity.setTags(dto.getTags());
         entity = personaRepository.save(entity);
 
-        // 通过 Feign 调 scrm-server 创建执行侧 Persona
+        // 通过执行引擎扩展点创建/确认执行侧 Persona
         createExecutionPersona(dto);
 
         log.info("创建 SCRM 人设: personaId={}, accountId={}", entity.getPersonaId(), entity.getAccountId());

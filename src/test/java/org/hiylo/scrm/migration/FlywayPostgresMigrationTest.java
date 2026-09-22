@@ -136,10 +136,10 @@ class FlywayPostgresMigrationTest {
 
     @Test
     @Order(1)
-    @DisplayName("V1/V2 全部执行成功并写入 flyway_schema_history")
+    @DisplayName("V1/V2/V3 全部执行成功并写入 flyway_schema_history")
     void flywayRecordsBothMigrationsAsSuccess() throws SQLException {
         assertThat(migrateResult.success).as("Flyway migrate 结果").isTrue();
-        assertThat(migrateResult.migrationsExecuted).as("本次执行的迁移数").isEqualTo(2);
+        assertThat(migrateResult.migrationsExecuted).as("本次执行的迁移数").isEqualTo(3);
 
         String historySchema = singleValue(
                 "select table_schema from information_schema.tables where table_name = 'flyway_schema_history'");
@@ -149,9 +149,10 @@ class FlywayPostgresMigrationTest {
                 + "|| coalesce(script, '-') || '|' || success from \""
                 + historySchema + "\".flyway_schema_history order by installed_rank");
         assertThat(entries).filteredOn(entry -> entry.startsWith("SQL|"))
-                .as("V1/V2 两条迁移记录 (type|version|script|success)").containsExactly(
+                .as("V1/V2/V3 三条迁移记录 (type|version|script|success)").containsExactly(
                         "SQL|1|V1__init_schema.sql|true",
-                        "SQL|2|V2__add_text_search_indexes.sql|true");
+                        "SQL|2|V2__add_text_search_indexes.sql|true",
+                        "SQL|3|V3__add_account_owner.sql|true");
         // spring.flyway.schemas=scrm 会让 Flyway 自建 schema 并写入一条 SCHEMA 记录, 此时 V1 的
         // CREATE SCHEMA IF NOT EXISTS scrm 退化为空操作
         assertThat(entries).filteredOn(entry -> entry.startsWith("SCHEMA|"))

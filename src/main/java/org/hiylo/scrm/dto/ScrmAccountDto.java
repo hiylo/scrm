@@ -54,7 +54,11 @@ public class ScrmAccountDto {
     @Size(max = 500, message = "头像 URL 长度不能超过 500")
     private String avatarUrl;
 
-    /** 关联 scrm-server 设备 ID */
+    /** 归属用户 ID（关联 scrm_user.id，数据隔离按此过滤；可空表示历史/系统账号） */
+    @JsonSerialize(using = ToStringSerializer.class)
+    private Long ownerUserId;
+
+    /** 关联设备 ID */
     @Size(max = 100, message = "设备 ID 长度不能超过 100")
     private String deviceId;
 

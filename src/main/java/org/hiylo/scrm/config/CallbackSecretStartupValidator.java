@@ -20,7 +20,7 @@ import java.util.Set;
  * 回调共享密钥启动校验器。
  * <p>
  * 校验平台回调 / Webhook 端点 ({@code /scrm/callback/**}、{@code /scrm/webhooks/**}) 使用的
- * {@code X-Agent-Secret} 共享密钥是否已配置。该密钥用于校验自动化执行侧 (scrm-server)
+ * {@code X-Agent-Secret} 共享密钥是否已配置。该密钥用于校验自动化执行侧
  * 发起的服务间回调请求身份, 与用户登录认证 (JWT) 无关。
  * </p>
  * <p>
@@ -38,7 +38,7 @@ public class CallbackSecretStartupValidator {
     /** 允许缺失回调密钥的开发类环境 */
     private static final Set<String> DEV_LIKE_PROFILES = Set.of("dev", "local", "test");
 
-    /** 回调共享密钥, 由 scrm-server 通过 X-Agent-Secret 头携带 */
+    /** 回调共享密钥, 由调用方通过 X-Agent-Secret 头携带 */
     @Value("${scrm.callback.agent-secret:}")
     private String agentSecret;
 

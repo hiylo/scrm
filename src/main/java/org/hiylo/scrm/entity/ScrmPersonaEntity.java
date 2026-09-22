@@ -27,7 +27,7 @@ import java.time.LocalDateTime;
 /**
  * SCRM 人设业务字段实体。
  * <p>
- * 人设 ID 与 scrm-server 执行侧共享，业务侧维护人设的展示信息、
+ * 人设 ID 与执行侧共享，业务侧维护人设的展示信息、
  * 话术风格标签、话术模板、自定义标签等。
  *
  * @author Hsi Chu
@@ -86,7 +86,7 @@ public class ScrmPersonaEntity {
 
     // ==================== 业务字段 ====================
 
-    /** 人设 ID（与 scrm-server 执行侧共享，业务唯一） */
+    /** 人设 ID（与执行侧共享，业务唯一） */
     @Column(name = "persona_id", nullable = false, unique = true, length = 100)
     private String personaId;
 

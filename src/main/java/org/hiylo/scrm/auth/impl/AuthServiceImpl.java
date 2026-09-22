@@ -15,7 +15,6 @@ import org.hiylo.scrm.auth.JwtTokenProvider;
 
 import org.hiylo.scrm.dto.auth.LoginRequestDto;
 import org.hiylo.scrm.dto.auth.LoginResponseDto;
-import org.hiylo.scrm.dto.auth.RegisterRequestDto;
 import org.hiylo.scrm.entity.ScrmUserEntity;
 import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.repository.ScrmUserRepository;
@@ -26,7 +25,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
-import java.util.regex.Pattern;
 
 /**
  * 认证服务实现。
@@ -43,12 +41,6 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
 
-    /** 密码强度规则: 8-72 位且同时包含字母与数字 (72 为 BCrypt 输入上限) */
-    private static final Pattern PASSWORD_PATTERN = Pattern.compile("^(?=.*[A-Za-z])(?=.*\\d).{8,72}$");
-
-    /** 注册默认角色 */
-    private static final String DEFAULT_ROLE = "OPERATOR";
-
     /** 账号状态: 启用 */
     private static final int STATUS_ENABLED = 1;
 
@@ -63,32 +55,6 @@ public class AuthServiceImpl implements AuthService {
 
     /** JWT 令牌签发与解析组件 */
     private final JwtTokenProvider jwtTokenProvider;
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    @Transactional
-    public ScrmUserEntity register(RegisterRequestDto request) {
-        String username = request.getUsername().trim();
-        if (userRepository.existsByUsername(username)) {
-            throw ScrmException.conflict("用户名已被占用: " + username);
-        }
-        if (!PASSWORD_PATTERN.matcher(request.getPassword()).matches()) {
-            throw ScrmException.badRequest("密码强度不足: 需 8-72 位且同时包含字母与数字");
-        }
-
-        ScrmUserEntity user = new ScrmUserEntity();
-        user.setUsername(username);
-        user.setPassword(passwordEncoder.encode(request.getPassword()));
-        user.setDisplayName(request.getDisplayName());
-        user.setEmail(request.getEmail());
-        user.setRoles(DEFAULT_ROLE);
-        user.setStatus(STATUS_ENABLED);
-        ScrmUserEntity saved = userRepository.save(user);
-        log.info("用户注册成功: username={}", username);
-        return saved;
-    }
 
     /**
      * {@inheritDoc}

@@ -42,7 +42,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * SCRM 回调 Controller, 接收 scrm-server 内部回调。
+ * SCRM 回调 Controller, 接收执行侧内部回调。
  * <p>
  * 回调接口不要求网关鉴权, 通过 {@code X-Agent-Secret} 头校验调用方身份 (fail-closed:
  * 未配置 {@code scrm.callback.agent-secret} 时拒绝所有回调)。回调端点:
@@ -160,7 +160,7 @@ public class ScrmCallbackController {
                         logStatus,
                         dto.getErrorCode(),
                         dto.getErrorMessage(),
-                        "scrm-callback");
+                        "callback");
             } catch (Exception e) {
                 // 日志写入失败不阻断回调主流程
                 log.warn("记录回调执行日志失败 (不影响回调主流程): campaignId={}, err={}",
@@ -182,7 +182,7 @@ public class ScrmCallbackController {
     }
 
     /**
-     * 风控信号回调: 将 scrm-server 命中的风控规则信号持久化到 {@code scrm_risk_signal} 表,
+     * 风控信号回调: 将执行侧命中的风控规则信号持久化到 {@code scrm_risk_signal} 表,
      * 供 SCRM 侧账号风控态势感知与看板聚合使用。
      *
      * @param dto                风控信号回调 DTO

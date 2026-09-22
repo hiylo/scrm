@@ -10,34 +10,21 @@ package org.hiylo.scrm.auth;
 
 import org.hiylo.scrm.dto.auth.LoginRequestDto;
 import org.hiylo.scrm.dto.auth.LoginResponseDto;
-import org.hiylo.scrm.dto.auth.RegisterRequestDto;
 import org.hiylo.scrm.entity.ScrmUserEntity;
 import org.hiylo.scrm.exception.ScrmException;
 
 /**
  * 认证服务。
  * <p>
- * 承载 SCRM 独立单体形态下的自建登录能力: 注册 (用户名唯一校验 + 密码强度校验 +
- * BCrypt 加密)、登录 (凭证校验 + 令牌签发 + 最后登录时间回写)、按用户 ID 查询当前用户。
+ * 承载 SCRM 独立单体形态下的自建登录能力: 登录 (凭证校验 + 令牌签发 + 最后登录
+ * 时间回写)、按用户 ID 查询当前用户。公开注册已关闭, 系统用户由管理员在「用户管理」
+ * 侧创建。
  * </p>
  *
  * @author Hsi Chu
  * @since V1.0
  */
 public interface AuthService {
-
-    /**
-     * 注册新用户。
-     * <p>
-     * 校验用户名唯一与密码强度 (不少于 8 位且同时含字母与数字), 口令经 BCrypt 加密落库,
-     * 默认角色 {@code OPERATOR}。
-     * </p>
-     *
-     * @param request 注册请求
-     * @return 创建后的用户实体
-     * @throws ScrmException 用户名重复 (409) 或密码强度不足 (400)
-     */
-    ScrmUserEntity register(RegisterRequestDto request);
 
     /**
      * 登录并签发访问令牌。

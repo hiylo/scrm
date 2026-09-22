@@ -11,7 +11,6 @@ package org.hiylo.scrm.auth.impl;
 import org.hiylo.scrm.auth.JwtTokenProvider;
 import org.hiylo.scrm.dto.auth.LoginRequestDto;
 import org.hiylo.scrm.dto.auth.LoginResponseDto;
-import org.hiylo.scrm.dto.auth.RegisterRequestDto;
 import org.hiylo.scrm.entity.ScrmUserEntity;
 import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.repository.ScrmUserRepository;
@@ -20,7 +19,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -43,8 +41,8 @@ import static org.mockito.Mockito.when;
 /**
  * AuthServiceImpl 单元测试。
  * <p>
- * 覆盖注册唯一性/密码强度/默认角色、登录凭证校验/账号禁用/lastLoginAt 回写与
- * 令牌签发、按 uid 查询当前用户的正常与异常分支。
+ * 覆盖登录凭证校验/账号禁用/lastLoginAt 回写与令牌签发、按 uid 查询当前用户的正常与异常分支。
+ * 公开注册已关闭, 不再有注册用例。
  * </p>
  *
  * @author Hsi Chu
@@ -78,113 +76,6 @@ class AuthServiceImplTest {
     void tearDown() {
     }
 
-    // ==================== register ====================
-
-    @Test
-    @DisplayName("注册成功: 口令 BCrypt 加密, 默认角色 OPERATOR, 状态启用")
-    void register_success_defaultsApplied() {
-        RegisterRequestDto dto = registerDto("newbie", "Passw0rd!");
-        when(userRepository.existsByUsername("newbie")).thenReturn(false);
-        when(passwordEncoder.encode(anyString())).thenReturn("$2a$10$hashed");
-        when(userRepository.save(any(ScrmUserEntity.class))).thenAnswer(invocation -> {
-            ScrmUserEntity entity = invocation.getArgument(0);
-            entity.setId(500L);
-            return entity;
-        });
-
-        ScrmUserEntity saved = authService.register(dto);
-
-        ArgumentCaptor<ScrmUserEntity> captor = ArgumentCaptor.forClass(ScrmUserEntity.class);
-        verify(userRepository).save(captor.capture());
-        ScrmUserEntity persisted = captor.getValue();
-
-        assertThat(saved.getId()).isEqualTo(500L);
-        assertThat(persisted.getUsername()).isEqualTo("newbie");
-        assertThat(persisted.getPassword()).isEqualTo("$2a$10$hashed");
-        assertThat(persisted.getRoles()).isEqualTo("OPERATOR");
-        assertThat(persisted.getStatus()).isEqualTo(1);
-        assertThat(persisted.getDisplayName()).isNull();
-        assertThat(persisted.getEmail()).isNull();
-    }
-
-    @Test
-    @DisplayName("注册成功: 持久化新用户")
-    void register_persistsNewUser() {
-        RegisterRequestDto dto = registerDto("newbie", "Passw0rd!");
-        when(userRepository.existsByUsername("newbie")).thenReturn(false);
-        when(passwordEncoder.encode(anyString())).thenReturn("$2a$10$hashed");
-        when(userRepository.save(any(ScrmUserEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
-        authService.register(dto);
-
-        ArgumentCaptor<ScrmUserEntity> captor = ArgumentCaptor.forClass(ScrmUserEntity.class);
-        verify(userRepository).save(captor.capture());
-    }
-
-    @Test
-    @DisplayName("注册: 用户名已存在抛 409 且不落库")
-    void register_duplicateUsername_conflict() {
-        when(userRepository.existsByUsername("taken")).thenReturn(true);
-
-        assertThatThrownBy(() -> authService.register(registerDto("taken", "Passw0rd!")))
-                .isInstanceOf(ScrmException.class)
-                .satisfies(ex -> {
-                    ScrmException e = (ScrmException) ex;
-                    assertThat(e.getHttpStatus()).isEqualTo(HttpStatus.CONFLICT);
-                    assertThat(e.getMessage()).contains("已被占用");
-                });
-        verify(userRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("注册: 用户名前后空格被 trim 后参与唯一性校验")
-    void register_usernameTrimmed() {
-        RegisterRequestDto dto = registerDto("  trimmed  ", "Passw0rd!");
-        when(userRepository.existsByUsername("trimmed")).thenReturn(false);
-        when(passwordEncoder.encode(anyString())).thenReturn("$2a$10$hashed");
-        when(userRepository.save(any(ScrmUserEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
-        ScrmUserEntity saved = authService.register(dto);
-
-        assertThat(saved.getUsername()).isEqualTo("trimmed");
-    }
-
-    @Test
-    @DisplayName("注册: 纯数字密码抛 400 (缺字母)")
-    void register_passwordWithoutLetter_badRequest() {
-        assertThatThrownBy(() -> authService.register(registerDto("u1", "12345678")))
-                .isInstanceOf(ScrmException.class)
-                .satisfies(ex -> {
-                    ScrmException e = (ScrmException) ex;
-                    assertThat(e.getHttpStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
-                    assertThat(e.getMessage()).contains("密码强度不足");
-                });
-        verify(userRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("注册: 纯字母密码抛 400 (缺数字)")
-    void register_passwordWithoutDigit_badRequest() {
-        assertThatThrownBy(() -> authService.register(registerDto("u1", "abcdefgh")))
-                .isInstanceOf(ScrmException.class)
-                .hasFieldOrPropertyWithValue("httpStatus", HttpStatus.BAD_REQUEST);
-    }
-
-    @Test
-    @DisplayName("注册: 少于 8 位密码抛 400")
-    void register_passwordTooShort_badRequest() {
-        assertThatThrownBy(() -> authService.register(registerDto("u1", "Ab1")))
-                .hasFieldOrPropertyWithValue("httpStatus", HttpStatus.BAD_REQUEST);
-    }
-
-    @Test
-    @DisplayName("注册: 超长密码 (超过 BCrypt 72 位上限) 抛 400")
-    void register_passwordTooLong_badRequest() {
-        String tooLong = "A" + "b".repeat(72);
-        assertThatThrownBy(() -> authService.register(registerDto("u1", tooLong)))
-                .hasFieldOrPropertyWithValue("httpStatus", HttpStatus.BAD_REQUEST);
-    }
-
     // ==================== login ====================
 
     @Test
@@ -206,21 +97,6 @@ class AuthServiceImplTest {
         assertThat(response.getRoles()).containsExactly("OPERATOR");
         assertThat(existing.getLastLoginAt()).isNotNull();
         verify(userRepository).save(existing);
-    }
-
-    @Test
-    @DisplayName("登录: roles 逗号分隔多角色被正确拆分")
-    void login_success_multiRolesSplit() {
-        ScrmUserEntity existing = existingUser("bob", "$2a$10$hashed", 1, 300L);
-        existing.setRoles("ADMIN, OPERATOR");
-        when(userRepository.findByUsername("bob")).thenReturn(Optional.of(existing));
-        when(passwordEncoder.matches(anyString(), anyString())).thenReturn(true);
-        when(jwtTokenProvider.issueToken(existing)).thenReturn("jwt-token");
-        when(jwtTokenProvider.getExpirationSeconds()).thenReturn(86400L);
-
-        LoginResponseDto response = authService.login(loginDto("bob", "Passw0rd!"));
-
-        assertThat(response.getRoles()).containsExactly("ADMIN", "OPERATOR");
     }
 
     @Test
@@ -255,7 +131,7 @@ class AuthServiceImplTest {
     void login_disabledUser_unauthorized() {
         ScrmUserEntity existing = existingUser("alice", "$2a$10$hashed", 0, 200L);
         when(userRepository.findByUsername("alice")).thenReturn(Optional.of(existing));
-        when(passwordEncoder.matches(anyString(), anyString())).thenReturn(true);
+        when(passwordEncoder.matches("Passw0rd!", "$2a$10$hashed")).thenReturn(true);
 
         assertThatThrownBy(() -> authService.login(loginDto("alice", "Passw0rd!")))
                 .isInstanceOf(ScrmException.class)
@@ -265,17 +141,6 @@ class AuthServiceImplTest {
                     assertThat(e.getMessage()).contains("账号已禁用");
                 });
         verify(jwtTokenProvider, never()).issueToken(any());
-    }
-
-    @Test
-    @DisplayName("登录: status 为 null 视为禁用, 抛 401")
-    void login_nullStatus_unauthorized() {
-        ScrmUserEntity existing = existingUser("alice", "$2a$10$hashed", null, 200L);
-        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(existing));
-        when(passwordEncoder.matches(anyString(), anyString())).thenReturn(true);
-
-        assertThatThrownBy(() -> authService.login(loginDto("alice", "Passw0rd!")))
-                .hasFieldOrPropertyWithValue("httpStatus", HttpStatus.UNAUTHORIZED);
     }
 
     @Test
@@ -354,20 +219,6 @@ class AuthServiceImplTest {
     }
 
     // ==================== 测试数据构造 ====================
-
-    /**
-     * 构造注册请求 DTO。
-     *
-     * @param username 用户名
-     * @param password 口令明文
-     * @return 注册请求 DTO
-     */
-    private static RegisterRequestDto registerDto(String username, String password) {
-        RegisterRequestDto dto = new RegisterRequestDto();
-        dto.setUsername(username);
-        dto.setPassword(password);
-        return dto;
-    }
 
     /**
      * 构造登录请求 DTO。

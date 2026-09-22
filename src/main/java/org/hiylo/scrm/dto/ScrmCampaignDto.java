@@ -49,7 +49,7 @@ public class ScrmCampaignDto {
             message = "平台类型仅支持 wework/douyin/kuaishou/xiaohongshu/bilibili/wechat_personal")
     private String platformType;
 
-    /** 关联 scrm Fleet ID（可空） */
+    /** 关联设备编排 Fleet ID（可空） */
     @JsonSerialize(using = ToStringSerializer.class)
     private Long fleetId;
 

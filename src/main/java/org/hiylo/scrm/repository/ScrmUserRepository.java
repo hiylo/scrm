@@ -9,6 +9,8 @@
 package org.hiylo.scrm.repository;
 
 import org.hiylo.scrm.entity.ScrmUserEntity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -41,4 +43,15 @@ public interface ScrmUserRepository extends JpaRepository<ScrmUserEntity, Long> 
      * @return true=用户名已被占用
      */
     boolean existsByUsername(String username);
+
+    /**
+     * 按用户名 / 昵称模糊分页查询用户 (管理端用户列表关键词搜索)。
+     *
+     * @param username 用户名关键词
+     * @param displayName 昵称关键词
+     * @param pageable    分页参数
+     * @return 用户分页结果
+     */
+    Page<ScrmUserEntity> findByUsernameContainingIgnoreCaseOrDisplayNameContainingIgnoreCase(
+            String username, String displayName, Pageable pageable);
 }

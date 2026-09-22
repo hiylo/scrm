@@ -29,7 +29,7 @@ public class ScrmPersonaDto {
     @JsonSerialize(using = ToStringSerializer.class)
     private Long id;
 
-    /** 人设 ID（与 scrm-server 执行侧共享，业务唯一） */
+    /** 人设 ID（与执行侧共享，业务唯一） */
     @NotBlank(message = "人设 ID 不能为空")
     @Size(max = 100, message = "人设 ID 长度不能超过 100")
     private String personaId;

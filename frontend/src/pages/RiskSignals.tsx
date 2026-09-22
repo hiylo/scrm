@@ -128,7 +128,7 @@ const renderRiskLevelTag = (value?: string) => {
 
 /**
  * 风控信号页面
- * 只读展示 scrm-server 命中风控规则后回调写入的信号记录,
+ * 只读展示执行侧命中风控规则后回调写入的信号记录,
  * 支持按风险等级 / 信号类型筛选, 按触发时间倒序分页。
  */
 export default function RiskSignals() {

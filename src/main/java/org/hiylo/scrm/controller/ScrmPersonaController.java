@@ -32,7 +32,7 @@ import java.util.List;
 /**
  * SCRM 人设控制器
  * <p>
- * 提供人设业务字段的增删改查接口, 创建/绑定人设时同步通过 Feign 调 scrm-server
+ * 提供人设业务字段的增删改查接口, 创建/绑定人设时同步通过执行引擎扩展点
  * 创建执行侧 Persona。权限由 gateway-server 统一鉴权。
  * </p>
  *

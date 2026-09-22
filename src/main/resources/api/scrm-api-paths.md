@@ -5,7 +5,7 @@
 > - **统一响应格式**: `OperationResponse<T>` (status / code / message / data)
 > - **鉴权方式**: 由 gateway-server 统一鉴权, `@RequirePermission` 仅作为端点权限元数据声明
 > - **用户透传**: 请求头 `X-User-Id` (String 类型)
-> - **回调接口**: `/scrm/callback/**` 为 scrm-server 内部调用, 不走网关鉴权, 可选校验 `X-Agent-Secret` 头
+> - **回调接口**: `/scrm/callback/**` 为执行侧内部调用, 不走网关鉴权, 可选校验 `X-Agent-Secret` 头
 
 ---
 
@@ -31,7 +31,7 @@
 
 ## 人设管理 (/scrm/personas)
 
-人设业务字段的增删改查, 创建/绑定人设时同步通过 Feign 调 scrm-server 创建执行侧 Persona。
+人设业务字段的增删改查, 创建/绑定人设时同步通过执行引擎扩展点创建执行侧 Persona。
 
 | 方法 | 路径 | 说明 | 权限 |
 |------|------|------|------|
@@ -156,7 +156,7 @@
 
 ## 回调接口 (/scrm/callback)
 
-scrm-server 内部回调, **不要求网关鉴权**, 通过 `X-Agent-Secret` 头校验调用方身份 (fail-closed: 密钥配置项 `scrm.callback.agent-secret` / 环境变量 `SCRM_CALLBACK_AGENT_SECRET` 为空时一律拒绝回调并返回 401)。
+执行侧内部回调, **不要求网关鉴权**, 通过 `X-Agent-Secret` 头校验调用方身份 (fail-closed: 密钥配置项 `scrm.callback.agent-secret` / 环境变量 `SCRM_CALLBACK_AGENT_SECRET` 为空时一律拒绝回调并返回 401)。
 
 | 方法 | 路径 | 说明 | 权限 |
 |------|------|------|------|

@@ -35,6 +35,7 @@ const Personas = lazy(() => import('./pages/Personas'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Wework = lazy(() => import('./pages/Wework'));
 const Groups = lazy(() => import('./pages/Groups'));
+const Users = lazy(() => import('./pages/Users'));
 
 /** 页面加载占位符 */
 const PageLoading = () => (
@@ -63,6 +64,7 @@ const appRoutes: Array<{ path?: string; index?: boolean; element: React.ReactEle
   { path: 'wework', element: <Wework /> },
   { path: 'wework-departments', element: <Wework singleView defaultTab="departments" /> },
   { path: 'groups', element: <Groups /> },
+  { path: 'users', element: <Users /> },
   { path: 'dashboard', element: <Dashboard /> },
 ];
 

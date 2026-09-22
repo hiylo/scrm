@@ -48,9 +48,9 @@ import java.util.Map;
  * <p>
  * 放行清单 (匿名可访问), 各条目用途:
  * <ul>
- *   <li>{@code /scrm/auth/login}、{@code /scrm/auth/register} - 登录与注册</li>
+ *   <li>{@code /scrm/auth/login} - 登录 (公开注册已关闭, 用户由管理员创建)</li>
  *   <li>{@code /scrm/callback/**}、{@code /scrm/wework/callback} - 真实入站回调
- *       (scrm-server 任务/风控/会话/AI 回调与企微回调, 各自持有共享密钥/签名/IP 白名单鉴权,
+ *       (任务/风控/会话/AI 回调与企微回调, 各自持有共享密钥/签名/IP 白名单鉴权,
  *       并叠加 {@code @RateLimit} 限流保护, 不依赖登录态)</li>
  *   <li>{@code /actuator/health/**}、{@code /actuator/info} - 健康检查与只读服务信息 (探活与监控用)</li>
  *   <li>{@code /ws/**} - WebSocket (握手阶段由 {@code WebSocketAuthInterceptor} 独立鉴权)</li>
@@ -71,7 +71,6 @@ public class SecurityConfig {
     /** 匿名放行的请求路径集合 (顺序无关, 由 Spring Security 按顺序匹配) */
     private static final List<String> PERMIT_ALL_PATHS = List.of(
             "/scrm/auth/login",
-            "/scrm/auth/register",
             "/scrm/callback/**",
             "/scrm/wework/callback",
             "/actuator/health/**",

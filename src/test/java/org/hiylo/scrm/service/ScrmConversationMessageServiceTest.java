@@ -51,6 +51,7 @@ import static org.mockito.Mockito.when;
  */
 @DisplayName("ScrmConversationMessageService 单元测试")
 @ExtendWith(MockitoExtension.class)
+@org.mockito.junit.jupiter.MockitoSettings(strictness = org.mockito.quality.Strictness.LENIENT)
 class ScrmConversationMessageServiceTest {
 
     /** 消息数据访问层 Mock */
@@ -69,6 +70,10 @@ class ScrmConversationMessageServiceTest {
     @Mock
     private ConversationMediaService mediaService;
 
+    /** 数据隔离服务 Mock (当前用户可访问账号范围) */
+    @Mock
+    private DataScopeService dataScopeService;
+
     /** 被测对象 */
     @InjectMocks
     private ScrmConversationMessageService messageService;
@@ -78,6 +83,10 @@ class ScrmConversationMessageServiceTest {
      */
     @BeforeEach
     void setUp() {
+        // 默认按 ADMIN 身份, 不受数据隔离限制
+        when(dataScopeService.getCurrentUserId()).thenReturn("1");
+        when(dataScopeService.getCurrentRole()).thenReturn("ADMIN");
+        when(dataScopeService.getAccessibleAccountIds("1", "ADMIN", null)).thenReturn(null);
     }
 
     /**

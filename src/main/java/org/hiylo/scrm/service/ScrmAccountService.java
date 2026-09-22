@@ -78,6 +78,8 @@ public class ScrmAccountService {
     private final ScrmAccountLoginLogRepository loginLogRepository;
     /** 营销任务-账号关联数据访问层, 用于删除账号时级联清理营销任务关联 */
     private final ScrmCampaignAccountRepository campaignAccountRepository;
+    /** 数据隔离服务 (计算当前用户可访问账号范围) */
+    private final DataScopeService dataScopeService;
     /** 营销任务执行引擎扩展点, 用于创建/确认执行侧人设记录 */
     private final TaskExecutionService taskExecutionService;
     /** 感知当前账号的企业微信服务, 用于拉取用户资料与检查配置可用性 */
@@ -123,6 +125,8 @@ public class ScrmAccountService {
         entity.setAvatarUrl(dto.getAvatarUrl());
         entity.setDeviceId(dto.getDeviceId());
         entity.setPersonaId(dto.getPersonaId());
+        // 归属当前用户 (数据隔离): 下级用户创建的账号自动归属本人
+        entity.setOwnerUserId(currentUserIdOrNull());
         // 新建账号登录态默认 UNKNOWN, 后续由登录流程更新为 LOGIN
         entity.setLoginState(LOGIN_STATE_UNKNOWN);
         entity = accountRepository.save(entity);
@@ -403,11 +407,24 @@ public class ScrmAccountService {
 
     /**
      * 构建账号查询条件 Specification
+     * <p>
+     * 数据隔离: 下级用户仅能查询自己归属的账号; ADMIN 可见全部。
+     * </p>
      */
     private Specification<ScrmAccountEntity> buildAccountSpec(String platformType, String loginState, String keyword) {
+        Long ownerUserId = currentUserIdOrNull();
+        String currentRole = currentRole();
+        boolean admin = dataScopeService != null && dataScopeService.isAdmin(currentRole);
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            // 数据隔离: 始终按当前用户可见账号范围过滤
+            // 数据隔离: 下级用户仅可见自己归属的账号; 无归属(系统账号)对下级用户不可见
+            if (!admin) {
+                if (ownerUserId == null) {
+                    predicates.add(cb.isFalse(cb.literal(true)));
+                } else {
+                    predicates.add(cb.equal(root.get("ownerUserId"), ownerUserId));
+                }
+            }
             if (platformType != null && !platformType.isBlank()) {
                 predicates.add(cb.equal(cb.lower(root.get("platformType")), platformType.toLowerCase()));
             }
@@ -532,14 +549,49 @@ public class ScrmAccountService {
 
     /**
      * 按主键查询账号并校验账号归属, 不存在或不属于当前账号抛异常
+     * <p>
+     * 数据隔离: ADMIN 可操作任意账号; 下级用户只能操作自己归属的账号,
+     * 其他账号视为不存在 (返回 SCRM_ACCOUNT_NOT_FOUND)。
+     * </p>
      */
     private ScrmAccountEntity findOrThrow(Long id) throws ScrmException {
         ScrmAccountEntity entity = accountRepository.findById(id)
                 .orElseThrow(() -> new ScrmException(ScrmExceptionConstants.SCRM_ACCOUNT_NOT_FOUND,
                         "SCRM 账号不存在: id=" + id));
-        // 数据隔离: 校验账号归属当前账号
-
+        // 数据隔离: 校验账号归属当前用户 (ADMIN 不受限)
+        Long ownerUserId = currentUserIdOrNull();
+        boolean admin = dataScopeService != null && dataScopeService.isAdmin(currentRole());
+        if (!admin && (ownerUserId == null || !ownerUserId.equals(entity.getOwnerUserId()))) {
+            throw new ScrmException(ScrmExceptionConstants.SCRM_ACCOUNT_NOT_FOUND,
+                    "SCRM 账号不存在: id=" + id);
+        }
         return entity;
+    }
+
+    /**
+     * 获取当前登录用户 ID (Long), 无请求上下文或格式非法时返回 null。
+     *
+     * @return 当前用户 ID, 无法解析返回 null
+     */
+    private Long currentUserIdOrNull() {
+        String userId = dataScopeService != null ? dataScopeService.getCurrentUserId() : null;
+        if (userId == null || userId.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(userId.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
+     * 获取当前用户角色串 (逗号分隔), 无请求上下文时返回 null。
+     *
+     * @return 角色串, 不存在返回 null
+     */
+    private String currentRole() {
+        return dataScopeService != null ? dataScopeService.getCurrentRole() : null;
     }
 
     /**
@@ -553,6 +605,7 @@ public class ScrmAccountService {
         dto.setAccountName(entity.getAccountName());
         dto.setDisplayName(entity.getDisplayName());
         dto.setAvatarUrl(entity.getAvatarUrl());
+        dto.setOwnerUserId(entity.getOwnerUserId());
         dto.setDeviceId(entity.getDeviceId());
         dto.setPersonaId(entity.getPersonaId());
         dto.setLoginState(entity.getLoginState());

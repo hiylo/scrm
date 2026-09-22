@@ -61,6 +61,7 @@ import static org.mockito.Mockito.when;
  */
 @DisplayName("ScrmConversationService 单元测试")
 @ExtendWith(MockitoExtension.class)
+@org.mockito.junit.jupiter.MockitoSettings(strictness = org.mockito.quality.Strictness.LENIENT)
 class ScrmConversationServiceTest {
 
     /** 会话数据仓库 Mock 桩 */
@@ -79,16 +80,24 @@ class ScrmConversationServiceTest {
     @Mock
     private AiChatClient aiChatClient;
 
+    /** 数据隔离服务 Mock 桩 (当前用户可访问账号范围) */
+    @Mock
+    private DataScopeService dataScopeService;
+
     /** 被测服务实例 */
     private ScrmConversationService service;
 
     @BeforeEach
     void setUp() {
         service = new ScrmConversationService(repository, messageRepository, customerRepository,
-                accountRepository, aiChatClient);
+                accountRepository, aiChatClient, dataScopeService);
         ReflectionTestUtils.setField(service, "aiModel", "gpt-4o-mini");
         ReflectionTestUtils.setField(service, "aiTemperature", 0.7);
         ReflectionTestUtils.setField(service, "aiMaxTokens", 500);
+        // 默认按 ADMIN 身份, 不受数据隔离限制
+        when(dataScopeService.getCurrentUserId()).thenReturn("1");
+        when(dataScopeService.getCurrentRole()).thenReturn("ADMIN");
+        when(dataScopeService.getAccessibleAccountIds("1", "ADMIN", null)).thenReturn(null);
     }
 
     @AfterEach

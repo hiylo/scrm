@@ -151,7 +151,7 @@ const navGroups: NavGroup[] = [
   {
     group: '平台账号',
     items: [
-      { key: '/accounts', icon: '🔐', label: '平台账号管理', permission: 'scrm_account:read', roles: ['admin'] },
+      { key: '/accounts', icon: '🔐', label: '平台账号管理', permission: 'scrm_account:read', roles: ['admin', 'sales'] },
       { key: '/account-health', icon: '💚', label: '健康度', permission: 'scrm_account:read', roles: ['admin'] },
       { key: '/personas', icon: '🎭', label: '人设管理', permission: 'scrm_persona:read', roles: ['admin', 'manager'] },
     ],
@@ -180,6 +180,7 @@ const navGroups: NavGroup[] = [
   {
     group: '系统',
     items: [
+      { key: '/users', icon: '👤', label: '用户管理', adminOnly: true },
       { key: '/settings', icon: '⚙️', label: '平台配置', permission: 'scrm_platform_config:read', roles: ['admin'] },
     ],
   },

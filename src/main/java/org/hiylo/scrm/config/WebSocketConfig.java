@@ -24,8 +24,8 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
  * 并挂载 {@link WebSocketAuthInterceptor} 在握手阶段写入 userId 并拒绝匿名连接 (fail-closed)。
  * </p>
  * <p>
- * 跨域: 仅允许本机 / 内网 / 企业域名 (见 {@link #ALLOWED_ORIGIN_PATTERNS}), 与
- * scrm-server 的 WebSocket 白名单保持一致, 避免任意源建立连接。
+ * 跨域: 仅允许本机 / 内网 / 企业域名 (见 {@link #ALLOWED_ORIGIN_PATTERNS}),
+ * 避免任意源建立连接。
  * </p>
  *
  * @author Hsi Chu
@@ -39,7 +39,7 @@ public class WebSocketConfig implements WebSocketConfigurer {
     /** WebSocket 端点路径 */
     public static final String NOTIFICATION_PATH = "/ws/scrm/notifications";
 
-    /** WebSocket 允许的跨域来源模式, 与 scrm-server WebSocket 白名单保持一致 */
+    /** WebSocket 允许的跨域来源模式 */
     private static final String[] ALLOWED_ORIGIN_PATTERNS = {
             "http://localhost:*",
             "http://192.168.1.*:*",

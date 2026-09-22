@@ -19,9 +19,7 @@ import org.hiylo.scrm.auth.JwtTokenProvider;
 import org.hiylo.scrm.config.UserContext;
 import org.hiylo.scrm.dto.auth.LoginRequestDto;
 import org.hiylo.scrm.dto.auth.LoginResponseDto;
-import org.hiylo.scrm.dto.auth.RegisterRequestDto;
 
-import org.hiylo.scrm.entity.ScrmUserEntity;
 import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.security.JwtAuthenticationFilter;
 
@@ -40,12 +38,12 @@ import java.util.List;
 /**
  * SCRM 认证控制器。
  * <p>
- * 提供登录、注册与当前登录用户信息查询接口。认证由本服务自建的 JWT 体系承担
- * (见 {@code JwtAuthenticationFilter}), 不再依赖网关验签。
+ * 提供登录与当前登录用户信息查询接口。认证由本服务自建的 JWT 体系承担
+ * (见 {@code JwtAuthenticationFilter})。公开注册已关闭, 系统用户由管理员
+ * 在「用户管理」侧创建。
  * </p>
  * <ul>
  *   <li>{@code POST /scrm/auth/login} - 登录, 返回访问令牌</li>
- *   <li>{@code POST /scrm/auth/register} - 注册新用户</li>
  *   <li>{@code GET /scrm/auth/me} - 当前登录用户信息 (含账号 ID 与角色)</li>
  * </ul>
  *
@@ -73,23 +71,6 @@ public class ScrmAuthController {
     @PostMapping("/login")
     public OperationResponse<LoginResponseDto> login(@Valid @RequestBody LoginRequestDto request) {
         return OperationResponse.build(authService.login(request));
-    }
-
-    /**
-     * 注册新用户 (默认角色 OPERATOR, 默认账号取当前请求上下文)。
-     *
-     * @param request 注册请求
-     * @return 当前用户信息视图
-     * @throws ScrmException 用户名重复 (409) 或密码强度不足 (400)
-     */
-    @PostMapping("/register")
-    public OperationResponse<CurrentUserInfoDto> register(@Valid @RequestBody RegisterRequestDto request) {
-        ScrmUserEntity user = authService.register(request);
-        CurrentUserInfoDto dto = new CurrentUserInfoDto();
-        dto.setUserId(String.valueOf(user.getId()));
-        dto.setUsername(user.getUsername());
-        dto.setRoles(user.getRoles());
-        return OperationResponse.build(dto);
     }
 
     /**

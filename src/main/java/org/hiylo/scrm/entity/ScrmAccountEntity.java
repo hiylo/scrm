@@ -28,7 +28,7 @@ import java.time.LocalDateTime;
  * SCRM 平台账号实体。
  * <p>
  * 描述一个 SCRM 自动化运营账号（企微 / 抖音 / 快手 / 小红书 / B站 / 微信个人号），
- * 关联 scrm-server 侧设备与人设，记录登录态及最后登录时间。
+ * 记录归属用户、设备与人设，以及登录态及最后登录时间。
  *
  * @author Hsi Chu
  * @since V1.0
@@ -91,6 +91,10 @@ public class ScrmAccountEntity {
     @Column(name = "platform_type", nullable = false, length = 30)
     private String platformType;
 
+    /** 归属用户 ID（关联 scrm_user.id，数据隔离按此过滤；可空表示历史/系统账号） */
+    @Column(name = "owner_user_id")
+    private Long ownerUserId;
+
     /** 平台内部账号唯一标识 */
     @Column(name = "platform_account_uid", nullable = false, length = 200)
     private String platformAccountUid;
@@ -107,7 +111,7 @@ public class ScrmAccountEntity {
     @Column(name = "avatar_url", length = 500)
     private String avatarUrl;
 
-    /** 关联 scrm-server 设备 ID */
+    /** 关联设备 ID */
     @Column(name = "device_id", length = 100)
     private String deviceId;
 

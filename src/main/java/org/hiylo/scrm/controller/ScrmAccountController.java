@@ -180,7 +180,7 @@ public class ScrmAccountController {
     /**
      * 绑定人设
      * <p>
-     * 同时通过 Feign 调 scrm-server 创建执行侧 Persona。
+     * 同时通过执行引擎扩展点创建/确认执行侧 Persona。
      * </p>
      *
      * @param accountId 账号 ID

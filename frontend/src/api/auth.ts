@@ -118,6 +118,7 @@ function extractRolesFromToken(token: string): string[] {
 const ROLE_PRIORITY: Record<string, number> = {
   ADMIN: 1,
   MANAGER: 2,
+  OPERATOR: 3,
   SALES: 3,
   VIEWER: 4,
 };
@@ -135,7 +136,8 @@ function normalizeRole(roles: string[]): string {
     const normalized = canonicalRole(r);
     const priority = ROLE_PRIORITY[normalized];
     if (priority !== undefined && priority < bestPriority) {
-      bestRole = normalized.toLowerCase();
+      // OPERATOR (下级用户) 与 SALES 同等对待: 可编辑自己的账号并与其用户聊天
+      bestRole = normalized === 'OPERATOR' ? 'sales' : normalized.toLowerCase();
       bestPriority = priority;
     }
   }

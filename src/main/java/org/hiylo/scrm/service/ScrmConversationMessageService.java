@@ -85,6 +85,9 @@ public class ScrmConversationMessageService {
     /** 客户数据访问层（解析客户昵称用于搜索联系人） */
     private final ScrmCustomerRepository customerRepository;
 
+    /** 数据隔离服务 (当前用户可访问账号范围, 消息须属于可见账号下的会话) */
+    private final DataScopeService dataScopeService;
+
     /**
      * 保存消息
      * <p>
@@ -217,7 +220,7 @@ public class ScrmConversationMessageService {
     }
 
     /**
-     * 接收 scrm-server 回调的会话事件并转为消息存储
+     * 接收执行侧回调的会话事件并转为消息存储
      * <p>
      * 处理流程：
      * <ol>
@@ -363,7 +366,7 @@ public class ScrmConversationMessageService {
     /**
      * 异步发送出站消息到社媒平台。
      * <p>
-     * 通过平台适配层调用 scrm-server 创建行为流，在云手机上执行发送操作。
+     * 通过平台适配层执行发送操作。
      * 发送失败不回滚消息保存（消息已持久化，发送可重试）。
      * 当前仅支持微信个人号平台，其他平台待扩展。
      * </p>
@@ -550,7 +553,43 @@ public class ScrmConversationMessageService {
         ScrmConversationEntity conv = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new ScrmException(ScrmExceptionConstants.SCRM_CONVERSATION_NOT_FOUND,
                         "会话不存在: id=" + conversationId));
+        // 数据隔离: 下级用户仅能访问自己归属账号下的会话 (ADMIN 不受限)
+        if (!isAccountAccessible(conv.getAccountId())) {
+            throw new ScrmException(ScrmExceptionConstants.SCRM_CONVERSATION_NOT_FOUND,
+                    "会话不存在: id=" + conversationId);
+        }
+    }
 
+    /**
+     * 判断指定账号是否在当前用户可见范围内。
+     * <p>
+     * ADMIN / VIEWER 的 {@link #accessibleAccountIds()} 返回 null (不受限), 返回 true;
+     * 下级用户返回自己的账号 ID 集合, 账号在其中返回 true, 否则 false。
+     * </p>
+     *
+     * @param accountId 账号 ID, 可为 null
+     * @return 账号可访问返回 true
+     */
+    private boolean isAccountAccessible(Long accountId) {
+        List<Long> accessible = accessibleAccountIds();
+        if (accessible == null) {
+            return true;
+        }
+        return accountId != null && accessible.contains(accountId);
+    }
+
+    /**
+     * 计算当前用户可访问的账号 ID 集合。
+     *
+     * @return 可访问账号 ID 集合, null 表示不限制
+     */
+    private List<Long> accessibleAccountIds() {
+        if (dataScopeService == null) {
+            return null;
+        }
+        return dataScopeService.getAccessibleAccountIds(
+                dataScopeService.getCurrentUserId(), dataScopeService.getCurrentRole(),
+                dataScopeService.getCurrentDepartmentId());
     }
 
     /**

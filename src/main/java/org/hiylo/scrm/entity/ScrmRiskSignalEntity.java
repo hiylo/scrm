@@ -28,7 +28,7 @@ import java.time.LocalDateTime;
 /**
  * SCRM 风控信号实体。
  * <p>
- * scrm-server 命中风控规则后通过回调写入 SCRM，用于账号风控态势感知与看板聚合。
+ * 执行侧命中风控规则后通过回调写入 SCRM，用于账号风控态势感知与看板聚合。
  * 每条记录对应一次风险触发事件，关联人设 / 账号便于追溯。
  *
  * @author Hsi Chu

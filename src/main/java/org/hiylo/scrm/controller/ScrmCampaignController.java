@@ -38,7 +38,7 @@ import java.util.List;
  * SCRM 营销任务控制器
  * <p>
  * 提供营销任务的创建、更新、查询、生命周期管理 (启动/暂停/恢复/停止)、账号分配与 SOP 模板接口。
- * 启动任务时通过 Feign 调 scrm-server 创建并执行行为流。权限由 gateway-server 统一鉴权。
+ * 启动任务时通过执行引擎创建并执行行为流。权限校验基于角色判断。
  * </p>
  *
  * @author Hsi Chu
@@ -135,7 +135,7 @@ public class ScrmCampaignController {
     /**
      * 启动营销任务
      * <p>
-     * 通过 Feign 调 scrm-server 创建行为流并执行, 保存 behaviorFlowId 后状态置 RUNNING。
+     * 通过执行引擎创建行为流并执行, 保存行为流 ID 后状态置 RUNNING。
      * </p>
      *
      * @param id 任务 ID

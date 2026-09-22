@@ -44,6 +44,14 @@ public interface ScrmAccountRepository extends JpaRepository<ScrmAccountEntity, 
     List<ScrmAccountEntity> findByDeviceId(String deviceId);
 
     /**
+     * 根据归属用户 ID 查询账号列表（数据隔离：下级用户仅可见自己归属的账号）。
+     *
+     * @param ownerUserId 归属用户 ID
+     * @return 账号列表
+     */
+    List<ScrmAccountEntity> findByOwnerUserId(Long ownerUserId);
+
+    /**
      * 根据人设 ID 查询关联账号列表。
      *
      * @param personaId 人设 ID

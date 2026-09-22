@@ -68,6 +68,9 @@ public class ScrmConversationService {
     /** ai-server Feign 客户端 */
     private final AiChatClient aiChatClient;
 
+    /** 数据隔离服务 (当前用户可访问账号范围, 下级用户仅能看到自己账号的会话) */
+    private final DataScopeService dataScopeService;
+
     /** AI 模型名称，默认 gpt-4o-mini */
     @Value("${scrm.ai.model:gpt-4o-mini}")
     private String aiModel;
@@ -166,6 +169,10 @@ public class ScrmConversationService {
      */
     @Transactional(readOnly = true)
     public Page<ScrmConversationDto> getConversationsByAccount(Long accountId, int page, int size) {
+        // 数据隔离: 校验账号在可见范围内, 否则不返回
+        if (!isAccountAccessible(accountId)) {
+            return Page.empty();
+        }
         Pageable pageable = PageRequest.of(Math.max(page, 0), Math.max(size, 1));
         return repository.findByAccountIdOrderByLastMessageAtDesc(accountId, pageable).map(this::toDto);
     }
@@ -301,6 +308,11 @@ public class ScrmConversationService {
         LocalDateTime to = endTime != null ? endTime : LocalDateTime.now().plusYears(1);
 
         Page<ScrmConversationEntity> result;
+        List<Long> accessibleAccountIds = accessibleAccountIds();
+        if (accessibleAccountIds != null && accessibleAccountIds.isEmpty()) {
+            // 下级用户无任何归属账号 → 返回空集
+            return Page.empty();
+        }
         if (status != null && !status.isBlank()) {
             // 按状态 + 时间范围查询
             result = repository.findByStatusAndLastMessageAtBetweenOrderByLastMessageAtDesc(
@@ -312,6 +324,15 @@ public class ScrmConversationService {
             // 按 + 时间范围查询
             result = repository.findByLastMessageAtBetweenOrderByLastMessageAtDesc(
                      from, to, pageable);
+        }
+
+        // 数据隔离: 下级用户仅保留可见账号下的会话 (ADMIN/VIEWER 的 accessibleAccountIds 为 null)
+        if (accessibleAccountIds != null) {
+            List<ScrmConversationDto> scoped = result.stream()
+                    .filter(conv -> conv.getAccountId() != null && accessibleAccountIds.contains(conv.getAccountId()))
+                    .map(this::toDto)
+                    .toList();
+            return new org.springframework.data.domain.PageImpl<>(scoped, pageable, scoped.size());
         }
 
         // 关键词在内存中过滤（关联客户昵称/账号名/消息摘要）
@@ -432,9 +453,50 @@ public class ScrmConversationService {
      * @throws ScrmException 会话不存在
      */
     private ScrmConversationEntity findOrThrow(Long id) throws ScrmException {
-        return repository.findById(id)
+        ScrmConversationEntity entity = repository.findById(id)
                 .orElseThrow(() -> new ScrmException(ScrmExceptionConstants.SCRM_CONVERSATION_NOT_FOUND,
                         "会话不存在: id=" + id));
+        // 数据隔离: 下级用户仅能访问自己归属账号下的会话 (ADMIN 不受限)
+        if (!isAccountAccessible(entity.getAccountId())) {
+            throw new ScrmException(ScrmExceptionConstants.SCRM_CONVERSATION_NOT_FOUND,
+                    "会话不存在: id=" + id);
+        }
+        return entity;
+    }
+
+    /**
+     * 判断指定账号是否在当前用户可见范围内。
+     * <p>
+     * ADMIN / VIEWER 的 {@link #accessibleAccountIds()} 返回 null (不受限), 返回 true;
+     * 下级用户返回自己的账号 ID 集合, 账号在其中返回 true, 否则 false。
+     * </p>
+     *
+     * @param accountId 账号 ID, 可为 null
+     * @return 账号可访问返回 true
+     */
+    private boolean isAccountAccessible(Long accountId) {
+        List<Long> accessible = accessibleAccountIds();
+        if (accessible == null) {
+            return true;
+        }
+        return accountId != null && accessible.contains(accountId);
+    }
+
+    /**
+     * 计算当前用户可访问的账号 ID 集合。
+     * <p>
+     * ADMIN / VIEWER 返回 null (不限制); 下级用户返回自己归属的账号 ID 列表 (可能为空)。
+     * </p>
+     *
+     * @return 可访问账号 ID 集合, null 表示不限制
+     */
+    private List<Long> accessibleAccountIds() {
+        if (dataScopeService == null) {
+            return null;
+        }
+        return dataScopeService.getAccessibleAccountIds(
+                dataScopeService.getCurrentUserId(), dataScopeService.getCurrentRole(),
+                dataScopeService.getCurrentDepartmentId());
     }
 
     /**

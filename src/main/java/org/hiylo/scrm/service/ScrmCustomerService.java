@@ -694,8 +694,13 @@ public class ScrmCustomerService {
             List<Predicate> predicates = new ArrayList<>();
             // 数据隔离: 始终按当前用户可见账号范围过滤
             // 数据权限: 限制可访问的账号范围 (ADMIN/VIEWER 无限制)
-            if (accessibleAccountIds != null && !accessibleAccountIds.isEmpty()) {
-                predicates.add(root.get("ownerAccountId").in(accessibleAccountIds));
+            if (accessibleAccountIds != null) {
+                if (accessibleAccountIds.isEmpty()) {
+                    // 下级用户没有任何归属账号 → 返回空集 (用恒假条件)
+                    predicates.add(cb.isFalse(cb.literal(true)));
+                } else {
+                    predicates.add(root.get("ownerAccountId").in(accessibleAccountIds));
+                }
             }
             if (platformType != null && !platformType.isBlank()) {
                 predicates.add(cb.equal(cb.lower(root.get("platformType")), platformType.toLowerCase()));
