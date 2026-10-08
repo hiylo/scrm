@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -39,6 +40,11 @@ public class ObjectMapperConfig {
     public ObjectMapper objectMapper() {
         ObjectMapper mapper = new ObjectMapper();
         mapper.registerModule(new JavaTimeModule());
+        // 雪花 Long ID 跨端精度保护：超 JS 安全整数的 Long 序列化为字符串，
+        // 避免前端 JSON.parse 精度丢失后回传错误 ID（会话/账号/客户等不存在）
+        mapper.registerModule(new SimpleModule()
+                .addSerializer(Long.class, new SafeLongSerializer())
+                .addSerializer(Long.TYPE, new SafeLongSerializer()));
         mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         mapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
         return mapper;
