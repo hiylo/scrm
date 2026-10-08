@@ -361,6 +361,21 @@ public class ScrmChannelCodeService {
                 .build();
     }
 
+    /**
+     * 分页查询指定活码的扫码记录 (按扫码时间倒序)。
+     *
+     * @param id       活码 ID
+     * @param pageable 分页参数
+     * @return 扫码记录分页结果
+     * @throws ScrmException 活码不存在 / 权限不足
+     */
+    @Transactional(readOnly = true)
+    public Page<ScrmChannelCodeScanDto> listScans(Long id, Pageable pageable) throws ScrmException {
+        findCodeOrThrow(id);
+        return scanRepository.findByChannelCodeIdOrderByScannedAtDesc(id, pageable)
+                .map(this::toScanDto);
+    }
+
     // ============================================================
     // 内部工具方法
     // ============================================================

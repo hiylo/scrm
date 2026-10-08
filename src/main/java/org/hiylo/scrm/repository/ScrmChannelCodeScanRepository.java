@@ -9,6 +9,8 @@
 package org.hiylo.scrm.repository;
 
 import org.hiylo.scrm.entity.ScrmChannelCodeScanEntity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -57,4 +59,13 @@ public interface ScrmChannelCodeScanRepository extends JpaRepository<ScrmChannel
      * @return 扫码总数
      */
     long countByChannelCodeId(Long channelCodeId);
+
+    /**
+     * 分页查询指定活码的扫码记录 (按扫码时间倒序)。
+     *
+     * @param channelCodeId 渠道活码 ID
+     * @param pageable      分页参数
+     * @return 扫码记录分页结果
+     */
+    Page<ScrmChannelCodeScanEntity> findByChannelCodeIdOrderByScannedAtDesc(Long channelCodeId, Pageable pageable);
 }

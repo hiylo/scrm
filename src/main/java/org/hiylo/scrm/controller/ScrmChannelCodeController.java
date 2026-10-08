@@ -21,6 +21,7 @@ import org.hiylo.scrm.vo.ChannelCodeStatsVo;
 import org.hiylo.scrm.common.OperationResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -189,6 +190,25 @@ public class ScrmChannelCodeController {
     @GetMapping("/{id}/stats")
     public OperationResponse<ChannelCodeStatsVo> stats(@PathVariable Long id) throws ScrmException {
         return OperationResponse.build(channelCodeService.getCodeStats(id));
+    }
+
+    /**
+     * 分页查询指定活码的扫码记录 (按扫码时间倒序)
+     *
+     * @param id   活码 ID
+     * @param page 页码 (从 0 开始, 默认 0)
+     * @param size 每页大小 (默认 20)
+     * @return 扫码记录分页结果
+     * @throws ScrmException 活码不存在 / 权限不足
+     */
+    @RequirePermission(resource = "scrm_channel_code", action = "read")
+    @GetMapping("/{id}/scans")
+    public OperationResponse<Page<ScrmChannelCodeScanDto>> scans(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) throws ScrmException {
+        return OperationResponse.build(channelCodeService.listScans(id,
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "scannedAt"))));
     }
 
     /**
