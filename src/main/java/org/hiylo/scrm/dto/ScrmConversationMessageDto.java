@@ -68,6 +68,10 @@ public class ScrmConversationMessageDto {
     @Size(max = 200, message = "平台消息 ID 长度不能超过 200")
     private String platformMessageId;
 
+    /** 出站来源（OUT 方向消息走平台适配层时的入队来源：AUTO_REPLY / MANUAL / CAMPAIGN，可空） */
+    @Size(max = 20, message = "出站来源长度不能超过 20")
+    private String outboundSource;
+
     /** 发送时间（可空，默认当前时间） */
     private LocalDateTime sentAt;
 

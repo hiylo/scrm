@@ -17,23 +17,33 @@ import org.hiylo.scrm.dto.callback.TaskStatusCallbackDto;
 
 import org.hiylo.scrm.dto.AiGenerateRequestDto;
 import org.hiylo.scrm.dto.AiGenerateResponseDto;
+import org.hiylo.scrm.dto.ScrmAutoReplyMatchDto;
+import org.hiylo.scrm.dto.ScrmConversationDto;
+import org.hiylo.scrm.dto.ScrmConversationMessageDto;
+import org.hiylo.scrm.dto.ScrmOutboundMessageDto;
+import org.hiylo.scrm.dto.callback.OutboundAckCallbackDto;
 import org.hiylo.scrm.entity.ScrmCampaignEntity;
 import org.hiylo.scrm.entity.ScrmRiskSignalEntity;
 import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.repository.ScrmCampaignRepository;
 import org.hiylo.scrm.repository.ScrmRiskSignalRepository;
 import org.hiylo.scrm.service.ScrmAiReplyService;
+import org.hiylo.scrm.service.ScrmAutoReplyService;
 import org.hiylo.scrm.service.ScrmCampaignExecutionLogService;
+import org.hiylo.scrm.service.ScrmConversationService;
 import org.hiylo.scrm.service.ScrmConversationMessageService;
 import org.hiylo.scrm.service.ScrmNotificationService;
+import org.hiylo.scrm.service.ScrmOutboundMessageService;
 import org.hiylo.scrm.service.ScrmRiskRuleService;
 import org.hiylo.scrm.common.OperationResponse;
 import org.hiylo.scrm.rbac.annotation.RateLimit;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.nio.charset.StandardCharsets;
@@ -97,6 +107,15 @@ public class ScrmCallbackController {
 
     /** 风险规则评估服务 (会话事件回调时异步评估风险规则, 命中后写入风控信号) */
     private final ScrmRiskRuleService scrmRiskRuleService;
+
+    /** 出站消息队列服务 (执行侧轮询拉取待发送消息 + ack 回执) */
+    private final ScrmOutboundMessageService outboundMessageService;
+
+    /** 自动回复匹配服务 (会话事件回调命中后异步触发) */
+    private final ScrmAutoReplyService scrmAutoReplyService;
+
+    /** 会话服务 (按会话 ID 解析客户/账号, 供自动回复定位) */
+    private final ScrmConversationService conversationService;
 
     /** 回调 X-Agent-Secret 校验密钥（fail-closed: 未配置时拒绝所有回调） */
     @Value("${scrm.callback.agent-secret:}")
@@ -254,25 +273,23 @@ public class ScrmCallbackController {
         log.info("收到会话事件回调: platformType={}, accountId={}, customerId={}, messageType={}, direction={}",
                 dto.getPlatformType(),
                 dto.getAccountId(), dto.getCustomerId(), dto.getMessageType(), dto.getDirection());
-        conversationMessageService.saveMessageFromCallback(dto);
+
+        // 保存消息并拿到内部会话 ID（自动建档后会话可能刚创建；返回 DTO 已带内部 conversationId）
+        ScrmConversationMessageDto saved = conversationMessageService.saveMessageFromCallback(dto);
+        Long internalConversationId = saved == null ? null : saved.getConversationId();
 
         // 异步触发风险规则评估: 在虚拟线程中执行, 捕获调用线程的当前用户归属账号并透传到异步线程,
         // 避免 ThreadLocal 在异步线程丢失; 评估异常不阻断回调主流程
         asyncEvaluateRiskRules(dto);
 
-        // 通过 WebSocket 异步推送新会话消息通知给前端 (不阻塞回调返回)
-        try {
-            Long convId = dto.getConversationId() != null && !dto.getConversationId().isBlank()
-                    ? Long.valueOf(dto.getConversationId()) : null;
-            notificationService.notifyNewMessage(
-                    convId,
-                    dto.getDirection(),
-                    dto.getMessageType(),
-                    dto.getContent());
-        } catch (Exception e) {
-            log.warn("会话事件通知推送失败 (不影响回调主流程): platformType={}, err={}",
-                    dto.getPlatformType(), e.getMessage());
-        }
+        // 异步触发自动回复匹配: IN 方向文本消息命中规则后经出站事件落库并进入出站链路
+        // (个人微信平台由执行侧轮询 scrm_outbound_message 队列发送)。匹配在虚拟线程执行,
+        // 异常不阻断回调主流程。使用内部会话 ID（执行侧传的 conversationId 是平台标识,
+        // 不能 Long.valueOf, 否则 NumberFormatException 导致自动回复永不触发）。
+        asyncTriggerAutoReply(dto, internalConversationId);
+
+        // 注意: 新消息 WebSocket 通知已由 saveMessageFromCallback → saveMessage 内部推送
+        // (notifyNewMessage + DASHBOARD_STAT_UPDATE), 此处不再重复推送, 避免前端收到两份重复事件
         return OperationResponse.build();
     }
 
@@ -344,6 +361,123 @@ public class ScrmCallbackController {
                         dto.getPlatformType(), e.getMessage());
             }
         });
+    }
+
+    /**
+     * 出站消息拉取: 执行侧（wx-console / wechat-agent）轮询待发送消息。
+     * <p>
+     * 仅返回指定平台的 PENDING 消息，取走即置 IN_PROGRESS（防并发重复拉取）。
+     * </p>
+     *
+     * @param platformType     平台类型（wechat_personal）
+     * @param limit            最大条数（1-20，默认 10）
+     * @param agentSecretHeader X-Agent-Secret 头
+     * @return 待发送消息列表（已置 IN_PROGRESS）
+     */
+    @RateLimit(capacity = 120, refillTokens = 120, refillPeriodSeconds = 60, message = "出站消息拉取过于频繁，请稍后重试")
+    @GetMapping("/outbound/pending")
+    public OperationResponse<List<ScrmOutboundMessageDto>> getOutboundPending(
+            @RequestParam(value = "platformType", required = false) String platformType,
+            @RequestParam(value = "limit", defaultValue = "10") int limit,
+            @RequestHeader(value = "X-Agent-Secret", required = false) String agentSecretHeader) {
+        validateAgentSecret(agentSecretHeader);
+        if (platformType == null || platformType.isBlank()) {
+            throw ScrmException.badRequest("platformType 不能为空");
+        }
+        List<ScrmOutboundMessageDto> items = outboundMessageService.takePending(platformType, limit);
+        log.info("出站消息拉取: platform={}, 返回 {} 条", platformType, items.size());
+        return OperationResponse.build(items);
+    }
+
+    /**
+     * 出站消息发送回执: 执行侧上报发送结果（SENT / FAILED）。
+     *
+     * @param dto               回执 DTO
+     * @param agentSecretHeader X-Agent-Secret 头
+     * @return 空响应
+     */
+    @RateLimit(capacity = 120, refillTokens = 120, refillPeriodSeconds = 60, message = "出站消息回执过于频繁，请稍后重试")
+    @PostMapping("/outbound/ack")
+    public OperationResponse<Void> ackOutbound(@RequestBody OutboundAckCallbackDto dto,
+                                               @RequestHeader(value = "X-Agent-Secret",
+                                                       required = false) String agentSecretHeader) {
+        validateAgentSecret(agentSecretHeader);
+        outboundMessageService.ack(dto);
+        log.info("出站消息回执: outboundId={}, status={}, err={}",
+                dto == null ? null : dto.getOutboundId(),
+                dto == null ? null : dto.getStatus(),
+                dto == null ? null : dto.getErrorMessage());
+        return OperationResponse.build();
+    }
+
+    /**
+     * 异步触发自动回复匹配。
+     * <p>
+     * 仅对 IN 方向文本消息触发：构造 {@link ScrmAutoReplyMatchDto}（channel 映射为平台类型对应的
+     * 渠道、sessionId 用会话 ID），命中规则后 `ScrmAutoReplyMatchService.sendReply`
+     * 发布 {@link OutboundReplyRequestedEvent}，由会话消息服务落 OUT 消息并进入出站链路。
+     * 评估在虚拟线程执行，异常仅记录日志，不影响回调主流程。
+     * </p>
+     *
+     * @param dto 会话事件回调 DTO
+     */
+    private void asyncTriggerAutoReply(ConversationEventCallbackDto dto, Long internalConversationId) {
+        if (!"INBOUND".equalsIgnoreCase(dto.getDirection())
+                && !"IN".equalsIgnoreCase(dto.getDirection())) {
+            return;
+        }
+        if (dto.getContent() == null || dto.getContent().isBlank()) {
+            return;
+        }
+        // 使用消息落库后返回的内部会话 ID（自动建档场景会话刚创建）。
+        // 执行侧传入的 dto.conversationId 是平台会话标识（wxid/@chatroom），
+        // 不能 Long.valueOf 解析，否则 NumberFormatException 吞掉后自动回复永不触发。
+        if (internalConversationId == null) {
+            return;
+        }
+        Thread.startVirtualThread(() -> {
+            try {
+                ScrmConversationDto conv = conversationService.getConversation(internalConversationId);
+                if (conv == null) {
+                    log.debug("自动回复跳过: 会话未找到 conversationId={}", internalConversationId);
+                    return;
+                }
+                ScrmAutoReplyMatchDto matchDto = new ScrmAutoReplyMatchDto();
+                matchDto.setCustomerId(conv.getCustomerId());
+                matchDto.setAccountId(conv.getAccountId());
+                matchDto.setMessage(dto.getContent());
+                matchDto.setSessionId(String.valueOf(internalConversationId));
+                matchDto.setChannel(resolveChannel(dto.getPlatformType()));
+                scrmAutoReplyService.matchReply(matchDto);
+            } catch (Exception e) {
+                log.warn("会话事件自动回复匹配失败 (不影响回调主流程): conversationId={}, err={}",
+                        internalConversationId, e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * 平台类型 → 自动回复渠道映射。
+     * <p>
+     * 企业微信平台（wework）匹配 WORK_WECHAT 渠道规则，个人微信（wechat_personal）
+     * 匹配 WECHAT 渠道规则。不再硬编码 WECHAT，否则企微回调消息永远匹配不到
+     * WORK_WECHAT 规则。
+     * </p>
+     *
+     * @param platformType 平台类型
+     * @return 自动回复渠道
+     */
+    private String resolveChannel(String platformType) {
+        if (platformType == null) {
+            return null;
+        }
+        if ("WEWORK".equalsIgnoreCase(platformType)) {
+            return "WORK_WECHAT";
+        }
+        if ("WECHAT_PERSONAL".equalsIgnoreCase(platformType)) {
+            return "WECHAT";
+        }
+        return platformType.toUpperCase();
     }
 
     /**

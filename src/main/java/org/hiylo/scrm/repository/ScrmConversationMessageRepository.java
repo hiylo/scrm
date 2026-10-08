@@ -97,12 +97,18 @@ public interface ScrmConversationMessageRepository extends JpaRepository<ScrmCon
     Optional<ScrmConversationMessageEntity> findByMessageId(String messageId);
 
     /**
-     * 根据平台消息 ID 查询消息（用于回调去重）。
+     * 根据会话 ID + 平台消息 ID 查询消息（用于回调去重）。
+     * <p>
+     * 平台消息 ID 仅在「同一会话」内唯一（个人微信 local_id 每会话独立递增），
+     * 跨会话会碰撞，必须按会话维度去重，否则不同会话同 local_id 会互相吞消息。
+     * </p>
      *
-     * @param platformMessageId 平台消息 ID
+     * @param conversationId     会话 ID
+     * @param platformMessageId  平台消息 ID
      * @return 消息（可能为空）
      */
-    Optional<ScrmConversationMessageEntity> findByPlatformMessageId(String platformMessageId);
+    Optional<ScrmConversationMessageEntity> findByConversationIdAndPlatformMessageId(
+            Long conversationId, String platformMessageId);
 
     /**
      * 统计指定会话的消息总数。

@@ -30,6 +30,36 @@ public class ConversationEventCallbackDto {
     /** 客户 ID */
     private String customerId;
 
+    /**
+     * 平台账号唯一标识（可空）。
+     * <p>
+     * 执行侧（wx-console 等）通常只有平台侧账号标识（个人微信为登录账号 wxid），
+     * 没有 scrm 内部数字 ID。此字段非空且 {@link #accountId} 为空时，scrm 按
+     * {@code platformType + platformAccountUid} 解析账号，不存在则自动建档。
+     * </p>
+     */
+    private String platformAccountUid;
+
+    /**
+     * 平台客户唯一标识（可空）。
+     * <p>
+     * 个人微信场景为对方 wxid（群聊为 xxx@chatroom）。此字段非空且 {@link #customerId}
+     * 为空时，scrm 按 {@code platformType + platformCustomerUid + accountId} 解析客户，
+     * 不存在则自动建档。
+     * </p>
+     */
+    private String platformCustomerUid;
+
+    /**
+     * 客户昵称（可空）。自动建档时作为客户昵称，后续可由通讯录同步刷新。
+     */
+    private String customerNickname;
+
+    /**
+     * 账号显示名（可空）。自动建档时作为账号 displayName。
+     */
+    private String accountDisplayName;
+
     /** 会话 ID（可空，新会话首次消息时可能尚未建立） */
     private String conversationId;
 

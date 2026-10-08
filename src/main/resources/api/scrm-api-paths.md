@@ -163,3 +163,13 @@
 | POST | /scrm/callback/task-status | 任务状态变更回调 (SUCCESS→COMPLETED / FAILED→FAILED) | 内部调用,无需权限 |
 | POST | /scrm/callback/risk-signal | 风控信号回调 (持久化到 scrm_risk_signal 表) | 内部调用,无需权限 |
 | POST | /scrm/callback/conversation-event | 会话事件回调 (消息收发, 按 platformMessageId 去重) | 内部调用,无需权限 |
+| GET | /scrm/callback/outbound/pending?platformType=&limit= | 出站消息拉取 (PENDING→IN_PROGRESS, 执行侧轮询) | 内部调用,无需权限 |
+| POST | /scrm/callback/outbound/ack | 出站消息发送回执 (SENT/FAILED, 失败按指数退避重试) | 内部调用,无需权限 |
+
+> 说明: `conversation-event` 回调入参支持「平台 UID 自动建档」——执行侧只需传
+> `platformType` + `platformAccountUid`（如个人微信登录 wxid）+ `platformCustomerUid`
+> （对方 wxid）即可，scrm 自动解析/创建账号、客户与会话，无需预知 scrm 内部数字 ID。
+> 个人微信平台 `conversation-event` 收消息后会自动触发自动回复匹配（`channel=WECHAT`），
+> 命中规则回复内容经 `scrm_outbound_message` 出站队列下发，由执行侧轮询
+> `/scrm/callback/outbound/pending` 拉取并通过 UIA 发送，发送后回执
+> `/scrm/callback/outbound/ack`。

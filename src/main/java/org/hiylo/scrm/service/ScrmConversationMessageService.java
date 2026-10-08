@@ -17,18 +17,22 @@ import org.hiylo.scrm.dto.ScrmConversationDto;
 import org.hiylo.scrm.dto.ScrmConversationMessageDto;
 import org.hiylo.scrm.entity.ScrmConversationEntity;
 import org.hiylo.scrm.entity.ScrmConversationMessageEntity;
+import org.hiylo.scrm.entity.ScrmAccountEntity;
 import org.hiylo.scrm.entity.ScrmCustomerEntity;
 import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.integration.wework.dto.WeworkMessageSendDto;
 import org.hiylo.scrm.integration.wework.service.WeworkService;
 import org.hiylo.scrm.exception.ScrmExceptionConstants;
+import org.hiylo.scrm.repository.ScrmAccountRepository;
 import org.hiylo.scrm.repository.ScrmConversationMessageRepository;
 import org.hiylo.scrm.repository.ScrmConversationRepository;
 import org.hiylo.scrm.repository.ScrmCustomerRepository;
+import org.hiylo.scrm.repository.ScrmOutboundMessageRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.context.event.EventListener;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -82,8 +86,14 @@ public class ScrmConversationMessageService {
     /** 企业微信开放 API 客户端（OUT 消息通过企微 API 直接发送） */
     private final WeworkService weworkService;
 
+    /** 出站消息队列服务（个人微信等无官方 API 平台的消息入队，由执行侧轮询发送） */
+    private final ScrmOutboundMessageService outboundMessageService;
+
     /** 客户数据访问层（解析客户昵称用于搜索联系人） */
     private final ScrmCustomerRepository customerRepository;
+
+    /** 账号数据访问层（回调按平台账号 UID 解析/自动建档） */
+    private final ScrmAccountRepository accountRepository;
 
     /** 数据隔离服务 (当前用户可访问账号范围, 消息须属于可见账号下的会话) */
     private final DataScopeService dataScopeService;
@@ -105,6 +115,25 @@ public class ScrmConversationMessageService {
      */
     @Transactional(rollbackFor = Exception.class)
     public ScrmConversationMessageDto saveMessage(ScrmConversationMessageDto dto) throws ScrmException {
+        return saveMessage(dto, true);
+    }
+
+    /**
+     * 保存消息（内部重载，可控制是否触发平台出站分发）。
+     * <p>
+     * 回调入库（{@code saveMessageFromCallback}）方向为 OUTBOUND 时代表「执行侧已实际发送」
+     * 的历史事件，物理发送已发生，不能再次触发分发（否则会重复入队出站队列造成二次发送）。
+     * 前端/人工坐席保存 OUT 消息时（{@code dispatchOutbound=true}）才进入平台适配层。
+     * </p>
+     *
+     * @param dto             消息数据
+     * @param dispatchOutbound 是否触发平台出站分发（OUT 方向时）
+     * @return 保存后的消息数据
+     * @throws ScrmException 参数非法 / 保存失败
+     */
+    @Transactional(rollbackFor = Exception.class)
+    private ScrmConversationMessageDto saveMessage(ScrmConversationMessageDto dto, boolean dispatchOutbound)
+            throws ScrmException {
         // 自动填充默认值：messageId、messageType、direction、sentAt
         if (dto.getMessageId() == null || dto.getMessageId().isBlank()) {
             dto.setMessageId(java.util.UUID.randomUUID().toString());
@@ -202,8 +231,12 @@ public class ScrmConversationMessageService {
         }
 
         // OUT 方向消息：异步调用平台适配层发送到社媒设备
-        if ("OUT".equals(saved.getDirection())) {
-            dispatchOutMessageAsync(saved);
+        // (回调 OUTBOUND 事件代表已发送的历史事件, 不再次分发, 避免重复入队二次发送)
+        if ("OUT".equals(saved.getDirection()) && dispatchOutbound) {
+            String outboundSource = dto.getOutboundSource() != null && !dto.getOutboundSource().isBlank()
+                    ? dto.getOutboundSource()
+                    : ScrmOutboundMessageService.SOURCE_MANUAL;
+            dispatchOutMessageAsync(saved, outboundSource);
         }
 
         // IN 方向消息：递增会话未读数
@@ -243,24 +276,27 @@ public class ScrmConversationMessageService {
             throw ScrmException.badRequest("回调事件不能为空");
         }
 
-        // 按 platformMessageId 去重
-        if (callback.getPlatformMessageId() != null && !callback.getPlatformMessageId().isBlank()) {
-            Optional<ScrmConversationMessageEntity> existed =
-                    messageRepository.findByPlatformMessageId(callback.getPlatformMessageId());
-            if (existed.isPresent()) {
-                log.debug("消息已存在,跳过保存: platformMessageId={}", callback.getPlatformMessageId());
-                return toDto(existed.get());
-            }
-        }
-
-        Long accountId = parseLong(callback.getAccountId(), "accountId");
-        Long customerId = parseLong(callback.getCustomerId(), "customerId");
+        Long accountId = resolveAccountId(callback);
+        Long customerId = resolveCustomerId(callback, accountId);
         String messageType = normalizeMessageType(callback.getMessageType());
         String direction = normalizeDirection(callback.getDirection());
         LocalDateTime sentAt = callback.getSentAt() != null ? callback.getSentAt() : LocalDateTime.now();
 
         // 查找或创建会话
         ScrmConversationDto conversation = resolveOrCreateConversation(callback, accountId, customerId);
+
+        // 按 (会话 ID + 平台消息 ID) 去重：平台消息 ID（个人微信 local_id）仅在会话内唯一，
+        // 跨会话同 local_id 会碰撞，必须按会话维度去重，否则不同会话互相吞消息
+        if (callback.getPlatformMessageId() != null && !callback.getPlatformMessageId().isBlank()) {
+            Optional<ScrmConversationMessageEntity> existed =
+                    messageRepository.findByConversationIdAndPlatformMessageId(
+                            conversation.getId(), callback.getPlatformMessageId());
+            if (existed.isPresent()) {
+                log.debug("消息已存在,跳过保存: conversationId={}, platformMessageId={}",
+                        conversation.getId(), callback.getPlatformMessageId());
+                return toDto(existed.get());
+            }
+        }
 
         // 构建消息 DTO
         ScrmConversationMessageDto messageDto = new ScrmConversationMessageDto();
@@ -277,7 +313,8 @@ public class ScrmConversationMessageService {
         messageDto.setPlatformMessageId(callback.getPlatformMessageId());
         messageDto.setSentAt(sentAt);
 
-        return saveMessage(messageDto);
+        // 回调消息是「已发生事件」的持久化, 不触发出站分发（避免 OUTBOUND 重复入队二次发送）
+        return saveMessage(messageDto, false);
     }
 
     /**
@@ -372,34 +409,54 @@ public class ScrmConversationMessageService {
      * </p>
      *
      * @param message 已保存的出站消息实体
+     * @param source  入队来源（AUTO_REPLY / MANUAL / CAMPAIGN）
      */
-    private void dispatchOutMessageAsync(ScrmConversationMessageEntity message) {
+    private void dispatchOutMessageAsync(ScrmConversationMessageEntity message, String source) {
         Long conversationId = message.getConversationId();
         Long accountId = resolveAccountId(conversationId);
         if (accountId == null) {
             log.warn("出站消息发送跳过: 无法解析 accountId, conversationId={}", conversationId);
             return;
         }
-        // 解析目标客户昵称（用于搜索联系人）
+        // 解析目标客户昵称（用于日志/搜索联系人; 个人微信自动建档客户可能暂无昵称, 不阻断入队）
         String targetCustomerName = resolveCustomerName(conversationId);
-        if (targetCustomerName == null || targetCustomerName.isBlank()) {
-            log.warn("出站消息发送跳过: 无法解析目标客户昵称, conversationId={}", conversationId);
-            return;
-        }
         Thread.startVirtualThread(() -> {
             try {
                 // 查找账号对应的平台类型
                 ScrmAccountDto account = accountService.getAccount(accountId);
                 String platformType = account.getPlatformType();
                 log.info("异步发送出站消息: conversationId={}, accountId={}, platform={}, target={}, content={}",
-                        conversationId, accountId, platformType, targetCustomerName,
+                        conversationId, accountId, platformType,
+                        targetCustomerName == null ? "(未知)" : targetCustomerName,
                         message.getContent() != null && message.getContent().length() > 30
                                 ? message.getContent().substring(0, 30) + "..."
                                 : message.getContent());
+                // 个人微信等无官方开放 API 的平台: 落出站队列, 由执行侧 (wx-console / wechat-agent) 轮询发送
+                if (isOutboundQueuePlatform(platformType)) {
+                    // 出站队列仅支持文本类消息（执行侧 UIA 发送 text）; 媒体类或空内容不入队, 避免拉走必然失败
+                    if (!isTextMessageType(message.getMessageType())
+                            || message.getContent() == null || message.getContent().isBlank()) {
+                        log.warn("出站消息入队跳过: 非文本或空内容, conversationId={}, type={}",
+                                conversationId, message.getMessageType());
+                        return;
+                    }
+                    try {
+                        outboundMessageService.enqueueFromMessage(
+                                platformType, source, conversationId, message);
+                    } catch (Exception e) {
+                        log.warn("出站消息入队失败: conversationId={}, platform={}, err={}",
+                                conversationId, platformType, e.getMessage());
+                    }
+                    return;
+                }
                 // 企业微信: 通过开放 API 直接发送, 需要客户的 platformCustomerUid (即 external_userid)
                 if (!"WEWORK".equalsIgnoreCase(platformType)) {
                     log.warn("出站消息发送暂不支持平台: platform={}, conversationId={}",
                             platformType, conversationId);
+                    return;
+                }
+                if (targetCustomerName == null || targetCustomerName.isBlank()) {
+                    log.warn("企微出站消息发送跳过: 无法解析目标客户昵称, conversationId={}", conversationId);
                     return;
                 }
                 String externalUserId = resolveCustomerPlatformUid(conversationId);
@@ -429,6 +486,60 @@ public class ScrmConversationMessageService {
             }
         });
     }
+
+    /**
+     * 判断平台是否走「出站队列 + 执行侧轮询发送」链路（无官方开放 API 的平台）。
+     * <p>
+     * 个人微信 wechat_personal 无官方发送 API，须由本机执行侧（wx-console / wechat-agent）
+     * 通过 UIA / 协议库发送，故落 {@code scrm_outbound_message} 队列等待拉取。
+     * </p>
+     *
+     * @param platformType 平台类型
+     * @return 需要走出站队列返回 true
+     */
+    private boolean isOutboundQueuePlatform(String platformType) {
+        return platformType != null
+                && "WECHAT_PERSONAL".equalsIgnoreCase(platformType);
+    }
+
+    /** 是否为出站队列可下发的文本类消息（执行侧 UIA 仅发送文本） */
+    private boolean isTextMessageType(String messageType) {
+        return messageType != null && TEXT_MESSAGE_TYPES.contains(messageType.toUpperCase());
+    }
+
+    /**
+     * 监听自动回复引擎的出站回复请求，落一条 OUT 方向会话消息。
+     * <p>
+     * 消息保存后会经 {@link #dispatchOutMessageAsync} 进入平台适配层：个人微信落出站队列、
+     * 企业微信走开放 API。用事件解耦避免自动回复引擎与会话消息服务循环依赖。
+     * </p>
+     *
+     * @param event 出站回复请求事件
+     */
+    @EventListener
+    public void onOutboundReplyRequested(OutboundReplyRequestedEvent event) {
+        if (event == null || event.getConversationId() == null
+                || event.getReplyContent() == null || event.getReplyContent().isBlank()) {
+            return;
+        }
+        try {
+            ScrmConversationMessageDto dto = new ScrmConversationMessageDto();
+            dto.setConversationId(event.getConversationId());
+            dto.setMessageType("TEXT");
+            dto.setDirection("OUT");
+            dto.setContent(event.getReplyContent());
+            dto.setSentAt(LocalDateTime.now());
+            dto.setMessageId("auto_reply_" + UUID.randomUUID().toString().replace("-", ""));
+            dto.setOutboundSource(ScrmOutboundMessageService.SOURCE_AUTO_REPLY);
+            saveMessage(dto);
+            log.info("自动回复落库并进入出站链路: conversationId={}, platform={}, contentLen={}",
+                    event.getConversationId(), event.getPlatformType(), event.getReplyContent().length());
+        } catch (Exception e) {
+            log.warn("自动回复出站落库失败 (不影响匹配主流程): conversationId={}, err={}",
+                    event.getConversationId(), e.getMessage());
+        }
+    }
+
 
     /**
      * 从会话中解析账号 ID
@@ -638,6 +749,81 @@ public class ScrmConversationMessageService {
     }
 
     /**
+     * 解析回调账号 ID：优先用内部数字 ID，否则按平台账号 UID 解析/自动建档。
+     * <p>
+     * 执行侧（wx-console）通常只有平台侧标识（个人微信登录 wxid），无 scrm 内部
+     * 数字 ID。此时按 {@code platformType + platformAccountUid} 查账号，不存在则
+     * 自动创建（loginState=UNKNOWN，后续由执行侧上报/登录流程更新）。
+     * </p>
+     *
+     * @param callback 会话事件回调
+     * @return 账号 ID
+     * @throws ScrmException 无法解析且无法自动建档
+     */
+    private Long resolveAccountId(ConversationEventCallbackDto callback) throws ScrmException {
+        if (callback.getAccountId() != null && !callback.getAccountId().isBlank()) {
+            return parseLong(callback.getAccountId(), "accountId");
+        }
+        String platformType = callback.getPlatformType();
+        String platformAccountUid = callback.getPlatformAccountUid();
+        if (platformType == null || platformType.isBlank()
+                || platformAccountUid == null || platformAccountUid.isBlank()) {
+            throw ScrmException.badRequest("accountId 或 platformAccountUid 不能为空");
+        }
+        Optional<ScrmAccountEntity> existed = accountRepository
+                .findByPlatformTypeAndPlatformAccountUid(platformType, platformAccountUid);
+        if (existed.isPresent()) {
+            return existed.get().getId();
+        }
+        ScrmAccountEntity entity = new ScrmAccountEntity();
+        entity.setPlatformType(platformType);
+        entity.setPlatformAccountUid(platformAccountUid);
+        entity.setDisplayName(callback.getAccountDisplayName());
+        entity.setAccountName(callback.getAccountDisplayName());
+        entity.setLoginState("UNKNOWN");
+        ScrmAccountEntity saved = accountRepository.save(entity);
+        log.info("回调自动建档账号: id={}, platformType={}, platformAccountUid={}",
+                saved.getId(), platformType, platformAccountUid);
+        return saved.getId();
+    }
+
+    /**
+     * 解析回调客户 ID：优先用内部数字 ID，否则按平台客户 UID + 账号解析/自动建档。
+     *
+     * @param callback  会话事件回调
+     * @param accountId 已解析的账号 ID
+     * @return 客户 ID
+     * @throws ScrmException 无法解析且无法自动建档
+     */
+    private Long resolveCustomerId(ConversationEventCallbackDto callback, Long accountId) throws ScrmException {
+        if (callback.getCustomerId() != null && !callback.getCustomerId().isBlank()) {
+            return parseLong(callback.getCustomerId(), "customerId");
+        }
+        String platformType = callback.getPlatformType();
+        String platformCustomerUid = callback.getPlatformCustomerUid();
+        if (accountId == null || platformType == null || platformType.isBlank()
+                || platformCustomerUid == null || platformCustomerUid.isBlank()) {
+            throw ScrmException.badRequest("customerId 或 platformCustomerUid 不能为空");
+        }
+        Optional<ScrmCustomerEntity> existed = customerRepository
+                .findByPlatformTypeAndPlatformCustomerUidAndOwnerAccountId(
+                        platformType, platformCustomerUid, accountId);
+        if (existed.isPresent()) {
+            return existed.get().getId();
+        }
+        ScrmCustomerEntity entity = new ScrmCustomerEntity();
+        entity.setPlatformType(platformType);
+        entity.setPlatformCustomerUid(platformCustomerUid);
+        entity.setNickname(callback.getCustomerNickname());
+        entity.setOwnerAccountId(accountId);
+        entity.setLifecycle("NEW");
+        ScrmCustomerEntity saved = customerRepository.save(entity);
+        log.info("回调自动建档客户: id={}, platformType={}, platformCustomerUid={}, ownerAccountId={}",
+                saved.getId(), platformType, platformCustomerUid, accountId);
+        return saved.getId();
+    }
+
+    /**
      * 规范化消息类型为大写
      *
      * @param messageType 原始消息类型
@@ -645,6 +831,12 @@ public class ScrmConversationMessageService {
      * @throws ScrmException 消息类型非法
      */
     private String normalizeMessageType(String messageType) throws ScrmException {
+        // 执行侧上报的类型可能是 unknown（无法识别的非文本类型），按内容归一：
+        // 有文本内容按 TEXT 处理（避免整条回调 500 中断）；无内容则跳过（非文本消息不入库）
+        if (messageType != null && !messageType.isBlank()
+                && "unknown".equalsIgnoreCase(messageType.trim())) {
+            return "TEXT";
+        }
         validateMessageType(messageType);
         return messageType.toUpperCase();
     }

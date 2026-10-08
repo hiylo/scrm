@@ -13,6 +13,8 @@ import org.hiylo.scrm.dto.ScrmConversationDto;
 import org.hiylo.scrm.dto.ScrmConversationMessageDto;
 import org.hiylo.scrm.entity.ScrmConversationEntity;
 import org.hiylo.scrm.entity.ScrmConversationMessageEntity;
+import org.hiylo.scrm.entity.ScrmAccountEntity;
+import org.hiylo.scrm.entity.ScrmCustomerEntity;
 import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.repository.ScrmConversationMessageRepository;
 import org.hiylo.scrm.repository.ScrmConversationRepository;
@@ -73,6 +75,18 @@ class ScrmConversationMessageServiceTest {
     /** 数据隔离服务 Mock (当前用户可访问账号范围) */
     @Mock
     private DataScopeService dataScopeService;
+
+    /** 账号仓库 Mock (回调按平台 UID 解析/自动建档) */
+    @Mock
+    private org.hiylo.scrm.repository.ScrmAccountRepository accountRepository;
+
+    /** 客户仓库 Mock (回调按平台 UID 解析/自动建档 与 出站昵称解析) */
+    @Mock
+    private org.hiylo.scrm.repository.ScrmCustomerRepository customerRepository;
+
+    /** 出站消息队列服务 Mock (OUT 消息分发) */
+    @Mock
+    private ScrmOutboundMessageService outboundMessageService;
 
     /** 被测对象 */
     @InjectMocks
@@ -249,7 +263,8 @@ class ScrmConversationMessageServiceTest {
         callback.setSentAt(LocalDateTime.now());
 
         // platformMessageId 不存在 (非重复)
-        when(messageRepository.findByPlatformMessageId("pm-001")).thenReturn(Optional.empty());
+        when(messageRepository.findByConversationIdAndPlatformMessageId(50L, "pm-001"))
+                .thenReturn(Optional.empty());
 
         // getConversationByPlatformId 不被调用 (conversationId 为空)
         // getConversationByAccountAndCustomer 返回已有会话
@@ -285,8 +300,8 @@ class ScrmConversationMessageServiceTest {
 
         // 验证 save 调用一次
         verify(messageRepository, times(1)).save(any(ScrmConversationMessageEntity.class));
-        // 验证去重查询调用
-        verify(messageRepository, times(1)).findByPlatformMessageId("pm-001");
+        // 验证去重查询调用 (按会话 ID + 平台消息 ID)
+        verify(messageRepository, times(1)).findByConversationIdAndPlatformMessageId(50L, "pm-001");
     }
 
     @Test
@@ -303,7 +318,7 @@ class ScrmConversationMessageServiceTest {
         callback.setPlatformMessageId("pm-001");
         callback.setSentAt(LocalDateTime.now());
 
-        // platformMessageId 已存在 (重复消息)
+        // 去重查询 (会话 ID + 平台消息 ID) 命中已有消息
         ScrmConversationMessageEntity existing = new ScrmConversationMessageEntity();
         existing.setId(999L);
         existing.setMessageId("pm-001");
@@ -313,7 +328,17 @@ class ScrmConversationMessageServiceTest {
         existing.setContent("callback hello");
         existing.setPlatformMessageId("pm-001");
         existing.setSentAt(LocalDateTime.now().minusMinutes(1));
-        when(messageRepository.findByPlatformMessageId("pm-001")).thenReturn(Optional.of(existing));
+
+        // 去重检查发生在 resolveOrCreateConversation 之后, 需先解析出会话再断言命中
+        ScrmConversationDto conversation = new ScrmConversationDto();
+        conversation.setId(50L);
+        conversation.setPlatformType("DOUYIN");
+        conversation.setAccountId(100L);
+        conversation.setCustomerId(200L);
+        conversation.setConversationType("SINGLE");
+        when(conversationService.getConversationByAccountAndCustomer(100L, 200L)).thenReturn(conversation);
+        when(messageRepository.findByConversationIdAndPlatformMessageId(50L, "pm-001"))
+                .thenReturn(Optional.of(existing));
 
         // ===== When =====
         ScrmConversationMessageDto result = messageService.saveMessageFromCallback(callback);
@@ -327,9 +352,86 @@ class ScrmConversationMessageServiceTest {
         // 验证 save 未被调用 (重复消息不保存)
         verify(messageRepository, never()).save(any(ScrmConversationMessageEntity.class));
         // 验证去重查询调用一次
-        verify(messageRepository, times(1)).findByPlatformMessageId("pm-001");
-        // 不应触发会话查找 (因为已提前返回)
-        verify(conversationService, never()).getConversationByPlatformId(anyString());
-        verify(conversationService, never()).getConversationByAccountAndCustomer(anyLong(), anyLong());
+        verify(messageRepository, times(1)).findByConversationIdAndPlatformMessageId(50L, "pm-001");
+        // 会话解析被调用 (去重前已解析会话)
+        verify(conversationService, times(1)).getConversationByAccountAndCustomer(anyLong(), anyLong());
+    }
+
+    @Test
+    @DisplayName("saveMessageFromCallback_autoProvision: 按平台 UID 自动建档账号/客户并保存消息")
+    void saveMessageFromCallback_autoProvision() throws ScrmException {
+        // ===== Given =====
+        ConversationEventCallbackDto callback = new ConversationEventCallbackDto();
+        callback.setPlatformType("wechat_personal");
+        // 不传内部数字 ID, 只传平台 UID (wx-console 场景)
+        callback.setPlatformAccountUid("wxid_self");
+        callback.setAccountDisplayName("个人微信账号");
+        callback.setPlatformCustomerUid("wxid_peer");
+        callback.setCustomerNickname("客户昵称");
+        callback.setMessageType("text");
+        callback.setDirection("INBOUND");
+        callback.setContent("hello from wechat");
+        callback.setPlatformMessageId("pm-wx-001");
+        callback.setSentAt(LocalDateTime.now());
+
+        when(messageRepository.findByConversationIdAndPlatformMessageId(anyLong(), eq("pm-wx-001")))
+                .thenReturn(Optional.empty());
+        // 账号/客户不存在 → 自动建档
+        when(accountRepository.findByPlatformTypeAndPlatformAccountUid("wechat_personal", "wxid_self"))
+                .thenReturn(Optional.empty());
+        when(accountRepository.save(any(ScrmAccountEntity.class))).thenAnswer(inv -> {
+            ScrmAccountEntity e = inv.getArgument(0);
+            e.setId(300L);
+            return e;
+        });
+        when(customerRepository.findByPlatformTypeAndPlatformCustomerUidAndOwnerAccountId(
+                "wechat_personal", "wxid_peer", 300L)).thenReturn(Optional.empty());
+        when(customerRepository.save(any(ScrmCustomerEntity.class))).thenAnswer(inv -> {
+            ScrmCustomerEntity e = inv.getArgument(0);
+            e.setId(400L);
+            return e;
+        });
+        // 新会话创建
+        ScrmConversationDto conversation = new ScrmConversationDto();
+        conversation.setId(60L);
+        conversation.setPlatformType("wechat_personal");
+        conversation.setAccountId(300L);
+        conversation.setCustomerId(400L);
+        when(conversationService.getConversationByPlatformId(null)).thenReturn(null);
+        when(conversationService.getConversationByAccountAndCustomer(300L, 400L)).thenReturn(null);
+        when(conversationService.createConversation(any(ScrmConversationDto.class))).thenReturn(conversation);
+        when(conversationRepository.findById(60L)).thenReturn(Optional.of(buildConversationEntity(60L)));
+        when(messageRepository.save(any(ScrmConversationMessageEntity.class))).thenAnswer(inv -> {
+            ScrmConversationMessageEntity e = inv.getArgument(0);
+            e.setId(8L);
+            return e;
+        });
+
+        // ===== When =====
+        ScrmConversationMessageDto result = messageService.saveMessageFromCallback(callback);
+
+        // ===== Then =====
+        assertThat(result).isNotNull();
+        assertThat(result.getConversationId()).isEqualTo(60L);
+        assertThat(result.getMessageId()).isEqualTo("pm-wx-001");
+        // 账号与客户被自动建档
+        verify(accountRepository, times(1)).save(any(ScrmAccountEntity.class));
+        verify(customerRepository, times(1)).save(any(ScrmCustomerEntity.class));
+        // 回调 OUTBOUND 方向不触发出站分发 (saveMessageFromCallback 内部 dispatchOutbound=false)
+    }
+
+    @Test
+    @DisplayName("saveMessageFromCallback_noIds: 既无内部 ID 也无平台 UID 时抛参数异常")
+    void saveMessageFromCallback_noIds() {
+        ConversationEventCallbackDto callback = new ConversationEventCallbackDto();
+        callback.setPlatformType("wechat_personal");
+        callback.setMessageType("text");
+        callback.setDirection("INBOUND");
+        callback.setContent("no ids");
+        callback.setPlatformMessageId("pm-noid");
+
+        assertThatThrownBy(() -> messageService.saveMessageFromCallback(callback))
+                .isInstanceOf(ScrmException.class)
+                .hasMessageContaining("platformAccountUid");
     }
 }

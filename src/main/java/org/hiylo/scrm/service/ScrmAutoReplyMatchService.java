@@ -14,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.hiylo.scrm.dto.ScrmAutoReplyLogDto;
 import org.hiylo.scrm.dto.ScrmAutoReplyMatchDto;
 import org.hiylo.scrm.dto.ScrmAutoReplyTestDto;
+import org.hiylo.scrm.dto.ScrmConversationDto;
 import org.hiylo.scrm.entity.ScrmAutoReplyLogEntity;
 import org.hiylo.scrm.entity.ScrmAutoReplyRuleEntity;
 import org.hiylo.scrm.entity.ScrmCustomerEntity;
@@ -22,6 +23,8 @@ import org.hiylo.scrm.repository.ScrmAutoReplyLogRepository;
 import org.hiylo.scrm.repository.ScrmAutoReplyRuleRepository;
 import org.hiylo.scrm.repository.ScrmAutoReplyTemplateRepository;
 import org.hiylo.scrm.repository.ScrmCustomerRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -104,6 +107,15 @@ public class ScrmAutoReplyMatchService {
 
     /** 回复日志服务 (命中后记录回复日志) */
     private final ScrmAutoReplyLogService logService;
+
+    /** 应用事件发布器 (命中后发布 {@link OutboundReplyRequestedEvent}, 由会话消息服务落库出站;
+     *  非 final: 单元测试直接 new 时不注入, 行为回退为仅记日志) */
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
+
+    /** 会话服务 (解析命中回复对应的会话 ID; 非 final: 单元测试直接 new 时不注入) */
+    @Autowired
+    private ScrmConversationService conversationService;
 
     /**
      * 检查冷却时间是否已过期。
@@ -591,21 +603,98 @@ public class ScrmAutoReplyMatchService {
     }
 
     /**
-     * 模拟发送回复。
-     * <p>模拟实现: 仅记录日志, 实际项目中应调用渠道适配器 (微信/企微/Web/SMS/EMAIL) 发送。</p>
+     * 发送回复。
+     * <p>
+     * 命中规则后把回复内容发布为 {@link OutboundReplyRequestedEvent}，由
+     * {@link ScrmConversationMessageService#onOutboundReplyRequested} 落一条 OUT 消息，
+     * 随后按平台走开放 API 或出站队列。事件未注入时（单元测试直接构造）回退为仅记录
+     * 日志，保持与旧模拟行为一致。
+     * </p>
      *
-     * @param matchDto    匹配参数
-     * @param rule        命中规则
+     * @param matchDto     匹配参数
+     * @param rule         命中规则
      * @param replyContent 回复内容
-     * @return true 表示发送成功
+     * @return true 表示已进入出站链路
      */
     private boolean sendReply(ScrmAutoReplyMatchDto matchDto, ScrmAutoReplyRuleEntity rule,
                               String replyContent) {
-        // 模拟发送: 实际项目中调用渠道适配器
-        log.info("模拟发送回复: customerId={}, channel={}, ruleId={}, replyType={}, contentLen={}",
-                matchDto.getCustomerId(), matchDto.getChannel(), rule.getId(),
-                rule.getReplyType(), replyContent != null ? replyContent.length() : 0);
-        return true;
+        if (replyContent == null || replyContent.isBlank()) {
+            log.info("回复内容为空, 跳过发送: customerId={}, ruleId={}", matchDto.getCustomerId(), rule.getId());
+            return false;
+        }
+        Long conversationId = resolveConversationId(matchDto);
+        if (conversationId == null) {
+            // 无会话上下文时无法定位出站会话, 仅记录日志（保持旧模拟行为）
+            log.info("模拟发送回复(无会话上下文): customerId={}, channel={}, ruleId={}, replyType={}, contentLen={}",
+                    matchDto.getCustomerId(), matchDto.getChannel(), rule.getId(),
+                    rule.getReplyType(), replyContent.length());
+            return true;
+        }
+        try {
+            eventPublisher.publishEvent(new OutboundReplyRequestedEvent(
+                    this, conversationId, matchDto.getAccountId(), normalizePlatformType(matchDto.getChannel()),
+                    resolveTargetPlatformUid(matchDto), replyContent));
+            log.info("自动回复已发布出站事件: customerId={}, conversationId={}, channel={}, ruleId={}, contentLen={}",
+                    matchDto.getCustomerId(), conversationId, matchDto.getChannel(), rule.getId(),
+                    replyContent.length());
+            return true;
+        } catch (Exception e) {
+            log.warn("自动回复出站事件发布失败 (回退仅记录日志): customerId={}, ruleId={}, err={}",
+                    matchDto.getCustomerId(), rule.getId(), e.getMessage());
+            return true;
+        }
+    }
+
+    /** 从匹配 DTO 解析会话 ID（sessionId 为雪花 ID 字符串时可直接解析；失败返回 null 回退仅记日志） */
+    private Long resolveConversationId(ScrmAutoReplyMatchDto matchDto) {
+        String sessionId = matchDto.getSessionId();
+        if (sessionId != null && !sessionId.isBlank()) {
+            try {
+                return Long.valueOf(sessionId.trim());
+            } catch (NumberFormatException e) {
+                log.debug("sessionId 非数字, 尝试按平台会话查找: sessionId={}", sessionId);
+            }
+        }
+        if (matchDto.getCustomerId() == null || matchDto.getAccountId() == null) {
+            return null;
+        }
+        if (conversationService == null) {
+            return null;
+        }
+        try {
+            ScrmConversationDto conversation = conversationService
+                    .getConversationByAccountAndCustomer(matchDto.getAccountId(), matchDto.getCustomerId());
+            return conversation != null ? conversation.getId() : null;
+        } catch (Exception e) {
+            log.debug("按账号/客户解析会话失败, 回退仅记日志: accountId={}, customerId={}, err={}",
+                    matchDto.getAccountId(), matchDto.getCustomerId(), e.getMessage());
+            return null;
+        }
+    }
+
+    /** 渠道 → 平台类型映射（channel 命名与 platformType 存在差异） */
+    private String normalizePlatformType(String channel) {
+        if (channel == null) {
+            return null;
+        }
+        String c = channel.trim().toUpperCase();
+        if ("WORK_WECHAT".equals(c) || "WEWORK".equals(c)) {
+            return "WEWORK";
+        }
+        if ("WECHAT".equals(c)) {
+            return "WECHAT_PERSONAL";
+        }
+        return c;
+    }
+
+    /** 解析目标平台客户 UID（个人微信为 platformCustomerUid） */
+    private String resolveTargetPlatformUid(ScrmAutoReplyMatchDto matchDto) {
+        if (matchDto.getCustomerId() == null) {
+            return null;
+        }
+        return customerRepository.findById(matchDto.getCustomerId())
+                .map(ScrmCustomerEntity::getPlatformCustomerUid)
+                .orElse(null);
     }
 
     /**
