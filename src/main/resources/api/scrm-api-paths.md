@@ -173,3 +173,58 @@
 > 命中规则回复内容经 `scrm_outbound_message` 出站队列下发，由执行侧轮询
 > `/scrm/callback/outbound/pending` 拉取并通过 UIA 发送，发送后回执
 > `/scrm/callback/outbound/ack`。
+
+---
+
+## 远程 Agent 集线器（WSS /agent + 设备管理）
+
+桌面执行端（wx-console，Windows + 微信）在 NAT 后**主动出站**建立 `ws(s)://host:port/agent`
+长连，服务端复用该连接接收事件、下发指令。协议见 wx-console `docs/REMOTE-AGENT.md`
+§2/§3（JSON 帧：hello / welcome / close / ping / pong / event / 指令应答）。
+
+### WebSocket 端点
+
+| 项 | 值 |
+|----|----|
+| 端点 | `ws://<scrm-host>:8840/agent`（独立部署直连；网关侧可配 `wss://` 代理） |
+| 握手令牌 | 首帧 `hello.data.token` = `scrm.callback.agent-secret`（与 REST 回调共享密钥） |
+| 心跳 | 客户端每 30s 发 `{"type":"ping"}` → 服务端 `pong`；60s 无消息服务端断开 |
+
+### 事件（客户端 → 服务端）
+
+| 帧 | 说明 |
+|----|------|
+| `{"type":"event","event":"wechat.new_message","data":{...}}` | 单条新消息，映射 `conversation-event` 落库（自动建档账号/客户/会话 + `platformMessageId` 幂等） |
+| `{"type":"event","event":"sessions.snapshot","data":{sessions[],messages[],contacts[],seq}}` | welcome 后全量历史回填；`contacts[]` 为全量好友（`{username,nick_name,remark}`，排除自己与群聊），scrm 幂等建档为 `lifecycle=NEW` 的潜在客户 |
+
+### 指令（服务端 → 客户端，实时代发）
+
+| 帧 | 说明 |
+|----|------|
+| `{"id":"ob-<outboundId>","method":"wechat.send_text","params":{"session":"<对方wxid>","text":"...","verify":true}}` | 出站 TEXT 消息实时代发（出站队列入队后对在线设备即时推送） |
+| `{"id":"ob-<outboundId>","method":"wechat.send_image","params":{"session":"<对方wxid>","path":"<预签名URL|对象key>","name":"<文件名>","verify":true}}` | 出站 IMAGE 消息实时代发；`path` 默认 1h 预签名 URL（生成失败回退对象 key），执行侧下载到本地缓存后经 UIA 发送 |
+| `{"id":"ob-<outboundId>","method":"wechat.send_file","params":{"session":"<对方wxid>","path":"<预签名URL|对象key>","name":"<文件名>","verify":true}}` | 出站 FILE 消息实时代发；`path` 语义同上 |
+
+`messageType` 映射：TEXT/LINK → `wechat.send_text`；IMAGE → `wechat.send_image`；
+FILE → `wechat.send_file`。VOICE/VIDEO 执行侧无对应 UIA 发送能力，不入队。
+
+应答：`{"id":"ob-<outboundId>","ok":true,"result":{...}}` → 回执 SENT；
+`{"id":"ob-<outboundId>","ok":false,"error":{"code":"E_*","message":"..."}}` → 回执 FAILED
+（未超重试上限自动退回 PENDING 指数退避）。
+
+REST 轮询兜底（`GET /scrm/callback/outbound/pending`）返回的
+`ScrmOutboundMessageDto` 同样带 `mediaObjectKey` / `mediaFileName` / `mediaUrl`
+（预签名 URL，新鲜生成 1h），执行侧据此发送 IMAGE / FILE 消息。
+
+### 设备管理端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | /api/v1/devices/register?device_id= | 注册/确认设备令牌（幂等，返回连接地址与心跳参数） |
+| GET | /api/v1/devices/online | 当前 AgentHub 在线设备（deviceId → 微信账号） |
+
+### 双通道防双发
+
+出站回复同时支持 **WSS 实时代发** 与 **REST 轮询兜底**（`GET /scrm/callback/outbound/pending`）。
+两条路径共用「PENDING → IN_PROGRESS」抢占语义（`takePending` 批量抢占 / `claimForPush`
+单条抢占 + 乐观锁），同一出站记录只会被一方取走发送，另一方抢占失败直接跳过。

@@ -129,9 +129,17 @@ public class ScrmOutboundMessageEntity {
     @Column(name = "message_type", nullable = false, length = 20)
     private String messageType;
 
-    /** 发送内容（文本正文） */
+    /** 发送内容（文本正文；媒体消息为空） */
     @Column(name = "content", columnDefinition = "TEXT")
     private String content;
+
+    /** 媒体对象存储 key（IMAGE / FILE 消息，对象已通过上传接口存入对象存储） */
+    @Column(name = "media_object_key", length = 500)
+    private String mediaObjectKey;
+
+    /** 媒体原始文件名（下发指令时供执行侧落盘命名，IMAGE / FILE 消息） */
+    @Column(name = "media_file_name", length = 255)
+    private String mediaFileName;
 
     /** 来源（AUTO_REPLY=自动回复触发，MANUAL=人工坐席下发，CAMPAIGN=营销触达） */
     @Column(name = "source", nullable = false, length = 20)

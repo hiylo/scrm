@@ -43,8 +43,17 @@ public class ScrmOutboundMessageDto {
     /** 消息类型（TEXT） */
     private String messageType;
 
-    /** 发送内容 */
+    /** 发送内容（TEXT 消息正文；媒体消息为空） */
     private String content;
+
+    /** 媒体对象存储 key（IMAGE / FILE 消息） */
+    private String mediaObjectKey;
+
+    /** 媒体原始文件名（IMAGE / FILE 消息） */
+    private String mediaFileName;
+
+    /** 媒体预签名下载 URL（IMAGE / FILE 消息，生成时新鲜计算，默认 1h 有效） */
+    private String mediaUrl;
 
     /** 来源（AUTO_REPLY / MANUAL / CAMPAIGN） */
     private String source;

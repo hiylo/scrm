@@ -20,6 +20,7 @@ import org.hiylo.scrm.entity.ScrmOutboundMessageEntity;
 import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.repository.ScrmCustomerRepository;
 import org.hiylo.scrm.repository.ScrmOutboundMessageRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -89,6 +90,12 @@ public class ScrmOutboundMessageService {
     /** 账号服务（解析平台类型） */
     private final ScrmAccountService accountService;
 
+    /** 事件发布器（入队成功后发布 {@link OutboundEnqueuedEvent} 触发实时代发） */
+    private final ApplicationEventPublisher eventPublisher;
+
+    /** 会话媒体存储服务（媒体出站消息生成预签名下载 URL 下发执行侧） */
+    private final ConversationMediaService mediaService;
+
     // ==================== 入队 ====================
 
     /**
@@ -140,15 +147,54 @@ public class ScrmOutboundMessageService {
         entity.setTargetPlatformId(targetPlatformId);
         entity.setMessageType(message.getMessageType());
         entity.setContent(message.getContent());
+        entity.setMediaObjectKey(message.getMediaObjectKey());
+        entity.setMediaFileName(resolveMediaFileName(message.getMediaObjectKey()));
         entity.setSource(source);
         entity.setStatus(STATUS_PENDING);
         entity.setRetryCount(0);
         entity.setMaxRetries(DEFAULT_MAX_RETRIES);
         entity = outboundRepository.save(entity);
-        log.info("出站消息入队: id={}, conversationId={}, platform={}, target={}, contentLen={}",
-                entity.getId(), conversationId, platformType, targetPlatformId,
-                message.getContent() != null ? message.getContent().length() : 0);
+        log.info("出站消息入队: id={}, conversationId={}, platform={}, target={}, type={}, contentLen={}, media={}",
+                entity.getId(), conversationId, platformType, targetPlatformId, entity.getMessageType(),
+                message.getContent() != null ? message.getContent().length() : 0,
+                entity.getMediaObjectKey() != null ? entity.getMediaObjectKey() : "-");
+        // 入队成功后发布事件：AFTER_COMMIT 监听器对在线设备即时推送发送指令
+        // （TEXT→wechat.send_text / IMAGE→wechat.send_image / FILE→wechat.send_file），
+        // 设备离线时消息保持 PENDING 由轮询兜底或设备上线后追补。
+        eventPublisher.publishEvent(new OutboundEnqueuedEvent(
+                this, entity.getId(), accountId, targetPlatformId,
+                message.getContent(), message.getMessageType(),
+                message.getMediaObjectKey(), entity.getMediaFileName(),
+                platformType, businessMessageId));
         return entity;
+    }
+
+    /**
+     * 从对象存储 key 派生媒体原始文件名。
+     * <p>
+     * 对象 key 命名规范为 {@code scrm/conversation/{yyyyMM}/{uuid}_{原始文件名}}
+     * （见 {@link ConversationMediaService}），取末段并去掉 uuid 前缀即为原始文件名，
+     * 供执行侧下载后落盘命名。派生失败返回 null（不阻断入队）。
+     * </p>
+     *
+     * @param objectKey 对象存储 key
+     * @return 原始文件名；无法派生返回 null
+     */
+    private String resolveMediaFileName(String objectKey) {
+        if (objectKey == null || objectKey.isBlank()) {
+            return null;
+        }
+        String name = objectKey;
+        int slash = name.lastIndexOf('/');
+        if (slash >= 0) {
+            name = name.substring(slash + 1);
+        }
+        // buildObjectKey 格式 {uuid}_{fileName}，uuid 为无下划线的 32 位 hex，取首个下划线之后
+        int underscore = name.indexOf('_');
+        if (underscore > 0) {
+            name = name.substring(underscore + 1);
+        }
+        return name.isBlank() ? null : name;
     }
 
     private String resolveTargetPlatformId(ScrmConversationDto conversation) {
@@ -192,6 +238,58 @@ public class ScrmOutboundMessageService {
         List<ScrmOutboundMessageEntity> taken = outboundRepository.saveAll(pending);
         log.info("出站消息拉取: platform={}, 取走 {} 条 (PENDING → IN_PROGRESS)", platformType, taken.size());
         return taken.stream().map(this::toDto).collect(Collectors.toList());
+    }
+
+    /**
+     * 推送端抢占出站消息（WSS 实时代发路径）。
+     * <p>
+     * 与 {@link #takePending} 共享「PENDING → IN_PROGRESS」状态迁移语义：
+     * 仅在记录仍为 PENDING 时置为 IN_PROGRESS 并记录 in_progress_at，返回是否抢占成功。
+     * 抢占失败的调用方不得发送（消息已被轮询端取走或已终态），避免同一条消息被双发。
+     * </p>
+     *
+     * @param outboundId 出站队列记录 ID
+     * @return 抢占成功返回 true（本调用方负责发送并回执）；false 表示已被并发方取走
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public boolean claimForPush(Long outboundId) {
+        if (outboundId == null) {
+            return false;
+        }
+        ScrmOutboundMessageEntity entity = outboundRepository.findById(outboundId).orElse(null);
+        if (entity == null || !STATUS_PENDING.equals(entity.getStatus())) {
+            return false;
+        }
+        entity.setStatus(STATUS_IN_PROGRESS);
+        entity.setInProgressAt(LocalDateTime.now());
+        outboundRepository.save(entity);
+        log.info("出站消息实时代发抢占: id={}, businessMessageId={}, status=PENDING→IN_PROGRESS",
+                outboundId, entity.getBusinessMessageId());
+        return true;
+    }
+
+    /**
+     * 发送回执（WSS 应答帧路径）。
+     * <p>
+     * 与 {@link #ack(OutboundAckCallbackDto)} 同一状态机：ok=true 置 SENT；
+     * ok=false 且未超重试上限退回 PENDING（指数退避），否则置 FAILED 终态。
+     * </p>
+     *
+     * @param outboundId  出站队列记录 ID
+     * @param ok          是否发送成功
+     * @param errorCode   失败错误码（ok=false 时使用，可空）
+     * @param errorMessage 失败原因（ok=false 时使用，可空）
+     */
+    public void ackByOutboundId(Long outboundId, boolean ok, String errorCode, String errorMessage) {
+        OutboundAckCallbackDto dto = new OutboundAckCallbackDto();
+        dto.setOutboundId(outboundId);
+        dto.setStatus(ok ? STATUS_SENT : STATUS_FAILED);
+        if (!ok) {
+            String code = errorCode == null || errorCode.isBlank() ? "E_UNKNOWN" : errorCode;
+            String msg = errorMessage == null || errorMessage.isBlank() ? code : errorMessage;
+            dto.setErrorMessage(msg);
+        }
+        ack(dto);
     }
 
     // ==================== ack ====================
@@ -304,9 +402,9 @@ public class ScrmOutboundMessageService {
         return timedOut.size();
     }
 
-    /** 查询账号在指定平台的 platformAccountUid（供执行侧校验归属） */
+    /** 查询账号在指定平台的 platformAccountUid（供执行侧校验归属；系统内部链路无请求上下文） */
     public ScrmAccountDto getAccount(Long accountId) {
-        return accountService.getAccount(accountId);
+        return accountService.getAccountInternal(accountId);
     }
 
     // ==================== 工具 ====================
@@ -321,10 +419,21 @@ public class ScrmOutboundMessageService {
         dto.setTargetPlatformId(entity.getTargetPlatformId());
         dto.setMessageType(entity.getMessageType());
         dto.setContent(entity.getContent());
+        dto.setMediaObjectKey(entity.getMediaObjectKey());
+        dto.setMediaFileName(entity.getMediaFileName());
         dto.setSource(entity.getSource());
         dto.setStatus(entity.getStatus());
         dto.setErrorMessage(entity.getErrorMessage());
         dto.setCreateTime(entity.getCreateTime());
+        // 媒体出站消息：新鲜生成 1h 预签名 URL 供执行侧下载（生成失败不阻断取走，执行侧可凭 key 另取）
+        if (entity.getMediaObjectKey() != null && !entity.getMediaObjectKey().isBlank()) {
+            try {
+                dto.setMediaUrl(mediaService.getMediaUrl(entity.getMediaObjectKey(), 60));
+            } catch (Exception e) {
+                log.warn("出站媒体消息预签名 URL 生成失败: outboundId={}, err={}",
+                        entity.getId(), e.getMessage());
+            }
+        }
         return dto;
     }
 }

@@ -422,8 +422,8 @@ public class ScrmConversationMessageService {
         String targetCustomerName = resolveCustomerName(conversationId);
         Thread.startVirtualThread(() -> {
             try {
-                // 查找账号对应的平台类型
-                ScrmAccountDto account = accountService.getAccount(accountId);
+                // 查找账号对应的平台类型 (系统内部链路无请求上下文, 用无隔离查询, 避免数据隔离误判)
+                ScrmAccountDto account = accountService.getAccountInternal(accountId);
                 String platformType = account.getPlatformType();
                 log.info("异步发送出站消息: conversationId={}, accountId={}, platform={}, target={}, content={}",
                         conversationId, accountId, platformType,
@@ -502,9 +502,25 @@ public class ScrmConversationMessageService {
                 && "WECHAT_PERSONAL".equalsIgnoreCase(platformType);
     }
 
-    /** 是否为出站队列可下发的文本类消息（执行侧 UIA 仅发送文本） */
+    /** 是否为出站队列可下发的文本类消息（执行侧 UIA 发送文本） */
     private boolean isTextMessageType(String messageType) {
         return messageType != null && TEXT_MESSAGE_TYPES.contains(messageType.toUpperCase());
+    }
+
+    /**
+     * 是否为出站队列可下发的消息类型（TEXT / IMAGE / FILE）。
+     * <p>
+     * 执行侧（wx-console）UIA 已实现 send_text / send_image / send_file；
+     * VOICE / VIDEO 暂无对应发送能力，不入队。
+     * </p>
+     */
+    private boolean isOutboundDispatchableType(String messageType) {
+        if (messageType == null) {
+            return false;
+        }
+        String upper = messageType.toUpperCase();
+        return TEXT_MESSAGE_TYPES.contains(upper)
+                || "IMAGE".equals(upper) || "FILE".equals(upper);
     }
 
     /**

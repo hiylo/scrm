@@ -9,16 +9,19 @@
 package org.hiylo.scrm.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import org.hiylo.scrm.dto.ScrmAutoReplyLogDto;
 import org.hiylo.scrm.dto.ScrmAutoReplyMatchDto;
 import org.hiylo.scrm.dto.ScrmAutoReplyRuleDto;
 import org.hiylo.scrm.dto.ScrmAutoReplyTemplateDto;
 import org.hiylo.scrm.dto.ScrmAutoReplyTestDto;
+import org.hiylo.scrm.dto.ScrmConversationDto;
 import org.hiylo.scrm.entity.ScrmAutoReplyLogEntity;
 import org.hiylo.scrm.entity.ScrmAutoReplyRuleEntity;
 import org.hiylo.scrm.entity.ScrmAutoReplyTemplateEntity;
 import org.hiylo.scrm.exception.ScrmException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -40,6 +43,7 @@ import java.util.Map;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ScrmAutoReplyService {
 
     /** 规则管理服务 */
@@ -56,6 +60,10 @@ public class ScrmAutoReplyService {
 
     /** 统计服务 */
     private final ScrmAutoReplyStatsService statsService;
+
+    /** 会话服务 (解析命中回复对应的会话 ID; 非 final: 单元测试直接 new 时不注入) */
+    @Autowired
+    private ScrmConversationService conversationService;
 
     /**
      * 创建自动回复规则。
@@ -189,6 +197,67 @@ public class ScrmAutoReplyService {
      */
     public ScrmAutoReplyLogEntity matchReply(ScrmAutoReplyMatchDto matchDto) {
         return matchService.matchReply(matchDto);
+    }
+
+    /**
+     * 按平台类型触发入站消息自动回复匹配（REST 回调与 WSS AgentHub 入站共用）。
+     * <p>
+     * 仅对 IN 方向文本消息触发：解析会话内部 ID 后构造 {@link ScrmAutoReplyMatchDto}
+     * （channel 映射为平台类型对应的渠道、sessionId 用会话 ID），命中规则后经
+     * {@link OutboundReplyRequestedEvent} 进入出站链路（个人微信由 AgentHub 实时代发
+     * 或执行侧轮询发送）。匹配在虚拟线程执行，异常仅记录日志，不影响调用主流程。
+     * </p>
+     *
+     * @param platformType   平台类型（wework / wechat_personal）
+     * @param conversationId 会话内部 ID（消息落库后返回）
+     * @param content        入站消息正文（空文本不触发）
+     */
+    public void matchInboundMessage(String platformType, Long conversationId, String content) {
+        if (conversationId == null || content == null || content.isBlank()) {
+            return;
+        }
+        Thread.startVirtualThread(() -> {
+            try {
+                ScrmConversationDto conv = conversationService.getConversation(conversationId);
+                if (conv == null) {
+                    log.debug("自动回复跳过: 会话未找到 conversationId={}", conversationId);
+                    return;
+                }
+                ScrmAutoReplyMatchDto matchDto = new ScrmAutoReplyMatchDto();
+                matchDto.setCustomerId(conv.getCustomerId());
+                matchDto.setAccountId(conv.getAccountId());
+                matchDto.setMessage(content);
+                matchDto.setSessionId(String.valueOf(conversationId));
+                matchDto.setChannel(resolveChannel(platformType));
+                matchReply(matchDto);
+            } catch (Exception e) {
+                log.warn("入站消息自动回复匹配失败 (不影响主流程): conversationId={}, err={}",
+                        conversationId, e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * 平台类型 → 自动回复渠道映射。
+     * <p>
+     * 企业微信平台（wework）匹配 WORK_WECHAT 渠道规则，个人微信（wechat_personal）
+     * 匹配 WECHAT 渠道规则。
+     * </p>
+     *
+     * @param platformType 平台类型
+     * @return 自动回复渠道
+     */
+    private String resolveChannel(String platformType) {
+        if (platformType == null) {
+            return null;
+        }
+        if ("WEWORK".equalsIgnoreCase(platformType)) {
+            return "WORK_WECHAT";
+        }
+        if ("WECHAT_PERSONAL".equalsIgnoreCase(platformType)) {
+            return "WECHAT";
+        }
+        return platformType.toUpperCase();
     }
 
     /**

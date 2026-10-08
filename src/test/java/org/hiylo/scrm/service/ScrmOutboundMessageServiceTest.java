@@ -22,6 +22,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.List;
 import java.util.Optional;
@@ -63,6 +64,10 @@ class ScrmOutboundMessageServiceTest {
     /** 账号服务 Mock */
     @Mock
     private ScrmAccountService accountService;
+
+    /** 事件发布器 Mock（入队后发布 OutboundEnqueuedEvent 触发实时代发） */
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     /** 被测服务 */
     @InjectMocks
@@ -282,5 +287,104 @@ class ScrmOutboundMessageServiceTest {
 
         assertThat(outboundMessageService.recoverTimedOut("wechat_personal", 120)).isEqualTo(1);
         assertThat(e.getStatus()).isEqualTo("FAILED");
+    }
+
+    @Test
+    @DisplayName("claimForPush: PENDING 抢占成功置 IN_PROGRESS")
+    void claimForPush_success() {
+        org.hiylo.scrm.entity.ScrmOutboundMessageEntity e =
+                new org.hiylo.scrm.entity.ScrmOutboundMessageEntity();
+        e.setId(7L);
+        e.setStatus("PENDING");
+        when(outboundRepository.findById(7L)).thenReturn(Optional.of(e));
+        when(outboundRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        assertThat(outboundMessageService.claimForPush(7L)).isTrue();
+        assertThat(e.getStatus()).isEqualTo("IN_PROGRESS");
+        assertThat(e.getInProgressAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("claimForPush: 非 PENDING（已被轮询取走/终态）抢占失败")
+    void claimForPush_conflict() {
+        org.hiylo.scrm.entity.ScrmOutboundMessageEntity e =
+                new org.hiylo.scrm.entity.ScrmOutboundMessageEntity();
+        e.setId(7L);
+        e.setStatus("IN_PROGRESS");
+        when(outboundRepository.findById(7L)).thenReturn(Optional.of(e));
+
+        assertThat(outboundMessageService.claimForPush(7L)).isFalse();
+        verify(outboundRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("claimForPush: 记录不存在返回 false")
+    void claimForPush_missing() {
+        when(outboundRepository.findById(999L)).thenReturn(Optional.empty());
+        assertThat(outboundMessageService.claimForPush(999L)).isFalse();
+    }
+
+    @Test
+    @DisplayName("ackByOutboundId: ok=true → 回执 SENT")
+    void ackByOutboundId_sent() {
+        org.hiylo.scrm.entity.ScrmOutboundMessageEntity e =
+                new org.hiylo.scrm.entity.ScrmOutboundMessageEntity();
+        e.setId(7L);
+        e.setStatus("IN_PROGRESS");
+        e.setRetryCount(0);
+        e.setMaxRetries(3);
+        when(outboundRepository.findById(7L)).thenReturn(Optional.of(e));
+
+        outboundMessageService.ackByOutboundId(7L, true, null, null);
+
+        assertThat(e.getStatus()).isEqualTo("SENT");
+        assertThat(e.getCompletedAt()).isNotNull();
+        assertThat(e.getErrorMessage()).isNull();
+    }
+
+    @Test
+    @DisplayName("ackByOutboundId: ok=false → 回执 FAILED 透传错误码/消息，未超上限退回 PENDING")
+    void ackByOutboundId_failed() {
+        org.hiylo.scrm.entity.ScrmOutboundMessageEntity e =
+                new org.hiylo.scrm.entity.ScrmOutboundMessageEntity();
+        e.setId(7L);
+        e.setStatus("IN_PROGRESS");
+        e.setRetryCount(0);
+        e.setMaxRetries(3);
+        when(outboundRepository.findById(7L)).thenReturn(Optional.of(e));
+
+        outboundMessageService.ackByOutboundId(7L, false, "E_NO_SESSION", "会话未找到");
+
+        assertThat(e.getStatus()).isEqualTo("PENDING");
+        assertThat(e.getRetryCount()).isEqualTo(1);
+        assertThat(e.getErrorMessage()).isEqualTo("会话未找到");
+    }
+
+    @Test
+    @DisplayName("enqueueFromMessage 入队后发布 OutboundEnqueuedEvent")
+    void enqueuePublishesEvent() {
+        when(outboundRepository.findFirstByConversationIdAndBusinessMessageId(50L, "m-1"))
+                .thenReturn(Optional.empty());
+        when(conversationService.getConversation(50L)).thenReturn(conversation());
+        org.hiylo.scrm.entity.ScrmCustomerEntity customer = new org.hiylo.scrm.entity.ScrmCustomerEntity();
+        customer.setPlatformCustomerUid("wxid_peer");
+        when(customerRepository.findById(200L)).thenReturn(Optional.of(customer));
+        when(outboundRepository.save(any())).thenAnswer(inv -> {
+            org.hiylo.scrm.entity.ScrmOutboundMessageEntity e = inv.getArgument(0);
+            e.setId(1L);
+            return e;
+        });
+
+        outboundMessageService.enqueueFromMessage("wechat_personal", "AUTO_REPLY",
+                50L, message(9L, "m-1", "你好"));
+
+        ArgumentCaptor<OutboundEnqueuedEvent> captor =
+                ArgumentCaptor.forClass(OutboundEnqueuedEvent.class);
+        verify(eventPublisher, times(1)).publishEvent(captor.capture());
+        OutboundEnqueuedEvent event = captor.getValue();
+        assertThat(event.getOutboundId()).isEqualTo(1L);
+        assertThat(event.getAccountId()).isEqualTo(100L);
+        assertThat(event.getTargetPlatformId()).isEqualTo("wxid_peer");
+        assertThat(event.getContent()).isEqualTo("你好");
     }
 }

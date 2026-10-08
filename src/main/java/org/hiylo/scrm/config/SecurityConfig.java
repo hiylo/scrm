@@ -76,6 +76,8 @@ public class SecurityConfig {
             "/actuator/health/**",
             "/actuator/info",
             "/ws/**",
+            "/agent",
+            "/api/v1/devices/register",
             "/error",
             "/favicon.ico"
     );

@@ -83,8 +83,8 @@ class FlywayPostgresMigrationTest {
     /** 业务表 + flyway_schema_history 的非系统 schema 基表总数 */
     private static final int EXPECTED_TOTAL_TABLES = 277;
 
-    /** V1/V2/V3/V4 迁移记录数 */
-    private static final int EXPECTED_MIGRATIONS = 4;
+    /** V1/V2/V3/V4/V5 迁移记录数 */
+    private static final int EXPECTED_MIGRATIONS = 5;
 
     /** scrm_conversation_message 的月分区 (202607~202706) + default 分区 */
     private static final int EXPECTED_LEAF_PARTITIONS = 13;
@@ -152,11 +152,12 @@ class FlywayPostgresMigrationTest {
                 + "|| coalesce(script, '-') || '|' || success from \""
                 + historySchema + "\".flyway_schema_history order by installed_rank");
         assertThat(entries).filteredOn(entry -> entry.startsWith("SQL|"))
-                .as("V1/V2/V3/V4 四条迁移记录 (type|version|script|success)").containsExactly(
+                .as("V1/V2/V3/V4/V5 五条迁移记录 (type|version|script|success)").containsExactly(
                         "SQL|1|V1__init_schema.sql|true",
                         "SQL|2|V2__add_text_search_indexes.sql|true",
                         "SQL|3|V3__add_account_owner.sql|true",
-                        "SQL|4|V4__add_outbound_message.sql|true");
+                        "SQL|4|V4__add_outbound_message.sql|true",
+                        "SQL|5|V5__add_outbound_media.sql|true");
         // spring.flyway.schemas=scrm 会让 Flyway 自建 schema 并写入一条 SCHEMA 记录, 此时 V1 的
         // CREATE SCHEMA IF NOT EXISTS scrm 退化为空操作
         assertThat(entries).filteredOn(entry -> entry.startsWith("SCHEMA|"))

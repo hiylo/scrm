@@ -118,6 +118,52 @@ public class ScrmAutoReplyMatchService {
     private ScrmConversationService conversationService;
 
     /**
+     * 回声环守卫：判断入站消息是否与「本客户最近一次自动回复内容」相同。
+     * <p>
+     * 背景（2026-10-08 事故实证）：scrm 发出自动回复后，执行侧（wx-console 180）
+     * 的 {@code is_self} 判定对 UIA 发送的消息可能失效（{@code real_sender_id} 非 2），
+     * 把自己刚发出的消息当作对方新消息上报回 scrm → 内容恰好是自动回复文本 →
+     * 再次命中规则 → 再发一条 → 死循环（每 ~17s 一轮）。
+     * </p>
+     * <p>
+     * 本守卫在命中前拦截：当入站消息与该客户最近一条 SENT 自动回复内容完全相同时，
+     * 判定为回声回显并跳过。自动回复文本一般足够独特（如「收到，我是 SCRM 自动回复…」），
+     * 正常客户消息不会与之完全相同，误伤面极小。
+     * </p>
+     *
+     * @param customerId 客户 ID（可为 null，此时不拦截）
+     * @param message    入站消息内容
+     * @return true=与最近自动回复相同（回声回显，应跳过）
+     */
+    @Transactional(readOnly = true)
+    boolean isEchoOfLastReply(Long customerId, String message) {
+        if (customerId == null || message == null || message.isBlank()) {
+            return false;
+        }
+        Page<ScrmAutoReplyLogEntity> recentLogs = logRepository.findAll(
+                (root, query, cb) -> {
+                    List<jakarta.persistence.criteria.Predicate> predicates = new ArrayList<>();
+                    predicates.add(cb.equal(root.get("customerId"), customerId));
+                    predicates.add(cb.equal(root.get("status"), STATUS_SENT));
+                    return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+                }, PageRequest.of(0, 1, Sort.by(Sort.Direction.DESC, "sentAt")));
+        // 防御: Mock/异常场景下 findAll 可能返回 null, 视为「无历史回复」不拦截
+        if (recentLogs == null || recentLogs.isEmpty()) {
+            return false;
+        }
+        String lastReply = recentLogs.getContent().get(0).getReplyContent();
+        return lastReply != null && lastReply.equals(message.trim());
+    }
+
+    /** 截断日志字符串（避免长文本刷屏） */
+    private String truncate(String value, int max) {
+        if (value == null) {
+            return null;
+        }
+        return value.length() > max ? value.substring(0, max) : value;
+    }
+
+    /**
      * 检查冷却时间是否已过期。
      * <p>查询该规则对该客户最近一次回复日志, 若距上次触发不足 cooldownMinutes 分钟则返回 false。</p>
      *
@@ -212,6 +258,16 @@ public class ScrmAutoReplyMatchService {
         long startMs = System.currentTimeMillis();
         String message = matchDto.getMessage();
         String channel = matchDto.getChannel();
+
+        // 回声环守卫: 入站内容与「本账号最近一次自动回复内容」相同 → 视为 180 侧
+        // 把自己发出的消息回显上报 (is_self 判定失效), 跳过本次匹配, 防止自动回复
+        // 死循环 (事故实证: 会话 366494177074221056 连发 7 轮, IN 记录全是自动回复文本)。
+        if (isEchoOfLastReply(matchDto.getCustomerId(), message)) {
+            log.info("自动回复回声环守卫: 入站内容与最近自动回复相同, 跳过匹配, " +
+                            "customerId={}, message={}",
+                    matchDto.getCustomerId(), truncate(message, 40));
+            return null;
+        }
 
         // 加载启用规则 (按 priority ASC)
         List<ScrmAutoReplyRuleEntity> rules = ruleRepository

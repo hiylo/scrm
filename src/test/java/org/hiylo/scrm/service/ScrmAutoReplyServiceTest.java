@@ -281,14 +281,75 @@ class ScrmAutoReplyServiceTest {
         matchDto.setMessage("不匹配的消息");
         matchDto.setChannel("WECHAT");
 
-        ScrmAutoReplyLogEntity result = service.matchReply(matchDto);
+         ScrmAutoReplyLogEntity result = service.matchReply(matchDto);
 
-        assertThat(result).isNotNull();
-        assertThat(result.getRuleId()).isEqualTo(20L);
-        assertThat(result.getIsFallback()).isTrue();
-        assertThat(result.getReplyContent()).isEqualTo("默认兜底回复");
-        verify(ruleRepository, times(1)).incrementTriggerCount(eq(20L), any(LocalDateTime.class));
-    }
+         assertThat(result).isNotNull();
+         assertThat(result.getRuleId()).isEqualTo(20L);
+         assertThat(result.getIsFallback()).isTrue();
+         assertThat(result.getReplyContent()).isEqualTo("默认兜底回复");
+         verify(ruleRepository, times(1)).incrementTriggerCount(eq(20L), any(LocalDateTime.class));
+     }
 
-    
-}
+     @Test
+     @DisplayName("matchReply: 回声环守卫——入站内容与最近自动回复相同则跳过(防止死循环)")
+     void matchReply_echoLoopGuardSkips() {
+         // 最近一次自动回复内容 (回声回显的文本)
+         ScrmAutoReplyLogEntity lastLog = new ScrmAutoReplyLogEntity();
+         lastLog.setCustomerId(100L);
+         lastLog.setReplyContent("收到，我是 SCRM 自动回复（集成测试通道）");
+         lastLog.setStatus("SENT");
+         lastLog.setSentAt(LocalDateTime.now().minusSeconds(10));
+         when(logRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class),
+                 any(org.springframework.data.domain.Pageable.class)))
+                 .thenReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(lastLog)));
+
+         // 入站消息正是自动回复文本 (180 侧把自发的消息回显上报成 IN)
+         ScrmAutoReplyMatchDto matchDto = new ScrmAutoReplyMatchDto();
+         matchDto.setCustomerId(100L);
+         matchDto.setMessage("收到，我是 SCRM 自动回复（集成测试通道）");
+         matchDto.setChannel("WECHAT");
+
+         ScrmAutoReplyLogEntity result = service.matchReply(matchDto);
+
+         assertThat(result).isNull();
+         // 不触发规则评估/不落日志
+         verify(ruleRepository, never()).findByEnabledTrueOrderByPriorityAsc();
+         verify(logRepository, never()).save(any(ScrmAutoReplyLogEntity.class));
+     }
+
+     @Test
+     @DisplayName("matchReply: 正常客户消息(内容与最近回复不同)不受回声守卫影响")
+     void matchReply_echoLoopGuardAllowsNormalMessage() {
+         ScrmAutoReplyLogEntity lastLog = new ScrmAutoReplyLogEntity();
+         lastLog.setCustomerId(100L);
+         lastLog.setReplyContent("收到，我是 SCRM 自动回复（集成测试通道）");
+         lastLog.setStatus("SENT");
+         lastLog.setSentAt(LocalDateTime.now().minusSeconds(10));
+         when(logRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class),
+                 any(org.springframework.data.domain.Pageable.class)))
+                 .thenReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(lastLog)));
+
+         ScrmAutoReplyRuleEntity rule = buildRuleEntity(10L, "KEYWORD", "CONTAINS", "你好");
+         when(ruleRepository.findByEnabledTrueOrderByPriorityAsc())
+                 .thenReturn(List.of(rule));
+         when(ruleRepository.findById(10L)).thenReturn(Optional.of(rule));
+         ScrmCustomerEntity customer = new ScrmCustomerEntity();
+         customer.setId(100L);
+         customer.setNickname("张三");
+         when(customerRepository.findById(100L)).thenReturn(Optional.of(customer));
+         when(logRepository.save(any(ScrmAutoReplyLogEntity.class)))
+                 .thenAnswer(inv -> inv.getArgument(0));
+
+         ScrmAutoReplyMatchDto matchDto = new ScrmAutoReplyMatchDto();
+         matchDto.setCustomerId(100L);
+         matchDto.setMessage("你好呀, 在吗");
+         matchDto.setChannel("WECHAT");
+
+         ScrmAutoReplyLogEntity result = service.matchReply(matchDto);
+
+         assertThat(result).isNotNull();
+         assertThat(result.getRuleId()).isEqualTo(10L);
+     }
+
+     
+ }

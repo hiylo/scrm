@@ -172,6 +172,25 @@ public class ScrmAccountService {
     }
 
     /**
+     * 按主键查询账号（系统内部调用，不做数据隔离）。
+     * <p>
+     * 供后台任务 / 异步链路（如出站队列、自动回复）在无请求上下文时解析账号，
+     * 避免 {@link #findOrThrow} 因当前用户为空且账号 ownerUserId 为空被数据隔离
+     * 误判为「账号不存在」。调用方须保证业务上允许访问该账号。
+     * </p>
+     *
+     * @param id 账号 ID
+     * @return 账号 DTO，不存在返回 null
+     */
+    @Transactional(readOnly = true)
+    public ScrmAccountDto getAccountInternal(Long id) {
+        if (id == null) {
+            return null;
+        }
+        return accountRepository.findById(id).map(this::toDto).orElse(null);
+    }
+
+    /**
      * 按平台类型与平台账号 UID 查询账号
      *
      * @param platformType       平台类型
