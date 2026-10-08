@@ -117,6 +117,10 @@ scrm:
   ai:
     enabled: ${SCRM_AI_ENABLED:false}
     base-url: ${SCRM_AI_BASE_URL:http://localhost:14000}
+    # 对话补全接口路径: 默认 ai-server 专有路径; 对接 OpenAI 兼容服务 (如 NAS LiteLLM) 时填 /v1/chat/completions
+    chat-path: ${SCRM_AI_CHAT_PATH:/v1/ai/chat/completions}
+    # API 密钥: 非空时以 Authorization: Bearer 注入 (OpenAI 兼容服务鉴权用), 默认空不鉴权
+    api-key: ${SCRM_AI_API_KEY:}
     model: ${SCRM_AI_MODEL:gpt-4o-mini}
     temperature: ${SCRM_AI_TEMPERATURE:0.7}
     max-tokens: ${SCRM_AI_MAX_TOKENS:500}

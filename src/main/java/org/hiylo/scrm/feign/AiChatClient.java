@@ -42,8 +42,8 @@ public class AiChatClient {
     /** 降级结束原因 */
     private static final String FALLBACK_FINISH_REASON = "fallback";
 
-    /** AI 对话补全接口路径 */
-    private static final String CHAT_COMPLETIONS_PATH = "/v1/ai/chat/completions";
+    /** AI 对话补全接口路径 (可配置, 默认 ai-server 专有路径; 对接 OpenAI 兼容服务时覆盖为 /v1/chat/completions) */
+    private static final String DEFAULT_CHAT_COMPLETIONS_PATH = "/v1/ai/chat/completions";
 
     /** RestClient 实例, base-url 由配置注入 */
     private final RestClient restClient;
@@ -51,18 +51,29 @@ public class AiChatClient {
     /** AI 能力总开关, false 时直接返回降级响应 */
     private final boolean enabled;
 
+    /** AI 对话补全接口路径 (由 scrm.ai.chat-path 配置, 默认 {@value #DEFAULT_CHAT_COMPLETIONS_PATH}) */
+    private final String chatCompletionsPath;
+
     /**
      * 构造 AI 对话客户端
      *
-     * @param baseUrl AI 服务基础地址
-     * @param enabled AI 能力总开关
+     * @param baseUrl    AI 服务基础地址
+     * @param enabled    AI 能力总开关
+     * @param chatPath   AI 对话补全接口路径 (OpenAI 兼容服务填 /v1/chat/completions)
+     * @param apiKey     API 密钥, 非空时以 {@code Authorization: Bearer} 头注入 (默认空, 不鉴权)
      */
     public AiChatClient(@Value("${scrm.ai.base-url:}") String baseUrl,
-                        @Value("${scrm.ai.enabled:false}") boolean enabled) {
+                        @Value("${scrm.ai.enabled:false}") boolean enabled,
+                        @Value("${scrm.ai.chat-path:" + DEFAULT_CHAT_COMPLETIONS_PATH + "}") String chatPath,
+                        @Value("${scrm.ai.api-key:}") String apiKey) {
         this.enabled = enabled;
+        this.chatCompletionsPath = (chatPath == null || chatPath.isBlank())
+                ? DEFAULT_CHAT_COMPLETIONS_PATH : chatPath;
         this.restClient = RestClient.builder()
                 .baseUrl(baseUrl)
                 .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                .defaultHeader("Authorization",
+                        "Bearer " + (apiKey == null ? "" : apiKey))
                 .build();
     }
 
@@ -81,7 +92,7 @@ public class AiChatClient {
         }
         try {
             return restClient.post()
-                    .uri(CHAT_COMPLETIONS_PATH)
+                    .uri(chatCompletionsPath)
                     .contentType(MediaType.APPLICATION_JSON)
                     .accept(MediaType.APPLICATION_JSON)
                     .body(request)

@@ -39,8 +39,9 @@ public class AiChatRequest {
     @Builder.Default
     private Double temperature = 0.7;
 
-    /** 生成最大 token 数，默认 500 */
+    /** 生成最大 token 数, 默认 500 (OpenAI 协议字段名为 max_tokens) */
     @Builder.Default
+    @com.fasterxml.jackson.annotation.JsonProperty("max_tokens")
     private Integer maxTokens = 500;
 
     /**
