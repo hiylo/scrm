@@ -88,7 +88,8 @@ describe('Conversations 加载态', () => {
     );
 
     const { container } = renderConversations();
-    expect(screen.getByRole('tab', { name: '会话列表' })).toBeInTheDocument();
+    // Tabs 已移除：页面直接渲染左侧会话列表卡片
+    expect(screen.getByText('全部已读')).toBeInTheDocument();
     await waitFor(() => expect(container.querySelector('.ant-spin-spinning')).toBeTruthy());
 
     pending.resolve(page([conversation()], { totalElements: 1 }));
@@ -100,7 +101,7 @@ describe('Conversations 加载态', () => {
     renderConversations();
     await waitFor(() => expect(get).toHaveBeenCalled());
     const url = String(get.mock.calls.find((c) => String(c[0]).startsWith('/scrm/conversations'))?.[0]);
-    expect(url).toContain('/scrm/conversations?page=0&size=10');
+    expect(url).toContain('/scrm/conversations?page=0&size=20');
     expect(url).not.toContain('status=');
   });
 });
@@ -131,7 +132,8 @@ describe('Conversations 列表渲染', () => {
     expect(screen.getByText('进行中')).toBeInTheDocument();
     expect(screen.getByText('已关闭')).toBeInTheDocument();
     expect(screen.getByText('12 条消息')).toBeInTheDocument();
-    expect(screen.getByText('共 2 条')).toBeInTheDocument();
+    // 微信式滚动加载: 已加载全部时显示底部提示 (不再有分页器)
+    expect(screen.getByText('已加载全部 2 个会话')).toBeInTheDocument();
     // 未选中会话时右侧为占位空态
     expect(screen.getByText('请选择会话')).toBeInTheDocument();
     expect(screen.getByText('请选择左侧会话查看消息')).toBeInTheDocument();
@@ -342,8 +344,9 @@ describe('Conversations 未读与 AI 总结', () => {
 
     renderConversations();
     await screen.findByText('张三');
-    // 未读小红点 + 单条标记入口
-    expect(document.querySelector('.ant-badge-dot')).toBeTruthy();
+    // 未读数字角标 + 单条标记入口
+    expect(document.querySelector('.ant-badge-count')).toBeTruthy();
+    expect(screen.getByText('3').closest('.ant-badge')).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: /标记已读/ }));
     await waitFor(() => expect(put).toHaveBeenCalledWith('/scrm/conversations/5001/read'));

@@ -90,3 +90,168 @@ body {
 .msg-bubble .msg-copy-btn:hover {
   opacity: 1;
 }
+
+/* 会话列表选中态: 与侧边菜单选中态保持一致 (实心主题色 + 白字) */
+.conversation-item {
+  transition: background 0.2s;
+}
+
+.conversation-item.active {
+  background: var(--color-primary) !important;
+  border-left: 3px solid var(--color-primary) !important;
+}
+
+.conversation-item.active .ant-list-item-meta-title,
+.conversation-item.active .ant-list-item-meta-description,
+.conversation-item.active .ant-list-item-meta-description *,
+.conversation-item.active .conversation-meta-time,
+.conversation-item.active .conversation-meta-time *,
+.conversation-item.active .ant-avatar {
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, 0.5) !important;
+}
+
+.conversation-item.active .ant-tag {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  border-color: transparent;
+}
+
+.conversation-item.active .conversation-unread-dot {
+  background: #fff;
+}
+
+/* 会话列表头像未读角标: 微信式数字红点 (紧凑、贴头像右上角) */
+.conversation-item .ant-badge-count {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
+  font-size: 11px;
+  line-height: 16px;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1.5px var(--color-bg-container);
+}
+
+/* 会话页布局: 左侧会话列表占满可视高度, 内部滚动 (微信式) */
+.conversations-row .ant-col {
+  display: flex;
+}
+
+.conversations-row .ant-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.conversations-row .ant-card-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.conversation-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ============================================================
+   全局界面优化批次（2026-10-08，CSS-only，不触碰 JSX）
+   ============================================================ */
+
+/* 卡片层次: 列表/表单页统一轻微阴影, hover 提升 */
+.ant-card {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  border-radius: 10px;
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+}
+.ant-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+/* 表格 hover 行高亮 (主题色浅底) */
+.ant-table-tbody > tr:hover > td {
+  background: var(--color-primary-bg) !important;
+}
+.ant-table-thead > tr > th {
+  background: var(--color-fill-tertiary) !important;
+}
+
+/* 统一圆角: 散落的 4px 提升到 6px, 与 AntD token(8) 协调 */
+.ant-tag,
+.ant-pagination-item,
+.ant-btn,
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-select-selector {
+  border-radius: 6px !important;
+}
+
+/* 暗色模式滚动条 (默认黑色看不清) */
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
+
+/* 全局键盘焦点可见性 */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+/* 统计卡片数字强调 */
+.ant-statistic-content-value {
+  font-size: 22px !important;
+  font-weight: 600;
+}
+
+/* 空态说明更柔和 */
+.ant-empty-description {
+  color: var(--color-text-tertiary);
+}
+
+/* ============================================================
+   内部滚动统一（聊天 / AI 助手 / 列表页，2026-10-08）
+   ============================================================ */
+
+/* AI 助手页: 左右两栏占满可视高度, 内部滚动 */
+.ai-assistant-page {
+  height: calc(100vh - 100px);
+  display: flex;
+  flex-direction: column;
+}
+.ai-assistant-page .ant-row {
+  flex: 1;
+  min-height: 0;
+}
+.ai-assistant-page .ant-col {
+  min-height: 0;
+}
+.ai-assistant-page .ant-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.ai-assistant-page .ant-card-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 列表页表格: 数据区内部滚动, 页面骨架不整体滚动 */
+.ant-table-wrapper {
+  max-height: calc(100vh - 220px);
+}
+.ant-table-wrapper .ant-table-content {
+  overflow: auto !important;
+  max-height: calc(100vh - 260px);
+}

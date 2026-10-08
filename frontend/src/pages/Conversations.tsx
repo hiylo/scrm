@@ -161,7 +161,7 @@ export default function Conversations() {
   // 批量标记已读 loading 状态
   const [markingAllRead, setMarkingAllRead] = useState(false);
   const [page, setPage] = useState(0);
-  const [size, setSize] = useState(10);
+  const [size, setSize] = useState(20);
   const [total, setTotal] = useState(0);
   const [keyword, setKeyword] = useState('');
   const debouncedKeyword = useDebounce(keyword, 300);
@@ -849,7 +849,11 @@ export default function Conversations() {
                     >
                       <List.Item.Meta
                         avatar={
-                          <Badge dot={hasUnread} offset={[-4, 4]} status="processing">
+                          <Badge
+                            count={hasUnread ? item.unreadCount ?? 0 : 0}
+                            size="small"
+                            offset={[-2, 2]}
+                          >
                             <Avatar src={item.customerAvatarUrl}>
                               {item.customerNickname?.[0]?.toUpperCase()}
                             </Avatar>
@@ -922,18 +926,20 @@ export default function Conversations() {
             )}
           </Spin>
           <div style={{ padding: 12, textAlign: 'center' }}>
-            <Pagination
-              size="small"
-              current={page + 1}
-              pageSize={size}
-              total={total}
-              showSizeChanger
-              showTotal={(t) => `共 ${t} 条`}
-              onChange={(p, s) => {
-                setPage(p - 1);
-                setSize(s);
-              }}
-            />
+            {total > 0 && conversations.length >= total ? (
+              <span style={{ color: 'var(--color-text-tertiary)', fontSize: 12 }}>
+                已加载全部 {conversations.length} 个会话
+              </span>
+            ) : (
+              <Button
+                type="link"
+                size="small"
+                loading={conversationsLoading}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                加载更多
+              </Button>
+            )}
           </div>
         </Card>
       </Col>

@@ -131,20 +131,19 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    group: '会话管理',
+    group: '引流获客',
+    items: [
+      { key: '/channel-codes', icon: '📱', label: '渠道活码', permission: 'scrm_channel_code:read', roles: ['admin', 'manager', 'sales'] },
+      { key: '/welcome-messages', icon: '👋', label: '欢迎语', permission: 'scrm_welcome_message:read', roles: ['admin', 'manager', 'sales'] },
+      { key: '/auto-tags', icon: '🏷️', label: '自动打标', permission: 'scrm_auto_tag_rule:read', roles: ['admin', 'manager', 'sales'] },
+    ],
+  },
+  {
+    group: '会话与通讯',
     items: [
       { key: '/conversations', icon: '💬', label: '会话列表', permission: 'scrm_conversation:read', roles: ['admin', 'manager', 'sales', 'viewer'] },
-    ],
-  },
-  {
-    group: '群管理',
-    items: [
+      { key: '/ai-assistant', icon: '🤖', label: 'AI 助手', permission: 'scrm_ai_assistant:read', roles: ['admin', 'manager', 'sales'] },
       { key: '/groups', icon: '👪', label: '客户群', permission: 'scrm_wework:read', roles: ['admin', 'manager', 'sales'] },
-    ],
-  },
-  {
-    group: '组织架构',
-    items: [
       { key: '/wework-departments', icon: '🏢', label: '部门通讯录', permission: 'scrm_wework:read', roles: ['admin', 'manager', 'sales'] },
     ],
   },
@@ -157,10 +156,123 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    group: '营销任务',
+    group: '营销触达',
     items: [
       { key: '/campaigns', icon: '🚀', label: '任务管理', permission: 'scrm_campaign:read', roles: ['admin', 'manager', 'sales', 'viewer'] },
+      { key: '/mass-sends', icon: '📣', label: '群发任务', permission: 'scrm_mass_send:read', roles: ['admin', 'manager', 'sales'] },
+      { key: '/group-broadcast', icon: '👥', label: '群群发', permission: 'scrm_community_message:read', roles: ['admin', 'manager', 'sales'] },
       { key: '/message-templates', icon: '📝', label: '消息模板', permission: 'scrm_message_template:read', roles: ['admin', 'manager', 'sales'] },
+    ],
+  },
+  {
+    group: '沟通效率',
+    items: [
+      { key: '/quick-replies', icon: '⚡', label: '快捷回复', permission: 'scrm_quick_reply:read', roles: ['admin', 'manager', 'sales'] },
+      { key: '/speeches', icon: '🗣️', label: '话术库', permission: 'scrm_speech:read', roles: ['admin', 'manager', 'sales'] },
+      { key: '/assets', icon: '🗂️', label: '素材库', permission: 'scrm_asset:read', roles: ['admin', 'manager', 'sales'] },
+    ],
+  },
+  {
+    group: '销售转化',
+    items: [
+      { key: '/public-sea', icon: '🌊', label: '公海客户', permission: 'scrm_public_sea:read', roles: ['admin', 'manager', 'sales'] },
+      { key: '/opportunities', icon: '💼', label: '商机管理', permission: 'scrm_opportunity:read', roles: ['admin', 'manager', 'sales'] },
+      { key: '/tickets', icon: '🎫', label: '客户工单', permission: 'scrm_ticket:read', roles: ['admin', 'manager', 'sales'] },
+    ],
+  },
+  {
+    group: '客户运营',
+    items: [
+      { key: '/membership', icon: '👑', label: '会员体系', permission: 'scrm_membership:read', roles: ['admin', 'manager', 'sales'] },
+      { key: '/points', icon: '⭐', label: '积分管理', permission: 'scrm_points:read', roles: ['admin', 'manager', 'sales'] },
+      { key: '/coupons', icon: '🎟️', label: '优惠券', permission: 'scrm_coupon:read', roles: ['admin', 'manager', 'sales'] },
+      { key: '/surveys', icon: '📊', label: 'NPS 问卷', permission: 'scrm_survey:read', roles: ['admin', 'manager', 'sales'] },
+    ],
+  },
+  {
+    group: '内容与知识',
+    items: [
+      { key: '/knowledge-base', icon: '📚', label: '知识库', permission: 'scrm_knowledge_base:read', roles: ['admin', 'manager', 'sales'] },
+      { key: '/content-marketing', icon: '📣', label: '内容营销', permission: 'scrm_content:read', roles: ['admin', 'manager', 'sales'] },
+      { key: '/quality-inspections', icon: '🛡️', label: '会话质检', permission: 'scrm_quality_inspection:read', roles: ['admin', 'manager'] },
+    ],
+  },
+  {
+    group: '数据分析',
+    items: [
+      { key: '/rfm', icon: '📈', label: 'RFM 分析', permission: 'scrm_rfm:read', roles: ['admin', 'manager'] },
+      { key: '/ltv', icon: '💰', label: 'LTV 预测', permission: 'scrm_ltv:read', roles: ['admin', 'manager'] },
+      { key: '/attribution', icon: '🎯', label: '归因分析', permission: 'scrm_attribution:read', roles: ['admin', 'manager'] },
+    ],
+  },
+  {
+    group: '风控合规',
+    items: [
+      { key: '/blacklist', icon: '🚫', label: '风险黑名单', permission: 'scrm_blacklist:read', roles: ['admin', 'manager'] },
+      { key: '/risk-rules', icon: '⚠️', label: '风控规则', permission: 'scrm_risk_rule:read', roles: ['admin', 'manager'] },
+      { key: '/risk-signals', icon: '📡', label: '风险信号', permission: 'scrm_risk_signal:read', roles: ['admin', 'manager'] },
+    ],
+  },
+  {
+    group: '商务闭环',
+    items: [
+      { key: '/contracts', icon: '📄', label: '合同管理', permission: 'scrm_contract:read', roles: ['admin', 'manager'] },
+      { key: '/orders', icon: '🧾', label: '产品订单', permission: 'scrm_order:read', roles: ['admin', 'manager'] },
+      { key: '/commissions', icon: '💵', label: '佣金结算', permission: 'scrm_commission:read', roles: ['admin', 'manager'] },
+      { key: '/invoices', icon: '🧮', label: '发票管理', permission: 'scrm_invoice:read', roles: ['admin', 'manager'] },
+    ],
+  },
+  {
+    group: '系统集成',
+    items: [
+      { key: '/lead-scoring', icon: '🎯', label: '线索打分', permission: 'scrm_lead_scoring:read', roles: ['admin', 'manager'] },
+      { key: '/notifications', icon: '🔔', label: '通知中心', permission: 'scrm_notification:read', roles: ['admin', 'manager'] },
+      { key: '/webhooks', icon: '🔗', label: 'Webhook', permission: 'scrm_webhook:read', roles: ['admin'] },
+    ],
+  },
+  {
+    group: '系统配置',
+    items: [
+      { key: '/data-dictionaries', icon: '📖', label: '数据字典', permission: 'scrm_data_dictionary:read', roles: ['admin'] },
+      { key: '/data-transfers', icon: '🔄', label: '导入导出', permission: 'scrm_data_transfer:read', roles: ['admin'] },
+      { key: '/customer-journeys', icon: '🧭', label: '客户旅程', permission: 'scrm_customer_journey:read', roles: ['admin', 'manager'] },
+    ],
+  },
+  {
+    group: '运营协同',
+    items: [
+      { key: '/marketing-calendar', icon: '📅', label: '营销日历', permission: 'scrm_marketing_calendar:read', roles: ['admin', 'manager'] },
+      { key: '/approvals', icon: '✅', label: '审批中心', permission: 'scrm_approval:read', roles: ['admin', 'manager'] },
+      { key: '/reports', icon: '📊', label: '报表中心', permission: 'scrm_report:read', roles: ['admin', 'manager'] },
+    ],
+  },
+  {
+    group: '客户运营执行',
+    items: [
+      { key: '/customer-care', icon: '💝', label: '客户关怀', permission: 'scrm_customer_care:read', roles: ['admin', 'manager', 'sales'] },
+      { key: '/visits', icon: '🤝', label: '客户拜访', permission: 'scrm_visit:read', roles: ['admin', 'manager', 'sales'] },
+      { key: '/follow-ups', icon: '📌', label: '客户跟进', permission: 'scrm_follow_up:read', roles: ['admin', 'manager', 'sales'] },
+      { key: '/work-orders', icon: '🔧', label: '工单管理', permission: 'scrm_work_order:read', roles: ['admin', 'manager'] },
+      { key: '/interaction-calendar', icon: '🗓️', label: '互动日历', permission: 'scrm_interaction_calendar:read', roles: ['admin', 'manager', 'sales'] },
+    ],
+  },
+  {
+    group: '情报与预算',
+    items: [
+      { key: '/competitors', icon: '🕵️', label: '竞品监测', permission: 'scrm_competitor:read', roles: ['admin', 'manager'] },
+      { key: '/budgets', icon: '💰', label: '预算管理', permission: 'scrm_budget:read', roles: ['admin', 'manager'] },
+    ],
+  },
+  {
+    group: '系统配置',
+    items: [
+      { key: '/data-dictionaries', icon: '📖', label: '数据字典', permission: 'scrm_data_dictionary:read', roles: ['admin'] },
+      { key: '/data-transfers', icon: '🔄', label: '导入导出', permission: 'scrm_data_transfer:read', roles: ['admin'] },
+      { key: '/customer-journeys', icon: '🧭', label: '客户旅程', permission: 'scrm_customer_journey:read', roles: ['admin', 'manager'] },
+      { key: '/segments', icon: '🎯', label: '客户分群', permission: 'scrm_segment:read', roles: ['admin', 'manager'] },
+      { key: '/task-scheduler', icon: '⏰', label: '任务调度', permission: 'scrm_task_scheduler:read', roles: ['admin'] },
+      { key: '/open-api-apps', icon: '🔐', label: 'OpenAPI', permission: 'scrm_open_api:read', roles: ['admin'] },
+      { key: '/message-template-center', icon: '🗂️', label: '模板中心', permission: 'scrm_message_template_center:read', roles: ['admin', 'manager', 'sales'] },
     ],
   },
   {
@@ -636,6 +748,8 @@ export default function Layout() {
             {visibleItems.map((item) => {
               const isActive = location.pathname === item.key ||
                 (item.key !== '/' && location.pathname.startsWith(item.key + '/'));
+              // 会话列表未读数 (微信式尾部红色胶囊)
+              const showUnread = item.key === '/conversations' && totalUnread > 0;
               const btn = (
                 <button
                   key={item.key}
@@ -645,18 +759,20 @@ export default function Layout() {
                 >
                   <span className="nav-icon">{item.icon}</span>
                   {!compact && <span className="nav-label">{item.label}</span>}
+                  {!compact && showUnread && (
+                    <span className="nav-count">{totalUnread > 99 ? '99+' : totalUnread}</span>
+                  )}
                 </button>
-              );
-              // 会话列表项: 未读数 > 0 时用 Badge 包裹按钮显示未读数
-              const btnWithBadge = item.key === '/conversations' && totalUnread > 0 ? (
-                <Badge count={totalUnread} size="small" offset={[6, -2]}>
-                  {btn}
-                </Badge>
-              ) : (
-                btn
               );
               // 桌面端折叠状态下, 用 Popover 显示菜单文字 (不改变 collapsed 状态)
               if (compact) {
+                const compactBtn = showUnread ? (
+                  <Badge count={totalUnread} size="small" offset={[2, -2]} overflowCount={99}>
+                    {btn}
+                  </Badge>
+                ) : (
+                  btn
+                );
                 return (
                   <Popover
                     key={item.key}
@@ -665,11 +781,11 @@ export default function Layout() {
                     trigger="hover"
                     mouseEnterDelay={0.2}
                   >
-                    {btnWithBadge}
+                    {compactBtn}
                   </Popover>
                 );
               }
-              return btnWithBadge;
+              return btn;
             })}
           </div>
           );
