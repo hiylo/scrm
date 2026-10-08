@@ -1,0 +1,75 @@
+/* ============================================================
+   UX 统一批次（2026-10-08 全面审计后）：空态 / 表格密度 /
+   卡片标题 / 统计卡 / 弹窗表单 / 分页
+   ============================================================ */
+
+/* 空态统一: 图标柔和 + 居中留白 */
+.ant-empty {
+  margin: 40px auto;
+}
+.ant-empty .ant-empty-image {
+  height: 80px;
+}
+.ant-empty .ant-empty-image svg {
+  opacity: 0.75;
+}
+.ant-empty-description {
+  color: var(--color-text-tertiary);
+}
+
+/* 表格密度统一 */
+.ant-table-thead > tr > th {
+  padding: 12px 12px !important;
+}
+.ant-table-tbody > tr > td {
+  padding: 11px 12px !important;
+}
+.ant-table-wrapper {
+  margin-bottom: 8px;
+}
+
+/* 卡片标题行统一高度/间距 */
+.ant-card .ant-card-head {
+  min-height: 48px;
+  padding: 0 16px;
+}
+.ant-card .ant-card-head-title {
+  padding: 12px 0;
+}
+.ant-card .ant-card-extra {
+  padding: 11px 0;
+}
+
+/* 统计卡统一（Dashboard / 各业务统计） */
+.ant-statistic .ant-statistic-title {
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.ant-statistic .ant-statistic-content {
+  font-weight: 600;
+}
+
+/* 弹窗（新建/编辑）内表单间距 */
+.ant-modal-body {
+  padding-top: 12px;
+}
+.ant-modal-body .ant-form-item {
+  margin-bottom: 18px;
+}
+
+/* 确认弹窗文案节奏 */
+.ant-modal-confirm .ant-modal-confirm-title {
+  font-weight: 600;
+}
+
+/* 分页统一间距 */
+.ant-pagination {
+  margin-top: 16px;
+}
+
+/* 列表页搜索栏与操作按钮间距 */
+.ant-card-extra .ant-input-affix-wrapper,
+.ant-card-extra .ant-select,
+.ant-card-extra .ant-btn {
+  margin-left: 8px;
+}
