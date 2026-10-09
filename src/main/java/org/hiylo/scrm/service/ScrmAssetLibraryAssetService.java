@@ -24,6 +24,9 @@ import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.exception.ScrmExceptionConstants;
 import org.hiylo.scrm.repository.ScrmAssetRepository;
 import org.hiylo.scrm.repository.ScrmAssetUsageRepository;
+import org.hiylo.scrm.storage.ObjectStorage;
+import org.hiylo.scrm.storage.StorageException;
+import org.hiylo.scrm.storage.StorageProperties;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -32,6 +35,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.InputStream;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -70,6 +74,9 @@ public class ScrmAssetLibraryAssetService {
 
     /** 默认存储类型 */
     private static final String DEFAULT_STORAGE_TYPE = "LOCAL";
+
+    /** 对象存储素材命名空间前缀 (scrm/asset/{yyyyMM}/...) */
+    private static final String ASSET_OBJECT_KEY_PREFIX = "scrm/asset/";
 
     /** 默认素材状态 */
     private static final String DEFAULT_ASSET_STATUS = "PENDING";
@@ -119,6 +126,12 @@ public class ScrmAssetLibraryAssetService {
     /** 素材分类子域服务 (分类查询与统计重算) */
     private final ScrmAssetLibraryCategoryService categoryService;
 
+    /** 对象存储实现 (素材真实文件上传, 未配置 endpoint 时为空实现) */
+    private final ObjectStorage objectStorage;
+
+    /** 对象存储配置 (bucket / provider) */
+    private final StorageProperties storageProperties;
+
     /**
      * 上传素材 (创建记录→生成编码→初始化统计)。
      * <p>assetCode 由服务端自动生成 (ASSET + 时间戳 + 随机数), 保证唯一;
@@ -136,6 +149,82 @@ public class ScrmAssetLibraryAssetService {
         if (uploadDto.getAssetType() != null && !VALID_ASSET_TYPES.contains(uploadDto.getAssetType())) {
             throw ScrmException.badRequest("素材类型非法: " + uploadDto.getAssetType());
         }
+        ScrmAssetEntity entity = createAssetEntity(uploadDto, uploadDto.getFileUrl(), DEFAULT_STORAGE_TYPE);
+        entity = assetRepository.save(entity);
+        // 分类素材数 +1
+        if (entity.getCategoryId() != null) {
+            categoryService.updateCategoryStats(entity.getCategoryId());
+        }
+        log.info("上传素材: id={}, assetCode={}, assetType={}",
+                entity.getId(), entity.getAssetCode(), entity.getAssetType());
+        return entity;
+    }
+
+    /**
+     * 上传素材文件 (真实文件, 写入对象存储)。
+     * <p>
+     * 将上传的文件写入对象存储素材命名空间 {@code scrm/asset/{yyyyMM}/{uuid}_{fileName}},
+     * 素材记录落 {@code fileUrl=objectKey}、{@code storagePath}、{@code storageBucket}、
+     * {@code storageType=OSS}。对象存储未配置时抛 400 明确提示 (不允许静默退化为本地)。
+     * </p>
+     *
+     * @param inputStream 文件输入流 (由调用方负责关闭)
+     * @param fileName    原始文件名 (用于命名与扩展名提取)
+     * @param size        文件大小 (字节)
+     * @param contentType MIME 类型 (可空)
+     * @param uploadDto   素材元数据 (名称/类型/分类/标签/描述)
+     * @return 创建后的素材
+     * @throws ScrmException 参数非法 / 对象存储未配置 / 上传失败
+     */
+    @Transactional
+    public ScrmAssetEntity uploadAssetFile(InputStream inputStream, String fileName, long size,
+                                           String contentType, ScrmAssetUploadDto uploadDto)
+            throws ScrmException {
+        if (inputStream == null) {
+            throw ScrmException.badRequest("素材文件输入流不能为空");
+        }
+        if (!storageProperties.isEndpointConfigured()) {
+            throw ScrmException.badRequest("对象存储未配置 (scrm.storage.endpoint 为空), 无法上传素材文件");
+        }
+        String objectKey = buildAssetObjectKey(fileName);
+        String safeContentType = sanitizeAssetContentType(contentType);
+        try {
+            objectStorage.upload(storageProperties.getBucket(), objectKey, inputStream, size, safeContentType);
+        } catch (StorageException e) {
+            log.error("素材文件上传对象存储失败: objectKey={}, err={}", objectKey, e.getMessage(), e);
+            throw new ScrmException(ScrmExceptionConstants.SCRM_MEDIA_UPLOAD_FAILED,
+                    "素材文件上传失败: " + e.getMessage(), e);
+        }
+        ScrmAssetEntity entity = createAssetEntity(uploadDto, objectKey, "OSS");
+        entity.setStoragePath(objectKey);
+        entity.setStorageBucket(storageProperties.getBucket());
+        entity = assetRepository.save(entity);
+        if (entity.getCategoryId() != null) {
+            categoryService.updateCategoryStats(entity.getCategoryId());
+        }
+        log.info("上传素材文件: id={}, assetCode={}, assetType={}, objectKey={}",
+                entity.getId(), entity.getAssetCode(), entity.getAssetType(), objectKey);
+        return entity;
+    }
+
+    /**
+     * 构建素材实体并初始化默认字段。
+     * <p>供 JSON 上传与文件上传复用, 保存动作由调用方执行。</p>
+     *
+     * @param uploadDto   上传参数
+     * @param fileUrl     素材文件定位 (JSON 上传为外部 URL, 文件上传为对象存储 key)
+     * @param storageType 存储类型 (LOCAL / OSS)
+     * @return 未持久化的素材实体
+     * @throws ScrmException 参数非法 / 分类不存在
+     */
+    private ScrmAssetEntity createAssetEntity(ScrmAssetUploadDto uploadDto, String fileUrl, String storageType)
+            throws ScrmException {
+        if (uploadDto == null) {
+            throw ScrmException.badRequest("上传参数不能为空");
+        }
+        if (uploadDto.getAssetType() != null && !VALID_ASSET_TYPES.contains(uploadDto.getAssetType())) {
+            throw ScrmException.badRequest("素材类型非法: " + uploadDto.getAssetType());
+        }
         ScrmAssetEntity entity = new ScrmAssetEntity();
         entity.setAssetName(uploadDto.getAssetName());
         // 生成编码 (创建记录→生成编码)
@@ -147,10 +236,10 @@ public class ScrmAssetLibraryAssetService {
         }
         entity.setAssetType(uploadDto.getAssetType());
         entity.setMimeType(uploadDto.getMimeType());
-        entity.setFileExtension(extractExtension(uploadDto.getFileUrl(), uploadDto.getMimeType()));
+        entity.setFileExtension(extractExtension(fileUrl, uploadDto.getMimeType()));
         entity.setFileSizeBytes(uploadDto.getFileSizeBytes() != null ? uploadDto.getFileSizeBytes() : 0L);
-        entity.setFileUrl(uploadDto.getFileUrl());
-        entity.setStorageType(DEFAULT_STORAGE_TYPE);
+        entity.setFileUrl(fileUrl);
+        entity.setStorageType(storageType);
         entity.setDescription(uploadDto.getDescription());
         entity.setTags(uploadDto.getTags());
         // 初始化统计
@@ -169,15 +258,63 @@ public class ScrmAssetLibraryAssetService {
                 : UserContext.getUserId());
         entity.setUploadedAt(LocalDateTime.now());
         entity.setIsExpired(Boolean.FALSE);
-        entity = assetRepository.save(entity);
-        // 分类素材数 +1
-        if (entity.getCategoryId() != null) {
-            categoryService.updateCategoryStats(entity.getCategoryId());
-        }
-        log.info("上传素材: id={}, assetCode={}, assetType={}",
-                entity.getId(), entity.getAssetCode(), entity.getAssetType());
         return entity;
     }
+
+    /**
+     * 构建素材对象存储 key: scrm/asset/{yyyyMM}/{uuid}_{净化文件名}
+     */
+    private String buildAssetObjectKey(String fileName) {
+        String monthPart = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMM"));
+        String uuid = java.util.UUID.randomUUID().toString().replace("-", "");
+        return ASSET_OBJECT_KEY_PREFIX + monthPart + "/" + uuid + "_" + sanitizeAssetFileName(fileName);
+    }
+
+    /**
+     * 净化素材文件名 (仅取 basename, 去除路径穿越与响应头注入字符)
+     */
+    private static String sanitizeAssetFileName(String fileName) {
+        if (fileName == null || fileName.isBlank()) {
+            return "asset";
+        }
+        String name = fileName.replace('\\', '/');
+        int slash = name.lastIndexOf('/');
+        if (slash >= 0) {
+            name = name.substring(slash + 1);
+        }
+        name = name.replace("..", "")
+                .replace("\"", "")
+                .replace("\\", "")
+                .replace("\r", "")
+                .replace("\n", "")
+                .trim();
+        return name.isEmpty() ? "asset" : name;
+    }
+
+    /**
+     * 净化素材上传 Content-Type (与会话媒体同策略: 图片/音视频/PDF/压缩包/Office 白名单,
+     * 非法类型降级 octet-stream 防 XSS)
+     */
+    private static String sanitizeAssetContentType(String contentType) {
+        if (contentType == null || contentType.isBlank()) {
+            return "application/octet-stream";
+        }
+        String base = contentType.trim().toLowerCase().split(";")[0].trim();
+        if (base.startsWith("image/") || base.startsWith("audio/") || base.startsWith("video/")
+                || "application/pdf".equals(base) || "application/zip".equals(base)
+                || "application/gzip".equals(base) || "application/x-tar".equals(base)
+                || "application/msword".equals(base)
+                || "application/vnd.openxmlformats-officedocument.wordprocessingml.document".equals(base)
+                || "application/vnd.ms-excel".equals(base)
+                || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".equals(base)
+                || "application/vnd.ms-powerpoint".equals(base)
+                || "application/vnd.openxmlformats-officedocument.presentationml.presentation".equals(base)
+                || "application/octet-stream".equals(base)) {
+            return base;
+        }
+        return "application/octet-stream";
+    }
+
 
     /**
      * 更新素材 (字段非空才覆盖)。

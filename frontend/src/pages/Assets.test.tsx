@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Assets from './Assets';
-import { apiClient } from '../api/client';
+import { apiClient, apiClientInstance } from '../api/client';
 import { renderWithProviders } from '../test/render';
 import { cn } from '../test/fixtures';
 
@@ -31,6 +31,7 @@ vi.mock('../api/client', () => ({
 
 const get = vi.mocked(apiClient.get);
 const post = vi.mocked(apiClient.post);
+const instancePost = vi.mocked(apiClientInstance.post);
 
 /** 分页响应 */
 function page<T>(rows: T[], total = rows.length) {
@@ -100,6 +101,42 @@ describe('Assets', () => {
     await userEvent.type(screen.getByLabelText('文件 URL'), 'https://cdn.example.com/b.png');
     fireEvent.click(screen.getByRole('button', { name: cn('确定') }));
     await waitFor(() => expect(post).toHaveBeenCalledWith('/scrm/assets/upload', expect.objectContaining({ assetName: '618 主图', fileUrl: 'https://cdn.example.com/b.png' })));
+  });
+
+  it('上传素材(文件): 选择文件后 multipart POST /upload-file 并刷新列表', async () => {
+    get.mockImplementation((url: string) => {
+      if (url.includes('/categories/tree')) return Promise.resolve(categoryTree());
+      if (url.startsWith('/scrm/assets/list')) return Promise.resolve(page([]));
+      return Promise.resolve(page([]));
+    });
+    instancePost.mockResolvedValue(asset('2'));
+    const file = new File(['img-bytes'], 'hero.png', { type: 'image/png' });
+
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: cn('上传素材') }));
+    await waitFor(() => expect(screen.getByLabelText('素材名称')).toBeInTheDocument());
+    await userEvent.type(screen.getByLabelText('素材名称'), '618 主图');
+
+    // 触发上传文件选择: 通过 Upload 组件的 beforeUpload (input file change)
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    // jsdom 不支持 fireEvent.change 直接赋 File 列表, 用 Object.defineProperty + change
+    Object.defineProperty(fileInput, 'files', { value: [file], configurable: true });
+    fireEvent.change(fileInput);
+
+    fireEvent.click(screen.getByRole('button', { name: cn('确定') }));
+    await waitFor(() => expect(instancePost).toHaveBeenCalledWith(
+      '/scrm/assets/upload-file',
+      expect.any(FormData),
+      expect.objectContaining({ headers: { 'Content-Type': 'multipart/form-data' } }),
+    ));
+    // 校验 FormData 内容
+    const called = instancePost.mock.calls.find((c) => c[0] === '/scrm/assets/upload-file');
+    const fd = called?.[1] as FormData | undefined;
+    expect(fd?.get('assetName')).toBe('618 主图');
+    expect(fd?.get('assetType')).toBe('IMAGE');
+    expect(fd?.get('file')).toBe(file);
+    expect(instancePost.mock.calls.length).toBe(1);
   });
 
   it('发布素材: 调用 publish', async () => {

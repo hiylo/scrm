@@ -15,6 +15,7 @@ import org.hiylo.scrm.dto.ScrmAssetDto;
 import org.hiylo.scrm.dto.ScrmAssetReviewDto;
 import org.hiylo.scrm.dto.ScrmAssetSearchDto;
 import org.hiylo.scrm.dto.ScrmAssetUploadDto;
+import java.io.InputStream;
 import org.hiylo.scrm.dto.ScrmAssetUsageDto;
 import org.hiylo.scrm.entity.ScrmAssetCategoryEntity;
 import org.hiylo.scrm.entity.ScrmAssetEntity;
@@ -206,6 +207,23 @@ public class ScrmAssetLibraryService {
      */
     public ScrmAssetEntity uploadAsset(ScrmAssetUploadDto uploadDto) throws ScrmException {
         return assetService.uploadAsset(uploadDto);
+    }
+
+    /**
+     * 上传素材文件 (真实文件写入对象存储)。
+     *
+     * @param inputStream 文件输入流
+     * @param fileName    原始文件名
+     * @param size        文件大小 (字节)
+     * @param contentType MIME 类型
+     * @param uploadDto   素材元数据
+     * @return 创建后的素材
+     * @throws ScrmException 参数非法 / 对象存储未配置 / 上传失败
+     */
+    public ScrmAssetEntity uploadAssetFile(InputStream inputStream, String fileName, long size,
+                                           String contentType, ScrmAssetUploadDto uploadDto)
+            throws ScrmException {
+        return assetService.uploadAssetFile(inputStream, fileName, size, contentType, uploadDto);
     }
 
     /**

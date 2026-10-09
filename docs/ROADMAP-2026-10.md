@@ -80,7 +80,12 @@
   - 前端 3 页：`QuickReplies.tsx`（分类侧栏 + 回复列表 + 快捷码 + 使用次数）、
     `Speeches.tsx`（分类 + 话术 CRUD + 点赞/上下架）、`Assets.tsx`（分类树 + 素材 CRUD +
     上传/发布/归档 + 审核状态 + 文件大小格式化）。
-  - 验证：前端 299 用例（新增 9）+ `tsc --noEmit` + lint（新文件 0 warning）；后端上下文装配全绿。
+  - 素材真实文件上传（MinIO，2026-10-09 补充）：新增 `POST /scrm/assets/upload-file`（multipart），
+    文件写入对象存储素材命名空间 `scrm/asset/{yyyyMM}/{uuid}_{name}`，素材落
+    `fileUrl=objectKey` + `storagePath`/`storageBucket`/`storageType=OSS`；复用
+    `ObjectStorage`（MinIO/OSS 双实现），路径穿越净化 + MIME 白名单降级防 XSS，
+    未配置 endpoint 抛 400（不退化）。前端上传弹窗支持选文件（multipart）或填 URL（JSON）二选一。
+  - 验证：后端 1680 用例（+5 上传路径）+ 前端 451 用例（+1 文件上传）+ `tsc 0 错误` + lint 0 error 全绿。
 
 ### P2 —— 完整度
 

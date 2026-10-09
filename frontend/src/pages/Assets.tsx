@@ -24,17 +24,19 @@ import {
   Tag,
   Tree,
   Typography,
+  Upload,
 } from 'antd';
-import type { TreeDataNode } from 'antd';
+import type { TreeDataNode, UploadFile } from 'antd';
 import {
   PlusOutlined,
   ReloadOutlined,
   FolderAddOutlined,
   SendOutlined,
+  UploadOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { apiClient } from '../api/client';
+import { apiClient, apiClientInstance } from '../api/client';
 
 const { Paragraph } = Typography;
 
@@ -146,6 +148,7 @@ export default function Assets() {
   const [editing, setEditing] = useState<ScrmAsset | null>(null);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [form] = Form.useForm();
 
   /** 加载分类树 */
@@ -205,10 +208,11 @@ export default function Assets() {
     setEditing(null);
     form.resetFields();
     form.setFieldsValue({ assetType: 'IMAGE', categoryId });
+    setSelectedFile(null);
     setOpen(true);
   };
 
-  /** 提交上传 */
+  /** 提交上传: 已选文件 → multipart /upload-file; 否则 JSON 上传外部 URL */
   const handleSubmit = async () => {
     const values = await form.validateFields();
     setSaving(true);
@@ -216,6 +220,19 @@ export default function Assets() {
       if (editing) {
         await apiClient.put(`/scrm/assets/${editing.id}`, values);
         message.success('素材已更新');
+      } else if (selectedFile) {
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        formData.append('assetName', values.assetName);
+        formData.append('assetType', values.assetType);
+        if (values.categoryId) formData.append('categoryId', values.categoryId);
+        if (values.tags) formData.append('tags', values.tags);
+        if (values.description) formData.append('description', values.description);
+        await apiClientInstance.post('/scrm/assets/upload-file', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: 120000,
+        });
+        message.success('素材已上传');
       } else {
         await apiClient.post('/scrm/assets/upload', values);
         message.success('素材已上传');
@@ -384,7 +401,21 @@ export default function Assets() {
           <Form.Item name="categoryId" label="分类">
             <Select placeholder="选择分类" allowClear options={categories.map(c => ({ value: c.id, label: c.categoryName }))} />
           </Form.Item>
-          <Form.Item name="fileUrl" label="文件 URL" rules={[{ required: true, message: '请输入文件 URL' }]}>
+          <Form.Item label="上传文件" help="选择文件将上传至对象存储 (MinIO), 与文件 URL 二选一">
+            <Upload
+              maxCount={1}
+              accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip"
+              beforeUpload={(file) => {
+                setSelectedFile(file);
+                return false;
+              }}
+              onRemove={() => setSelectedFile(null)}
+              fileList={selectedFile ? [{ uid: '-1', name: selectedFile.name } as UploadFile] : []}
+            >
+              <Button icon={<UploadOutlined />}>选择文件</Button>
+            </Upload>
+          </Form.Item>
+          <Form.Item name="fileUrl" label="文件 URL" rules={[{ required: !selectedFile, message: '请上传文件或输入文件 URL' }]}>
             <Input placeholder="https://... (对象存储或 CDN 地址)" maxLength={1000} />
           </Form.Item>
           <Space size={16} wrap>

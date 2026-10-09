@@ -36,8 +36,12 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -253,6 +257,53 @@ public class ScrmAssetLibraryController {
     public OperationResponse<ScrmAssetEntity> uploadAsset(@Valid @RequestBody ScrmAssetUploadDto uploadDto)
             throws ScrmException {
         return OperationResponse.build(assetLibraryService.uploadAsset(uploadDto));
+    }
+
+    /**
+     * 上传素材文件 (multipart, 真实文件写入对象存储)。
+     * <p>
+     * {@code file} 为必填文件字段; 素材元数据以表单字段传递 (assetName/assetType 必填,
+     * categoryId/tags/description 可空)。上传成功后素材 {@code fileUrl} 指向对象存储 key。
+     * </p>
+     *
+     * @param file        素材文件 (multipart 字段名 file)
+     * @param assetName   素材名称
+     * @param assetType   素材类型 (IMAGE/VIDEO/AUDIO/DOCUMENT/...)
+     * @param categoryId  分类 ID (可空)
+     * @param tags        标签 (逗号分隔, 可空)
+     * @param description 描述 (可空)
+     * @return 创建后的素材
+     * @throws ScrmException 文件为空 / 对象存储未配置 / 上传失败
+     */
+    @RequirePermission(resource = "scrm_asset", action = "create")
+    @RateLimit(capacity = 30, refillTokens = 30, refillPeriodSeconds = 60)
+    @PostMapping("/upload-file")
+    public OperationResponse<ScrmAssetEntity> uploadAssetFile(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("assetName") String assetName,
+            @RequestParam("assetType") String assetType,
+            @RequestParam(value = "categoryId", required = false) Long categoryId,
+            @RequestParam(value = "tags", required = false) String tags,
+            @RequestParam(value = "description", required = false) String description)
+            throws ScrmException {
+        if (file == null || file.isEmpty()) {
+            throw ScrmException.badRequest("上传素材文件不能为空");
+        }
+        ScrmAssetUploadDto uploadDto = new ScrmAssetUploadDto();
+        uploadDto.setAssetName(assetName);
+        uploadDto.setAssetType(assetType);
+        uploadDto.setCategoryId(categoryId);
+        uploadDto.setTags(tags);
+        uploadDto.setDescription(description);
+        uploadDto.setFileSizeBytes(file.getSize());
+        uploadDto.setMimeType(file.getContentType());
+        try (InputStream inputStream = file.getInputStream()) {
+            return OperationResponse.build(assetLibraryService.uploadAssetFile(
+                    inputStream, file.getOriginalFilename(), file.getSize(),
+                    file.getContentType(), uploadDto));
+        } catch (IOException e) {
+            throw new ScrmException("SCRM_MEDIA_UPLOAD_FAILED", "读取素材文件失败: " + e.getMessage(), e);
+        }
     }
 
     /**

@@ -21,6 +21,9 @@ import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.repository.ScrmAssetCategoryRepository;
 import org.hiylo.scrm.repository.ScrmAssetRepository;
 import org.hiylo.scrm.repository.ScrmAssetUsageRepository;
+import org.hiylo.scrm.storage.ObjectStorage;
+import org.hiylo.scrm.storage.StorageException;
+import org.hiylo.scrm.storage.StorageProperties;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -36,6 +39,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -81,6 +86,12 @@ class ScrmAssetLibraryServiceTest {
     /** 资产使用数据仓库 Mock 桩 */
     @Mock
     private ScrmAssetUsageRepository usageRepository;
+    /** 对象存储 Mock 桩 (素材文件上传) */
+    @Mock
+    private ObjectStorage objectStorage;
+
+    /** 存储配置 (测试内构造真实对象, 设置 endpoint/bucket) */
+    private final StorageProperties storageProperties = new StorageProperties();
 
     /** 被测素材库服务实例 */
     private ScrmAssetLibraryService service;
@@ -93,8 +104,11 @@ class ScrmAssetLibraryServiceTest {
     void setUp() {
         categoryService =
                 new ScrmAssetLibraryCategoryService(categoryRepository, assetRepository);
+        storageProperties.setEndpoint("http://minio.local:9000");
+        storageProperties.setBucket("scrm-assets");
         assetService =
-                new ScrmAssetLibraryAssetService(assetRepository, usageRepository, categoryService);
+                new ScrmAssetLibraryAssetService(assetRepository, usageRepository, categoryService,
+                        objectStorage, storageProperties);
         ScrmAssetLibraryUsageService usageService =
                 new ScrmAssetLibraryUsageService(usageRepository, assetRepository, assetService);
         ScrmAssetLibraryStatsService statsService =
@@ -374,6 +388,90 @@ class ScrmAssetLibraryServiceTest {
         assertThat(result.getCategoryId()).isEqualTo(30L);
         assertThat(result.getCategoryName()).isEqualTo("图片");
         verify(categoryRepository, org.mockito.Mockito.atLeastOnce()).save(any(ScrmAssetCategoryEntity.class));
+    }
+
+    @Test
+    @DisplayName("uploadAssetFile: 真实文件上传对象存储, fileUrl=objectKey + storageType=OSS + path/bucket 落库")
+    void uploadAssetFile_success() throws Exception {
+        ScrmAssetUploadDto dto = new ScrmAssetUploadDto();
+        dto.setAssetName("618 主图");
+        dto.setAssetType("IMAGE");
+        when(assetRepository.existsByAssetCode(any())).thenReturn(false);
+        when(assetRepository.save(any(ScrmAssetEntity.class)))
+                .thenAnswer(inv -> assignAssetId(inv.getArgument(0), 200L));
+        InputStream in = new ByteArrayInputStream("img-bytes".getBytes());
+
+        ScrmAssetEntity result = service.uploadAssetFile(in, "主图.png", 9L, "image/png", dto);
+
+        assertThat(result.getStorageType()).isEqualTo("OSS");
+        assertThat(result.getFileUrl()).startsWith("scrm/asset/");
+        assertThat(result.getStoragePath()).isEqualTo(result.getFileUrl());
+        assertThat(result.getStorageBucket()).isEqualTo("scrm-assets");
+        assertThat(result.getFileExtension()).isEqualTo("png");
+        verify(objectStorage).upload(eq("scrm-assets"), any(), eq(in), eq(9L), eq("image/png"));
+    }
+
+    @Test
+    @DisplayName("uploadAssetFile: 对象存储未配置 endpoint 抛 400")
+    void uploadAssetFile_storageNotConfigured_throwsBadRequest() {
+        StorageProperties unconfigured = new StorageProperties();
+        ScrmAssetLibraryAssetService svc = new ScrmAssetLibraryAssetService(
+                assetRepository, usageRepository, categoryService, objectStorage, unconfigured);
+        ScrmAssetUploadDto dto = new ScrmAssetUploadDto();
+        dto.setAssetName("x");
+        dto.setAssetType("IMAGE");
+
+        assertThatThrownBy(() -> svc.uploadAssetFile(
+                new ByteArrayInputStream(new byte[0]), "x.png", 0L, "image/png", dto))
+                .isInstanceOf(ScrmException.class)
+                .hasMessageContaining("对象存储未配置");
+    }
+
+    @Test
+    @DisplayName("uploadAssetFile: 文件名路径穿越被净化, objectKey 不逃逸素材命名空间")
+    void uploadAssetFile_pathTraversalSanitized() throws Exception {
+        ScrmAssetUploadDto dto = new ScrmAssetUploadDto();
+        dto.setAssetName("x");
+        dto.setAssetType("IMAGE");
+        when(assetRepository.existsByAssetCode(any())).thenReturn(false);
+        when(assetRepository.save(any(ScrmAssetEntity.class)))
+                .thenAnswer(inv -> assignAssetId(inv.getArgument(0), 201L));
+
+        ScrmAssetEntity result = service.uploadAssetFile(
+                new ByteArrayInputStream("z".getBytes()), "../../etc/passwd", 1L, "text/plain", dto);
+
+        assertThat(result.getFileUrl()).startsWith("scrm/asset/");
+        assertThat(result.getFileUrl()).doesNotContain("..").doesNotContain("/etc/");
+    }
+
+    @Test
+    @DisplayName("uploadAssetFile: 危险 MIME (text/html) 降级 octet-stream 防 XSS")
+    void uploadAssetFile_dangerousMimeDowngraded() throws Exception {
+        ScrmAssetUploadDto dto = new ScrmAssetUploadDto();
+        dto.setAssetName("x");
+        dto.setAssetType("DOCUMENT");
+        when(assetRepository.existsByAssetCode(any())).thenReturn(false);
+        when(assetRepository.save(any(ScrmAssetEntity.class)))
+                .thenAnswer(inv -> assignAssetId(inv.getArgument(0), 202L));
+
+        service.uploadAssetFile(new ByteArrayInputStream("z".getBytes()), "a.html", 1L, "text/html", dto);
+
+        verify(objectStorage).upload(eq("scrm-assets"), any(), any(), eq(1L), eq("application/octet-stream"));
+    }
+
+    @Test
+    @DisplayName("uploadAssetFile: 存储上传失败映射为 SCRM_MEDIA_UPLOAD_FAILED")
+    void uploadAssetFile_storageErrorMapped() throws Exception {
+        ScrmAssetUploadDto dto = new ScrmAssetUploadDto();
+        dto.setAssetName("x");
+        dto.setAssetType("IMAGE");
+        org.mockito.Mockito.doThrow(new StorageException("disk full"))
+                .when(objectStorage).upload(any(), any(), any(), anyLong(), any());
+
+        assertThatThrownBy(() -> service.uploadAssetFile(
+                new ByteArrayInputStream("z".getBytes()), "a.png", 1L, "image/png", dto))
+                .isInstanceOf(ScrmException.class)
+                .hasMessageContaining("素材文件上传失败");
     }
 
     /**
