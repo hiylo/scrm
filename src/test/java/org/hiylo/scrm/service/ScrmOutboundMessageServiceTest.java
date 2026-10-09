@@ -8,6 +8,7 @@
  */
 package org.hiylo.scrm.service;
 
+import org.hiylo.scrm.component.ScrmOutboundGuardComponent;
 import org.hiylo.scrm.dto.ScrmOutboundMessageDto;
 import org.hiylo.scrm.dto.callback.OutboundAckCallbackDto;
 import org.hiylo.scrm.entity.ScrmConversationMessageEntity;
@@ -69,6 +70,10 @@ class ScrmOutboundMessageServiceTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
+    /** 出站发送前守卫 Mock（默认放行，需在用例中单独 stub） */
+    @Mock
+    private ScrmOutboundGuardComponent outboundGuard;
+
     /** 被测服务 */
     @InjectMocks
     private ScrmOutboundMessageService outboundMessageService;
@@ -93,6 +98,8 @@ class ScrmOutboundMessageServiceTest {
     @Test
     @DisplayName("enqueueFromMessage: 首次入队写入 PENDING 并解析目标平台 ID")
     void enqueueFromMessage_success() {
+        when(outboundGuard.guard(anyString(), anyLong(), anyString(), any()))
+                .thenReturn(ScrmOutboundGuardComponent.GuardResult.allow());
         when(outboundRepository.findFirstByConversationIdAndBusinessMessageId(50L, "m-1"))
                 .thenReturn(Optional.empty());
         when(conversationService.getConversation(50L)).thenReturn(conversation());
@@ -363,6 +370,8 @@ class ScrmOutboundMessageServiceTest {
     @Test
     @DisplayName("enqueueFromMessage 入队后发布 OutboundEnqueuedEvent")
     void enqueuePublishesEvent() {
+        when(outboundGuard.guard(anyString(), anyLong(), anyString(), any()))
+                .thenReturn(ScrmOutboundGuardComponent.GuardResult.allow());
         when(outboundRepository.findFirstByConversationIdAndBusinessMessageId(50L, "m-1"))
                 .thenReturn(Optional.empty());
         when(conversationService.getConversation(50L)).thenReturn(conversation());

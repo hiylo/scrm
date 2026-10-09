@@ -10,6 +10,7 @@ package org.hiylo.scrm.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.hiylo.scrm.component.ScrmOutboundGuardComponent;
 import org.hiylo.scrm.dto.ScrmAccountDto;
 import org.hiylo.scrm.dto.ScrmConversationDto;
 import org.hiylo.scrm.dto.ScrmOutboundMessageDto;
@@ -60,6 +61,9 @@ public class ScrmOutboundMessageService {
     /** 状态: 失败 */
     public static final String STATUS_FAILED = "FAILED";
 
+    /** 状态: 防封拦截 (发送前守卫命中, 不入队不发事件) */
+    public static final String STATUS_BLOCKED = "BLOCKED";
+
     /** 来源: 自动回复 */
     public static final String SOURCE_AUTO_REPLY = "AUTO_REPLY";
 
@@ -95,6 +99,9 @@ public class ScrmOutboundMessageService {
 
     /** 会话媒体存储服务（媒体出站消息生成预签名下载 URL 下发执行侧） */
     private final ConversationMediaService mediaService;
+
+    /** 出站发送前守卫（防封体系执行层: 账号状态/黑名单/频率拦截） */
+    private final ScrmOutboundGuardComponent outboundGuard;
 
     // ==================== 入队 ====================
 
@@ -138,6 +145,17 @@ public class ScrmOutboundMessageService {
         Long accountId = conversation.getAccountId();
         String targetPlatformId = resolveTargetPlatformId(conversation);
 
+        // 防封守卫: 账号冻结/离线、目标黑名单、发送频率超限 → 拦截入队 (BLOCKED, 不发事件)
+        ScrmOutboundGuardComponent.GuardResult guard =
+                outboundGuard.guard(platformType, accountId, targetPlatformId, message.getContent());
+        if (!guard.allowed()) {
+            ScrmOutboundMessageEntity blocked = buildBlockedEntity(
+                    message, conversationId, accountId, platformType, targetPlatformId, source, guard.reason());
+            blocked = outboundRepository.save(blocked);
+            log.warn("出站消息防封拦截 (BLOCKED): id={}, reason={}", blocked.getId(), guard.reason());
+            return blocked;
+        }
+
         ScrmOutboundMessageEntity entity = new ScrmOutboundMessageEntity();
         entity.setMessageId(message.getId());
         entity.setBusinessMessageId(message.getMessageId());
@@ -166,6 +184,41 @@ public class ScrmOutboundMessageService {
                 message.getContent(), message.getMessageType(),
                 message.getMediaObjectKey(), entity.getMediaFileName(),
                 platformType, businessMessageId));
+        return entity;
+    }
+
+    /**
+     * 构建防封拦截 (BLOCKED) 的出站消息实体, 不发布实时代发事件。
+     *
+     * @param message          已保存的出站消息实体
+     * @param conversationId   会话 ID
+     * @param accountId        发送账号 ID
+     * @param platformType     平台类型
+     * @param targetPlatformId 目标平台 ID
+     * @param source           来源
+     * @param reason           拦截原因 (写入 errorMessage)
+     * @return BLOCKED 出站消息实体
+     */
+    private ScrmOutboundMessageEntity buildBlockedEntity(ScrmConversationMessageEntity message,
+                                                         Long conversationId, Long accountId,
+                                                         String platformType, String targetPlatformId,
+                                                         String source, String reason) {
+        ScrmOutboundMessageEntity entity = new ScrmOutboundMessageEntity();
+        entity.setMessageId(message.getId());
+        entity.setBusinessMessageId(message.getMessageId());
+        entity.setConversationId(conversationId);
+        entity.setAccountId(accountId);
+        entity.setPlatformType(platformType);
+        entity.setTargetPlatformId(targetPlatformId);
+        entity.setMessageType(message.getMessageType());
+        entity.setContent(message.getContent());
+        entity.setMediaObjectKey(message.getMediaObjectKey());
+        entity.setMediaFileName(resolveMediaFileName(message.getMediaObjectKey()));
+        entity.setSource(source);
+        entity.setStatus(STATUS_BLOCKED);
+        entity.setRetryCount(0);
+        entity.setMaxRetries(DEFAULT_MAX_RETRIES);
+        entity.setErrorMessage(reason);
         return entity;
     }
 

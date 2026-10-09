@@ -72,4 +72,15 @@ public interface ScrmOutboundMessageRepository extends JpaRepository<ScrmOutboun
      */
     Optional<ScrmOutboundMessageEntity> findFirstByConversationIdAndBusinessMessageId(
             Long conversationId, String businessMessageId);
+
+    /**
+     * 统计指定账号在指定时间之后、状态为给定集合内的出站消息数 (频率守卫用)。
+     *
+     * @param accountId  发送账号 ID
+     * @param statuses   参与统计的状态集合 (PENDING / IN_PROGRESS / SENT)
+     * @param after      时间下界
+     * @return 出站消息数
+     */
+    long countByAccountIdAndStatusInAndCreateTimeAfter(
+            Long accountId, java.util.Collection<String> statuses, LocalDateTime after);
 }
