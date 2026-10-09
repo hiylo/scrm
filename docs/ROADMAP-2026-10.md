@@ -79,7 +79,9 @@
     `fileUrl=objectKey` + `storagePath`/`storageBucket`/`storageType=OSS`；复用
     `ObjectStorage`（MinIO/OSS 双实现），路径穿越净化 + MIME 白名单降级防 XSS，
     未配置 endpoint 抛 400（不退化）。前端上传弹窗支持选文件（multipart）或填 URL（JSON）二选一。
-  - 验证：后端 1680 用例（+5 上传路径）+ 前端 451 用例（+1 文件上传）+ `tsc 0 错误` + lint 0 error 全绿。
+  - 预签名预览/下载闭环（2026-10-09 补充）：新增 `GET /scrm/assets/{id}/presigned-url`，OSS 素材
+    实时生成预签名 URL（默认 60 分钟），LOCAL/外部 URL 素材直接返回 fileUrl；前端列表加「预览」操作。
+  - 验证：后端 1685 用例（+10：上传 5 + 预签名 5）+ 前端 452 用例（+2：文件上传/预览）+ `tsc 0 错误` + lint 0 error 全绿。
 
 ### P2 —— 完整度
 
