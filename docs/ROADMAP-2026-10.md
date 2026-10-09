@@ -18,7 +18,7 @@
 | 快捷回复/话术库/素材库有后端无前端 | ✅ **P1-3 已完成**（前端 3 页） |
 | 客户旅程可视化编排有后端无前端 | P2-1 |
 | 30+ 域有 API 无 UI（工单/审批/合同/线索/公海/会员/积分/NPS/知识库/质检/竞品/黑名单/行为追踪/报表等） | ✅ **P2-2 已完成**（12 批、约 61 个后端域 UI 承接，前端页面 19 → 66） |
-| 封号风控/养号体系 | P2-3（依赖回声环事故修复） |
+| 封号风控/养号体系 | ✅ **P2-3 执行层已落地**（出站发送前守卫：账号冻结/离线/黑名单/频率拦截）；剩余回声环真机验证待外部 |
 | 无多租户（README 明确单租户单体） | 架构决策，不列为缺口 |
 
 ## 批次计划
@@ -84,7 +84,14 @@
 
 ### P2 —— 完整度
 
-- **P2-1 客户旅程可视化编排**：画布页（需评估 `react-flow`，决策点）+ 执行链路。
+- **P2-1 客户旅程可视化编排**（✅ 已完成）
+  - `JourneyCanvas.tsx` 画布编辑器（引入 `@xyflow/react@12.12.0`，用户已拍板）：旅程选择 → 步骤节点画布
+    （拖拽定位/连线=nextStepId/CONDITION 分支 true 标注）→ 属性面板编辑（名称/类型/配置 JSON/入口标记）
+    → 新增步骤 / 删除步骤 / 保存画布（PUT steps/{id} 同步连线 + POST steps/reorder 拓扑重排）/ 启停旅程。
+  - 后端零改动：steps CRUD + reorder + nextStepId 持久化早已完备（`ScrmCustomerJourneyController`）。
+  - 验证：前端 450 用例（新增 4）+ `tsc 0 错误` + lint 0 error；配套 `src/test/setup.ts` 补
+    `getComputedStyle` 伪元素垫片 + `ResizeObserver` 改直接赋值（避免 `unstubAllGlobals` 间隙撤销致
+    ReactFlow 异步回调崩溃，这是本批测试基础设施的关键修复）。
 - **P2-2 30+ 域 UI 批量承接**（每批 3-5 页）
   - 批次 1（销售转化域，✅ 已完成）：
     - `PublicSea.tsx` 公海客户（线索管理：领取/分配/转移/回收/转正/批量分配/分配记录详情）
@@ -148,27 +155,30 @@
     - `MessageTemplateCenter.tsx` 消息模板中心（模板 CRUD 营销/通知/服务/系统 + 多渠道 + 发布/归档/复制 + 版本 + 模板分组 CRUD/启停 + 分组树 2 Tab）
     - 验证：前端 441 用例 + `tsc --noEmit` + lint（新文件 0 warning）；后端 MessageTemplateCenter 相关测试全绿。
   - P2-2 覆盖度：**已累计 12 批，约 61 个后端域获得 UI 承接（前端页面 19 → 66）**，与既有页面重叠的剩余域不再重复建页，P2-2 收口。
-- **P2-3 封号风控/养号体系**：登录态监控（FROZEN/LOGOUT 字段已有）、行为降频、敏感词拦截、防封权重。
-  依赖：回声环事故修复（todo `91ca0a5a259e`）+ 个人微信通道稳定。
+- **P2-3 封号风控/养号体系**（✅ 执行层已落地；回声环真机验证待 180 侧配合）
+  - 核心缺口定位：出站发送唯一入队口 `ScrmOutboundMessageService.enqueueFromMessage` **此前无防封拦截**
+    （账号冻结/离线照发、目标黑名单不查、单账号发送不降频）。
+  - 实现：`ScrmOutboundGuardComponent`（发送前守卫，注入入队点）——账号冻结/离线拦截、
+    目标客户黑名单拦截、单账号近 60s 发送频率超限拦截（`scrm.outbound.guard.*` 可配）；
+    命中拦截 → 出站消息置 `BLOCKED`（新增状态, 不入队不发事件）+ 记 `SEND_BLOCKED` 风险事件；
+    黑名单服务异常降级放行（防故障蔓延）。
+  - 内容守卫（敏感词拦截，2026-10-09 补充）：第 4 守卫对发送内容构造评估 context 调用
+    `ScrmBlacklistRuleService.evaluateAllRules`（复用现有 PATTERN/CONTAINS/REGEX/MATCH 规则引擎，
+    零新增敏感词表），`totalTriggered>0` → 拦截（BLOCKED + `SENSITIVE_CONTENT` 信号）；规则引擎
+    异常降级放行。
+  - 自动处置闭环（2026-10-09 补充）：`guardBlock` 命中账号违规信号（`SEND_RATE_LIMIT` /
+    `SENSITIVE_CONTENT`）时自动调用 `ScrmAccountService.updateLoginState(accountId, "FROZEN", ...)`
+    暂停账号，防止继续触发平台风控（开关 `scrm.outbound.guard.auto-pause-on-block`，默认 true）；
+    `ACCOUNT_FROZEN`（已冻结）与 `TARGET_BLACKLISTED`（目标客户黑名单，非账号风险）不触发；
+    暂停失败（异常）只记日志，不影响拦截决定。
+  - 验证：后端 1675 用例（守卫 9 路径：冻结/离线/黑名单/频率/内容命中/放行/黑名单异常降级/
+    规则异常降级/自动暂停异常降级 + 既有 Outbound 16 兼容）全绿。
+  - 剩余：回声环 is_self 真机验证（待 180 侧配合, todo `91ca0a5a259e`）。
 
 ## 决策点
 
 1. 企微会话存档 JNI SDK 是否引入（P0-2）。
-2. 客户旅程画布是否引入 `react-flow` 依赖（P2-1）。
-3. 多租户是否需要（当前明确不做，仅记录）。
-
-## 横切纪律（每批强制）
-
-- 后端 `mvn test`（基线 1625 绿）、前端 `npx tsc --noEmit` + `npm test` + `npm run lint` 零新增告警。
-- 按功能拆分提交（禁 `git add -A`）；`@stub` 出现即需真实现或显式降级。
-- 每批验收判据写进 todo（登记制度，完成即删）。
-重。
-  依赖：回声环事故修复（todo `91ca0a5a259e`）+ 个人微信通道稳定。
-
-## 决策点
-
-1. 企微会话存档 JNI SDK 是否引入（P0-2）。
-2. 客户旅程画布是否引入 `react-flow` 依赖（P2-1）。
+2. 客户旅程画布是否引入 `react-flow` 依赖（P2-1）。✅ 已拍板：引入 `@xyflow/react@12.12.0`（2026-10-09 完成）。
 3. 多租户是否需要（当前明确不做，仅记录）。
 
 ## 横切纪律（每批强制）
