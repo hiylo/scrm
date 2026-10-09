@@ -69,6 +69,7 @@ const Webhooks = lazy(() => import('./pages/Webhooks'));
 const DataDictionaries = lazy(() => import('./pages/DataDictionaries'));
 const DataTransfers = lazy(() => import('./pages/DataTransfers'));
 const CustomerJourneys = lazy(() => import('./pages/CustomerJourneys'));
+const JourneyCanvas = lazy(() => import('./pages/JourneyCanvas'));
 const Approvals = lazy(() => import('./pages/Approvals'));
 const Reports = lazy(() => import('./pages/Reports'));
 const MarketingCalendar = lazy(() => import('./pages/MarketingCalendar'));
