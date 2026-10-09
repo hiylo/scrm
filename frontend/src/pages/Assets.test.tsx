@@ -153,4 +153,22 @@ describe('Assets', () => {
 
     await waitFor(() => expect(post).toHaveBeenCalledWith('/scrm/assets/1/publish'));
   });
+
+  it('预览素材: 调用 presigned-url 并用新窗口打开', async () => {
+    get.mockImplementation((url: string) => {
+      if (url.includes('/categories/tree')) return Promise.resolve(categoryTree());
+      if (url.startsWith('/scrm/assets/list')) return Promise.resolve(page([asset('1')]));
+      if (url.startsWith('/scrm/assets/1/presigned-url')) return Promise.resolve('https://minio/presigned?token=x');
+      return Promise.resolve(page([]));
+    });
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('素材1')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: cn('预览') }));
+
+    await waitFor(() => expect(get).toHaveBeenCalledWith('/scrm/assets/1/presigned-url'));
+    expect(openSpy).toHaveBeenCalledWith('https://minio/presigned?token=x', '_blank', 'noopener,noreferrer');
+    openSpy.mockRestore();
+  });
 });

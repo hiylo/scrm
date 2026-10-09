@@ -350,6 +350,24 @@ public class ScrmAssetLibraryController {
     }
 
     /**
+     * 获取素材访问 URL (对象存储素材实时生成预签名 URL)。
+     * <p>OSS 存储素材返回预签名下载地址 (默认 60 分钟); LOCAL / 外部 URL 素材直接返回 fileUrl。</p>
+     *
+     * @param id            素材 ID
+     * @param expiryMinutes 预签名有效期 (分钟, 默认 60)
+     * @return 可访问 URL
+     * @throws ScrmException 素材不存在 / 存储未配置 / 生成失败
+     */
+    @RequirePermission(resource = "scrm_asset", action = "read")
+    @GetMapping("/{id}/presigned-url")
+    public OperationResponse<String> getAssetPresignedUrl(
+            @PathVariable Long id,
+            @RequestParam(value = "expiryMinutes", defaultValue = "60") int expiryMinutes)
+            throws ScrmException {
+        return OperationResponse.build(assetLibraryService.getAssetPresignedUrl(id, expiryMinutes));
+    }
+
+    /**
      * 按素材编码查询素材。
      *
      * @param code 素材编码

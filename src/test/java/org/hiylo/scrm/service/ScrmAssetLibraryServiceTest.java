@@ -54,6 +54,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -457,6 +458,82 @@ class ScrmAssetLibraryServiceTest {
         service.uploadAssetFile(new ByteArrayInputStream("z".getBytes()), "a.html", 1L, "text/html", dto);
 
         verify(objectStorage).upload(eq("scrm-assets"), any(), any(), eq(1L), eq("application/octet-stream"));
+    }
+
+    @Test
+    @DisplayName("getAssetPresignedUrl: OSS 素材实时生成预签名 URL")
+    void getAssetPresignedUrl_ossReturnsPresigned() throws Exception {
+        ScrmAssetEntity entity = buildAssetEntity(300L, "主图", "AST-300");
+        entity.setStorageType("OSS");
+        entity.setFileUrl("scrm/asset/202610/abc_hero.png");
+        entity.setStorageBucket("scrm-assets");
+        when(assetRepository.findById(300L)).thenReturn(Optional.of(entity));
+        when(objectStorage.presignedGetUrl(eq("scrm-assets"), eq("scrm/asset/202610/abc_hero.png"), eq(3600)))
+                .thenReturn("http://minio/presigned?token=x");
+
+        String url = service.getAssetPresignedUrl(300L, 60);
+
+        assertThat(url).isEqualTo("http://minio/presigned?token=x");
+        verify(objectStorage).presignedGetUrl(any(), any(), anyInt());
+    }
+
+    @Test
+    @DisplayName("getAssetPresignedUrl: LOCAL 素材直接返回 fileUrl 不生成预签名")
+    void getAssetPresignedUrl_localReturnsFileUrl() throws Exception {
+        ScrmAssetEntity entity = buildAssetEntity(301L, "外部图", "AST-301");
+        entity.setStorageType("LOCAL");
+        entity.setFileUrl("https://cdn.example.com/a.png");
+        when(assetRepository.findById(301L)).thenReturn(Optional.of(entity));
+
+        String url = service.getAssetPresignedUrl(301L, 60);
+
+        assertThat(url).isEqualTo("https://cdn.example.com/a.png");
+        verify(objectStorage, never()).presignedGetUrl(any(), any(), anyInt());
+    }
+
+    @Test
+    @DisplayName("getAssetPresignedUrl: OSS 但无 fileUrl 抛 badRequest")
+    void getAssetPresignedUrl_ossWithoutFileUrl_throwsBadRequest() throws Exception {
+        ScrmAssetEntity entity = buildAssetEntity(302L, "空文件", "AST-302");
+        entity.setStorageType("OSS");
+        entity.setFileUrl(null);
+        when(assetRepository.findById(302L)).thenReturn(Optional.of(entity));
+
+        assertThatThrownBy(() -> service.getAssetPresignedUrl(302L, 60))
+                .isInstanceOf(ScrmException.class)
+                .hasMessageContaining("无可访问文件");
+    }
+
+    @Test
+    @DisplayName("getAssetPresignedUrl: 对象存储未配置 endpoint 抛 badRequest")
+    void getAssetPresignedUrl_storageNotConfigured_throwsBadRequest() throws Exception {
+        ScrmAssetEntity entity = buildAssetEntity(303L, "主图", "AST-303");
+        entity.setStorageType("OSS");
+        entity.setFileUrl("scrm/asset/202610/x.png");
+        when(assetRepository.findById(303L)).thenReturn(Optional.of(entity));
+        StorageProperties unconfigured = new StorageProperties();
+        ScrmAssetLibraryAssetService svc = new ScrmAssetLibraryAssetService(
+                assetRepository, usageRepository, categoryService, objectStorage, unconfigured);
+
+        assertThatThrownBy(() -> svc.getAssetPresignedUrl(303L, 60))
+                .isInstanceOf(ScrmException.class)
+                .hasMessageContaining("对象存储未配置");
+    }
+
+    @Test
+    @DisplayName("getAssetPresignedUrl: 预签名生成失败映射 SCRM_MEDIA_PRESIGN_FAILED")
+    void getAssetPresignedUrl_presignErrorMapped() throws Exception {
+        ScrmAssetEntity entity = buildAssetEntity(304L, "主图", "AST-304");
+        entity.setStorageType("OSS");
+        entity.setFileUrl("scrm/asset/202610/x.png");
+        entity.setStorageBucket("scrm-assets");
+        when(assetRepository.findById(304L)).thenReturn(Optional.of(entity));
+        org.mockito.Mockito.doThrow(new StorageException("presign fail"))
+                .when(objectStorage).presignedGetUrl(any(), any(), anyInt());
+
+        assertThatThrownBy(() -> service.getAssetPresignedUrl(304L, 60))
+                .isInstanceOf(ScrmException.class)
+                .hasMessageContaining("生成素材访问地址失败");
     }
 
     @Test

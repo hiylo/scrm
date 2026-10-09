@@ -434,6 +434,46 @@ public class ScrmAssetLibraryAssetService {
     }
 
     /**
+     * 获取素材的可访问 URL (对象存储素材实时生成预签名 URL)。
+     * <p>
+     * storageType=OSS 且 fileUrl 为对象存储 key (scrm/asset/ 前缀) 时, 实时生成预签名 URL
+     * (默认 1 小时过期); 其余 (LOCAL / 外部 URL 素材) 直接返回 fileUrl。
+     * 预签名 URL 用于前端预览与下载, 不修改持久化的 objectKey。
+     * </p>
+     *
+     * @param id            素材 ID
+     * @param expiryMinutes 预签名有效期 (分钟, 仅对象存储素材生效)
+     * @return 可访问 URL
+     * @throws ScrmException 素材不存在 / 存储未配置 / 生成失败
+     */
+    @Transactional(readOnly = true)
+    public String getAssetPresignedUrl(Long id, int expiryMinutes) throws ScrmException {
+        ScrmAssetEntity entity = findAssetOrThrow(id);
+        String fileUrl = entity.getFileUrl();
+        boolean objectStored = "OSS".equalsIgnoreCase(entity.getStorageType())
+                && fileUrl != null && fileUrl.startsWith(ASSET_OBJECT_KEY_PREFIX);
+        if (!objectStored) {
+            if (fileUrl == null || fileUrl.isBlank()) {
+                throw ScrmException.badRequest("素材无可访问文件: id=" + id);
+            }
+            return fileUrl;
+        }
+        if (!storageProperties.isEndpointConfigured()) {
+            throw ScrmException.badRequest("对象存储未配置 (scrm.storage.endpoint 为空), 无法生成素材访问地址");
+        }
+        int minutes = (expiryMinutes <= 0 || expiryMinutes > 24 * 60) ? 60 : expiryMinutes;
+        try {
+            return objectStorage.presignedGetUrl(
+                    entity.getStorageBucket() != null ? entity.getStorageBucket() : storageProperties.getBucket(),
+                    fileUrl, minutes * 60);
+        } catch (StorageException e) {
+            log.error("生成素材预签名 URL 失败: id={}, key={}, err={}", id, fileUrl, e.getMessage(), e);
+            throw new ScrmException(ScrmExceptionConstants.SCRM_MEDIA_PRESIGN_FAILED,
+                    "生成素材访问地址失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
      * 按素材编码查询素材。
      *
      * @param code 素材编码

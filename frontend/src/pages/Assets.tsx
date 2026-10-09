@@ -258,6 +258,18 @@ export default function Assets() {
     }
   };
 
+  /** 预览/下载素材 (OSS 素材实时取预签名 URL, 新窗口打开) */
+  const handlePreview = async (record: ScrmAsset) => {
+    try {
+      const url = await apiClient.get<string>(`/scrm/assets/${record.id}/presigned-url`);
+      if (url) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    } catch {
+      // 拦截器已弹出错误
+    }
+  };
+
   /** 表格列 */
   const columns: ColumnsType<ScrmAsset> = useMemo(() => [
     { title: '素材名称', dataIndex: 'assetName', render: (v: string) => <span style={{ fontWeight: 600 }}>{v}</span> },
@@ -299,6 +311,9 @@ export default function Assets() {
       fixed: 'right',
       render: (_, r) => (
         <Space size={4}>
+          <Button type="link" size="small" onClick={() => handlePreview(r)}>
+            预览
+          </Button>
           {r.status !== 'PUBLISHED' && (
             <Button type="link" size="small" icon={<SendOutlined />} onClick={() => handlePublish(r)}>
               发布

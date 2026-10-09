@@ -262,6 +262,18 @@ public class ScrmAssetLibraryService {
     }
 
     /**
+     * 获取素材的可访问 URL (对象存储素材实时生成预签名 URL)。
+     *
+     * @param id            素材 ID
+     * @param expiryMinutes 预签名有效期 (分钟)
+     * @return 可访问 URL
+     * @throws ScrmException 素材不存在 / 存储未配置 / 生成失败
+     */
+    public String getAssetPresignedUrl(Long id, int expiryMinutes) throws ScrmException {
+        return assetService.getAssetPresignedUrl(id, expiryMinutes);
+    }
+
+    /**
      * 按素材编码查询素材。
      *
      * @param code 素材编码
