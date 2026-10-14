@@ -263,28 +263,51 @@ export default function Conversations() {
     isNearBottomRef.current = distFromBottom < 80;
   }, []);
 
-  /** 拉取会话分页列表 */
-  const fetchConversations = useCallback(async () => {
-    setConversationsLoading(true);
-    try {
-      const params = new URLSearchParams();
-      params.set('page', String(page));
-      params.set('size', String(size));
-      if (debouncedKeyword) params.set('keyword', debouncedKeyword);
-      if (statusFilter && statusFilter !== 'ALL') params.set('status', statusFilter);
-      const data = await apiClient.get<Page<ScrmConversation>>(
-        `/scrm/conversations?${params.toString()}`,
-      );
-      setConversations(data.content || []);
-      setTotal(data.totalElements || 0);
-    } catch {
-      // 错误已由 axios 拦截器统一提示
-      setConversations([]);
-      setTotal(0);
-    } finally {
-      setConversationsLoading(false);
-    }
-  }, [page, size, debouncedKeyword, statusFilter]);
+  /** 拉取会话分页列表（微信式滚动加载） */
+  const fetchConversations = useCallback(
+    async (pageArg?: number, append = false) => {
+      setConversationsLoading(true);
+      try {
+        const targetPage = pageArg ?? page;
+        const params = new URLSearchParams();
+        params.set('page', String(targetPage));
+        params.set('size', String(size));
+        if (debouncedKeyword) params.set('keyword', debouncedKeyword);
+        if (statusFilter && statusFilter !== 'ALL') params.set('status', statusFilter);
+        const data = await apiClient.get<Page<ScrmConversation>>(
+          `/scrm/conversations?${params.toString()}`,
+        );
+        const rows = data.content || [];
+        if (append) {
+          // 微信式滚动加载：下一页累加到现有列表之后，按 id 去重防止重复
+          setConversations((prev) => {
+            const seen = new Set(prev.map((c) => c.id));
+            return [...prev, ...rows.filter((c) => !seen.has(c.id))];
+          });
+        } else {
+          setConversations(rows);
+        }
+        setTotal(data.totalElements || 0);
+      } catch {
+        // 错误已由 axios 拦截器统一提示
+        setConversations([]);
+        setTotal(0);
+      } finally {
+        setConversationsLoading(false);
+      }
+    },
+    [page, size, debouncedKeyword, statusFilter],
+  );
+
+  /** 已加载到的会话页码（供"加载更多"累加，避开 effect 对 page state 的重置） */
+  const loadedConversationPageRef = useRef(0);
+
+  /** 加载更多：拉取下一页并累加到现有列表 */
+  const handleLoadMore = useCallback(() => {
+    const next = loadedConversationPageRef.current + 1;
+    loadedConversationPageRef.current = next;
+    fetchConversations(next, true);
+  }, [fetchConversations]);
 
   useEffect(() => {
     fetchConversations();
@@ -316,11 +339,13 @@ export default function Conversations() {
   // 防抖关键词变化时, 重置到第一页
   useEffect(() => {
     setPage(0);
+    loadedConversationPageRef.current = 0;
   }, [debouncedKeyword]);
 
   // 状态筛选变化时, 重置到第一页
   useEffect(() => {
     setPage(0);
+    loadedConversationPageRef.current = 0;
   }, [statusFilter]);
 
   /** 拉取指定会话的消息记录 */
@@ -796,7 +821,10 @@ export default function Conversations() {
               <Button
                 size="small"
                 icon={<ReloadOutlined />}
-                onClick={fetchConversations}
+                onClick={() => {
+                  loadedConversationPageRef.current = 0;
+                  fetchConversations(0);
+                }}
                 loading={conversationsLoading}
               >
                 刷新
@@ -935,7 +963,7 @@ export default function Conversations() {
                 type="link"
                 size="small"
                 loading={conversationsLoading}
-                onClick={() => setPage((p) => p + 1)}
+                onClick={handleLoadMore}
               >
                 加载更多
               </Button>

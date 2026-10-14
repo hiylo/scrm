@@ -520,4 +520,51 @@ describe('Conversations 时间展示与搜索高亮接线', () => {
     expect(marks.map((m) => m.textContent)).toEqual(['价格']);
     expect(marks[0].parentElement?.textContent).toBe('我们有三档方案, 价格按席位计');
   });
+
+  it('加载更多: 下一页累加到列表末尾且按 id 去重', async () => {
+    const user = userEvent.setup();
+    // 第 0 页: 张三; 第 1 页: 李四 + 重复的张三(应被去重)
+    get.mockImplementation(((url: string) => {
+      const u = String(url);
+      if (u.includes('/messages')) return Promise.resolve(page([]));
+      if (u.startsWith('/scrm/message-templates')) return Promise.resolve(page([]));
+      if (u.startsWith('/scrm/conversations')) {
+        const pageNo = Number(new URL(u, 'http://x').searchParams.get('page'));
+        if (pageNo === 0) {
+          return Promise.resolve(page([conversation({ id: '5001', customerNickname: '张三' })], { totalElements: 3 }));
+        }
+        return Promise.resolve(page([
+          conversation({ id: '5002', customerNickname: '李四' }),
+          conversation({ id: '5001', customerNickname: '张三' }),
+        ], { totalElements: 3 }));
+      }
+      return Promise.resolve(page([]));
+    }) as never);
+
+    renderConversations();
+    await screen.findByText('张三');
+
+    await user.click(screen.getByRole('button', { name: cn('加载更多') }));
+
+    // 累加后两页都在
+    await screen.findByText('李四');
+    expect(screen.getByText('张三')).toBeInTheDocument();
+    // 重复 id 只渲染一次
+    expect(screen.getAllByText('张三').length).toBe(1);
+    // 未加载完时不显示"已加载全部"
+    expect(screen.queryByText('已加载全部 3 个会话')).not.toBeInTheDocument();
+    // 第二次加载更多: 第 2 页为空但总数=2 → 显示已加载全部
+    get.mockImplementation(((url: string) => {
+      const u = String(url);
+      if (u.includes('/messages')) return Promise.resolve(page([]));
+      if (u.startsWith('/scrm/message-templates')) return Promise.resolve(page([]));
+      if (u.startsWith('/scrm/conversations')) {
+        const pageNo = Number(new URL(u, 'http://x').searchParams.get('page'));
+        return Promise.resolve(page(pageNo === 0 ? [conversation({ id: '5001' })] : [], { totalElements: 2 }));
+      }
+      return Promise.resolve(page([]));
+    }) as never);
+    await user.click(screen.getByRole('button', { name: cn('加载更多') }));
+    await waitFor(() => expect(screen.getByText('已加载全部 2 个会话')).toBeInTheDocument());
+  });
 });
