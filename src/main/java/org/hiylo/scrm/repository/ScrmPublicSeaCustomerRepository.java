@@ -9,6 +9,8 @@
 package org.hiylo.scrm.repository;
 
 import org.hiylo.scrm.entity.ScrmPublicSeaCustomerEntity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
@@ -37,4 +39,32 @@ public interface ScrmPublicSeaCustomerRepository
      */
     Optional<ScrmPublicSeaCustomerEntity> findByPlatformTypeAndPlatformCustomerUid(
             String platformType, String platformCustomerUid);
+
+    /**
+     * 查询分配给指定销售的线索（销售 App「我的客户」主数据源）。
+     *
+     * @param assignedTo 归属销售 userId
+     * @param pageable   分页参数
+     * @return 线索分页
+     */
+    Page<ScrmPublicSeaCustomerEntity> findByAssignedTo(String assignedTo, Pageable pageable);
+
+    /**
+     * 查询分配给指定销售且处于指定状态的线索。
+     *
+     * @param assignedTo 归属销售 userId
+     * @param status     公海状态（ASSIGNED / LOCKED 等）
+     * @param pageable   分页参数
+     * @return 线索分页
+     */
+    Page<ScrmPublicSeaCustomerEntity> findByAssignedToAndStatus(String assignedTo, String status,
+                                                                Pageable pageable);
+
+    /**
+     * 统计分配给指定销售的线索数量。
+     *
+     * @param assignedTo 归属销售 userId
+     * @return 数量
+     */
+    long countByAssignedTo(String assignedTo);
 }
