@@ -1,0 +1,1107 @@
+/*
+ * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Project : scrm
+ * File : Voucher.tsx
+ * Date : 2026/10/25 20:00:00
+ * Author : Hsi Chu
+ * Contact : hiylo@live.com
+ */
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Alert,
+  App,
+  Button,
+  Card,
+  Col,
+  DatePicker,
+  Empty,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Row,
+  Select,
+  Space,
+  Statistic,
+  Table,
+  Tabs,
+  Tag,
+  Tooltip,
+  Typography,
+} from 'antd';
+import type { ColumnsType } from 'antd/es/table';
+import {
+  CheckCircleOutlined,
+  DeleteOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  SaveOutlined,
+  SettingOutlined,
+  StopOutlined,
+} from '@ant-design/icons';
+import dayjs, { type Dayjs } from 'dayjs';
+import {
+  createVoucher,
+  deleteVoucher,
+  getTrialBalance,
+  getVoucher,
+  getVoucherPeriodSummary,
+  initSubjects,
+  listCompanies,
+  listSubjects,
+  listVouchers,
+  postVoucher,
+  updateVoucher,
+  voidVoucher,
+  type AccountSubject,
+  type TrialBalance,
+  type TrialBalanceRow,
+  type Voucher,
+  type VoucherDetail,
+  type VoucherEntry,
+  type VoucherPeriodSummary,
+} from '../api/finance';
+
+/** 科目类别映射 */
+const categoryConfig: Record<string, { label: string; color: string }> = {
+  ASSET: { label: '资产', color: 'blue' },
+  LIABILITY: { label: '负债', color: 'volcano' },
+  EQUITY: { label: '权益', color: 'purple' },
+  COST: { label: '成本', color: 'gold' },
+  INCOME: { label: '收入', color: 'green' },
+  EXPENSE: { label: '费用', color: 'orange' },
+};
+
+/** 凭证状态映射 */
+const voucherStatusConfig: Record<string, { label: string; color: string }> = {
+  DRAFT: { label: '草稿', color: 'default' },
+  POSTED: { label: '已记账', color: 'success' },
+  VOID: { label: '已作废', color: 'error' },
+};
+
+/** 金额格式化 */
+const money = (value?: number | null) =>
+  value == null
+    ? '-'
+    : Number(value).toLocaleString('zh-CN', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+
+/** 空分录行 */
+const emptyEntry = (lineNo: number): VoucherEntry => ({
+  lineNo,
+  subjectCode: '',
+  summary: '',
+  debitAmount: 0,
+  creditAmount: 0,
+});
+
+/**
+ * 记账页（会计科目 + 记账凭证 + 试算平衡）。
+ * <p>
+ * 设计上有两个刻意的选择：
+ * </p>
+ * <ul>
+ *   <li><b>借贷差额实时显示</b>：会计录入时立刻看到「差 XXX 元」，
+ *       而不是提交后被服务端拒绝再来回找。服务端仍是权威校验，前端只是提前发现。</li>
+ *   <li><b>试算平衡单独成一个 Tab</b>：它是判断「账做对没有」的唯一手段，
+ *       不该藏在报表深处。表尾直接给出两侧合计与平衡结论。</li>
+ * </ul>
+ *
+ * @author Hsi Chu
+ * @since V1.0
+ */
+export default function Voucher() {
+  const { message, modal } = App.useApp();
+
+  const [activeTab, setActiveTab] = useState('voucher');
+
+  // ============ 共享上下文 ============
+  const [companyId, setCompanyId] = useState<string | undefined>();
+  const [period, setPeriod] = useState<Dayjs>(dayjs());
+  const [companyOptions, setCompanyOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const [companyLoading, setCompanyLoading] = useState(false);
+
+  // ============ 科目 ============
+  const [subjects, setSubjects] = useState<AccountSubject[]>([]);
+  const [subjectLoading, setSubjectLoading] = useState(false);
+
+  // ============ 凭证 ============
+  const [vouchers, setVouchers] = useState<Voucher[]>([]);
+  const [voucherTotal, setVoucherTotal] = useState(0);
+  const [voucherLoading, setVoucherLoading] = useState(false);
+  const [voucherPage, setVoucherPage] = useState(0);
+  const [statusFilter, setStatusFilter] = useState<string | undefined>();
+  const [summary, setSummary] = useState<VoucherPeriodSummary | null>(null);
+
+  // ============ 试算平衡 ============
+  const [trial, setTrial] = useState<TrialBalance | null>(null);
+  const [trialLoading, setTrialLoading] = useState(false);
+
+  // ============ 凭证编辑弹窗 ============
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingStatus, setEditingStatus] = useState<string>('DRAFT');
+  const [entries, setEntries] = useState<VoucherEntry[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [editorForm] = Form.useForm<{
+    voucherWord: string;
+    voucherDate: Dayjs;
+    attachmentCount?: number;
+    remark?: string;
+  }>();
+
+  const year = period.year();
+  const month = period.month() + 1;
+
+  /** 借贷差额（正数表示借方多，负数表示贷方多） */
+  const balanceDiff = useMemo(() => {
+    const debit = entries.reduce((s, e) => s + (Number(e.debitAmount) || 0), 0);
+    const credit = entries.reduce((s, e) => s + (Number(e.creditAmount) || 0), 0);
+    return Math.round((debit - credit) * 100) / 100;
+  }, [entries]);
+
+  /** 借方合计 */
+  const totalDebit = useMemo(
+    () => entries.reduce((s, e) => s + (Number(e.debitAmount) || 0), 0),
+    [entries],
+  );
+
+  /** 贷方合计 */
+  const totalCredit = useMemo(
+    () => entries.reduce((s, e) => s + (Number(e.creditAmount) || 0), 0),
+    [entries],
+  );
+
+  /** 加载企业 */
+  const loadCompanies = useCallback(async (keyword?: string) => {
+    setCompanyLoading(true);
+    try {
+      const result = await listCompanies({ keyword: keyword || undefined, page: 0, size: 30 });
+      setCompanyOptions(
+        (result.content || []).map((c) => ({
+          value: c.id,
+          label: c.creditCode ? `${c.companyName}（${c.creditCode}）` : c.companyName,
+        })),
+      );
+    } catch {
+      // client.ts 已统一提示
+    } finally {
+      setCompanyLoading(false);
+    }
+  }, []);
+
+  /** 加载科目 */
+  const loadSubjects = useCallback(async () => {
+    if (!companyId) {
+      setSubjects([]);
+      return;
+    }
+    setSubjectLoading(true);
+    try {
+      setSubjects((await listSubjects(companyId)) || []);
+    } catch {
+      // 已统一提示
+    } finally {
+      setSubjectLoading(false);
+    }
+  }, [companyId]);
+
+  /** 加载凭证 */
+  const loadVouchers = useCallback(async () => {
+    if (!companyId) {
+      setVouchers([]);
+      setVoucherTotal(0);
+      setSummary(null);
+      return;
+    }
+    setVoucherLoading(true);
+    try {
+      const [page, sum] = await Promise.all([
+        listVouchers({
+          companyId,
+          periodYear: year,
+          periodMonth: month,
+          status: statusFilter,
+          page: voucherPage,
+          size: 10,
+        }),
+        getVoucherPeriodSummary(companyId, year, month),
+      ]);
+      setVouchers(page.content || []);
+      setVoucherTotal(page.totalElements || 0);
+      setSummary(sum);
+    } catch {
+      // 已统一提示
+    } finally {
+      setVoucherLoading(false);
+    }
+  }, [companyId, year, month, statusFilter, voucherPage]);
+
+  /** 加载试算平衡 */
+  const loadTrial = useCallback(async () => {
+    if (!companyId) {
+      setTrial(null);
+      return;
+    }
+    setTrialLoading(true);
+    try {
+      setTrial(await getTrialBalance(companyId, year, month));
+    } catch {
+      // 已统一提示
+    } finally {
+      setTrialLoading(false);
+    }
+  }, [companyId, year, month]);
+
+  useEffect(() => {
+    void loadCompanies();
+  }, [loadCompanies]);
+
+  useEffect(() => {
+    void loadSubjects();
+    void loadVouchers();
+    void loadTrial();
+  }, [loadSubjects, loadVouchers, loadTrial]);
+
+  /** 初始化标准科目 */
+  const handleInitSubjects = () => {
+    if (!companyId) {
+      message.warning('请先选择企业');
+      return;
+    }
+    modal.confirm({
+      title: '初始化标准科目表？',
+      content:
+        '将按小企业会计准则常用科目建账（32 个高频科目）。幂等：已存在的科目不会覆盖，可重复执行。',
+      onOk: async () => {
+        try {
+          const count = await initSubjects(companyId);
+          message.success(`已新增 ${count} 个科目`);
+          await loadSubjects();
+        } catch {
+          // 已统一提示
+        }
+      },
+    });
+  };
+
+  /** 打开新建凭证 */
+  const openCreate = () => {
+    if (!companyId) {
+      message.warning('请先选择企业');
+      return;
+    }
+    if (subjects.length === 0) {
+      message.warning('该企业还没有科目表，请先点「初始化标准科目」');
+      return;
+    }
+    setEditingId(null);
+    setEditingStatus('DRAFT');
+    setEntries([emptyEntry(1), emptyEntry(2)]);
+    editorForm.resetFields();
+    editorForm.setFieldsValue({
+      voucherWord: '记',
+      voucherDate: period.endOf('month'),
+      attachmentCount: 0,
+    } as never);
+    setEditorOpen(true);
+  };
+
+  /** 打开编辑（仅草稿可改） */
+  const openEdit = async (record: Voucher) => {
+    if (record.status !== 'DRAFT') {
+      message.warning('已记账或已作废的凭证不可修改；请先作废后重开');
+      return;
+    }
+    try {
+      const detail: VoucherDetail = await getVoucher(record.id);
+      setEditingId(record.id);
+      setEditingStatus(detail.voucher.status);
+      setEntries(
+        (detail.entries || []).map((e, index) => ({
+          ...e,
+          lineNo: index + 1,
+          debitAmount: Number(e.debitAmount) || 0,
+          creditAmount: Number(e.creditAmount) || 0,
+        })),
+      );
+      editorForm.resetFields();
+      editorForm.setFieldsValue({
+        voucherWord: detail.voucher.voucherWord,
+        voucherDate: dayjs(detail.voucher.voucherDate),
+        attachmentCount: detail.voucher.attachmentCount ?? 0,
+        remark: detail.voucher.remark,
+      } as never);
+      setEditorOpen(true);
+    } catch {
+      // 已统一提示
+    }
+  };
+
+  /** 更新分录字段 */
+  const updateEntry = (index: number, patch: Partial<VoucherEntry>) => {
+    setEntries((prev) =>
+      prev.map((entry, i) => {
+        if (i !== index) return entry;
+        const next = { ...entry, ...patch };
+        // 借贷互斥：填了一边就把另一边清零，避免同时非零被服务端拒绝
+        if (patch.debitAmount != null && Number(patch.debitAmount) > 0) {
+          next.creditAmount = 0;
+        }
+        if (patch.creditAmount != null && Number(patch.creditAmount) > 0) {
+          next.debitAmount = 0;
+        }
+        return next;
+      }),
+    );
+  };
+
+  /** 新增分录行 */
+  const addEntry = () => {
+    setEntries((prev) => [...prev, emptyEntry(prev.length + 1)]);
+  };
+
+  /** 删除分录行 */
+  const removeEntry = (index: number) => {
+    setEntries((prev) =>
+      prev.length <= 2
+        ? prev
+        : prev.filter((_, i) => i !== index).map((e, i) => ({ ...e, lineNo: i + 1 })),
+    );
+  };
+
+  /** 保存凭证 */
+  const saveVoucher = async () => {
+    if (!companyId) return;
+    const values = await editorForm.validateFields();
+    const filled = entries.filter(
+      (e) => e.subjectCode && (Number(e.debitAmount) > 0 || Number(e.creditAmount) > 0),
+    );
+    if (filled.length < 2) {
+      message.warning('至少需要 2 条有科目和金额的分录');
+      return;
+    }
+    if (Math.abs(balanceDiff) > 0.001) {
+      message.error(`借贷不平衡，差额 ${money(Math.abs(balanceDiff))} 元`);
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = {
+        periodYear: year,
+        periodMonth: month,
+        voucherWord: values.voucherWord,
+        voucherDate: values.voucherDate ? values.voucherDate.format('YYYY-MM-DD') : undefined,
+        attachmentCount: values.attachmentCount ?? 0,
+        remark: values.remark,
+        entries: filled,
+      };
+      if (editingId) {
+        await updateVoucher(editingId, payload);
+        message.success('凭证已更新');
+      } else {
+        await createVoucher(companyId, payload);
+        message.success('凭证已保存为草稿');
+      }
+      setEditorOpen(false);
+      await Promise.all([loadVouchers(), loadTrial()]);
+    } catch {
+      // 已统一提示
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /** 记账 */
+  const handlePost = (record: Voucher) => {
+    modal.confirm({
+      title: `确认记账：${record.voucherLabel ?? record.voucherWord}？`,
+      content: '记账后分录锁定，不可再修改，只能作废重开。记账后该凭证计入科目余额。',
+      onOk: async () => {
+        try {
+          await postVoucher(record.id);
+          message.success('已记账');
+          await Promise.all([loadVouchers(), loadTrial()]);
+        } catch {
+          // 已统一提示
+        }
+      },
+    });
+  };
+
+  /** 作废 */
+  const handleVoid = (record: Voucher) => {
+    let reason = '';
+    modal.confirm({
+      title: `作废 ${record.voucherLabel ?? ''}？`,
+      content: (
+        <div>
+          <div style={{ marginBottom: 8, color: '#666' }}>
+            作废后该凭证退出余额，但记录保留可查。
+          </div>
+          <Input.TextArea
+            rows={2}
+            placeholder="作废原因（建议填写，便于日后追溯）"
+            onChange={(e) => {
+              reason = e.target.value;
+            }}
+          />
+        </div>
+      ),
+      onOk: async () => {
+        try {
+          await voidVoucher(record.id, reason || undefined);
+          message.success('已作废');
+          await Promise.all([loadVouchers(), loadTrial()]);
+        } catch {
+          // 已统一提示
+        }
+      },
+    });
+  };
+
+  /** 删除草稿 */
+  const handleDelete = (record: Voucher) => {
+    modal.confirm({
+      title: `删除草稿 ${record.voucherLabel ?? ''}？`,
+      content: '只有草稿可以删除；已记账凭证请用作废以保留痕迹。',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await deleteVoucher(record.id);
+          message.success('已删除');
+          await Promise.all([loadVouchers(), loadTrial()]);
+        } catch {
+          // 已统一提示
+        }
+      },
+    });
+  };
+
+  /** 凭证列 */
+  const voucherColumns: ColumnsType<Voucher> = [
+    {
+      title: '凭证号',
+      key: 'label',
+      width: 110,
+      render: (_, record) => (
+        <Typography.Text strong>{record.voucherLabel ?? `${record.voucherWord}-${record.voucherNo}`}</Typography.Text>
+      ),
+    },
+    {
+      title: '日期',
+      dataIndex: 'voucherDate',
+      width: 120,
+      render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+    },
+    {
+      title: '摘要',
+      dataIndex: 'remark',
+      ellipsis: true,
+      render: (v: string) => v || <span style={{ color: '#bbb' }}>—</span>,
+    },
+    {
+      title: '借方合计',
+      dataIndex: 'totalDebit',
+      width: 130,
+      align: 'right',
+      render: (v: number) => money(v),
+    },
+    {
+      title: '贷方合计',
+      dataIndex: 'totalCredit',
+      width: 130,
+      align: 'right',
+      render: (v: number) => money(v),
+    },
+    {
+      title: '分录',
+      dataIndex: 'entryCount',
+      width: 70,
+      align: 'right',
+    },
+    {
+      title: '附件',
+      dataIndex: 'attachmentCount',
+      width: 70,
+      align: 'right',
+      render: (v: number) => v ?? 0,
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 100,
+      render: (v: string) => {
+        const cfg = voucherStatusConfig[v] || { label: v, color: 'default' };
+        return <Tag color={cfg.color}>{cfg.label}</Tag>;
+      },
+    },
+    {
+      title: '操作',
+      key: 'action',
+      width: 210,
+      fixed: 'right',
+      render: (_, record) => (
+        <Space size="small">
+          {record.status === 'DRAFT' && (
+            <>
+              <Button size="small" onClick={() => void openEdit(record)}>编辑</Button>
+              <Button size="small" type="primary" onClick={() => handlePost(record)}>记账</Button>
+              <Button size="small" danger onClick={() => handleDelete(record)}>删除</Button>
+            </>
+          )}
+          {record.status === 'POSTED' && (
+            <Button size="small" icon={<StopOutlined />} onClick={() => handleVoid(record)}>
+              作废
+            </Button>
+          )}
+          {record.status === 'VOID' && <span style={{ color: '#bbb' }}>已作废</span>}
+        </Space>
+      ),
+    },
+  ];
+
+  /** 科目列 */
+  const subjectColumns: ColumnsType<AccountSubject> = [
+    { title: '科目编码', dataIndex: 'subjectCode', width: 130 },
+    { title: '科目名称', dataIndex: 'subjectName', width: 200 },
+    {
+      title: '类别',
+      dataIndex: 'category',
+      width: 100,
+      render: (v: string) => {
+        const cfg = categoryConfig[v] || { label: v, color: 'default' };
+        return <Tag color={cfg.color}>{cfg.label}</Tag>;
+      },
+    },
+    {
+      title: '余额方向',
+      dataIndex: 'direction',
+      width: 100,
+      render: (v: string) => (v === 'DEBIT' ? '借方' : '贷方'),
+    },
+    {
+      title: '级次',
+      dataIndex: 'subjectLevel',
+      width: 80,
+      align: 'center',
+      render: (v: number) => (v ?? 1) === 1 ? '一级' : '明细',
+    },
+    {
+      title: '上级',
+      dataIndex: 'parentCode',
+      width: 100,
+      render: (v: string) => v || '—',
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 90,
+      render: (v: string) =>
+        v === 'ACTIVE' ? <Tag color="success">启用</Tag> : <Tag color="default">停用</Tag>,
+    },
+  ];
+
+  /** 试算平衡列 */
+  const trialColumns: ColumnsType<TrialBalanceRow> = [
+    { title: '科目编码', dataIndex: 'subjectCode', width: 110, fixed: 'left' },
+    { title: '科目名称', dataIndex: 'subjectName', width: 160, fixed: 'left' },
+    {
+      title: '期初借方',
+      dataIndex: 'openingDebit',
+      width: 120,
+      align: 'right',
+      render: (v: number) => money(v),
+    },
+    {
+      title: '期初贷方',
+      dataIndex: 'openingCredit',
+      width: 120,
+      align: 'right',
+      render: (v: number) => money(v),
+    },
+    {
+      title: '本期借方',
+      dataIndex: 'periodDebit',
+      width: 120,
+      align: 'right',
+      render: (v: number) => money(v),
+    },
+    {
+      title: '本期贷方',
+      dataIndex: 'periodCredit',
+      width: 120,
+      align: 'right',
+      render: (v: number) => money(v),
+    },
+    {
+      title: '期末借方',
+      dataIndex: 'closingDebit',
+      width: 120,
+      align: 'right',
+      render: (v: number) => <strong>{money(v)}</strong>,
+    },
+    {
+      title: '期末贷方',
+      dataIndex: 'closingCredit',
+      width: 120,
+      align: 'right',
+      render: (v: number) => <strong>{money(v)}</strong>,
+    },
+  ];
+
+  const contextHint = useMemo(
+    () => (companyId ? null : '请先选择企业。记账按「企业 + 会计期间」独立建账，不同企业科目表互不影响。'),
+    [companyId],
+  );
+
+  return (
+    <div>
+      <Card size="small" style={{ marginBottom: 16 }}>
+        <Space wrap size="large">
+          <Space>
+            <span style={{ color: '#666' }}>企业</span>
+            <Select
+              showSearch
+              allowClear
+              style={{ width: 340 }}
+              placeholder="搜索企业名称"
+              filterOption={false}
+              loading={companyLoading}
+              onSearch={(value) => void loadCompanies(value)}
+              onChange={(value) => {
+                setCompanyId(value);
+                setVoucherPage(0);
+              }}
+              value={companyId}
+              options={companyOptions}
+            />
+          </Space>
+          <Space>
+            <span style={{ color: '#666' }}>会计期间</span>
+            <DatePicker
+              picker="month"
+              allowClear={false}
+              value={period}
+              onChange={(value) => {
+                if (!value) return;
+                setPeriod(value);
+                setVoucherPage(0);
+              }}
+            />
+          </Space>
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={() => void Promise.all([loadSubjects(), loadVouchers(), loadTrial()])}
+          >
+            刷新
+          </Button>
+          <Tooltip title="按小企业会计准则常用科目建账（幂等，不覆盖已有科目）">
+            <Button icon={<SettingOutlined />} onClick={handleInitSubjects}>
+              初始化标准科目
+            </Button>
+          </Tooltip>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            新建凭证
+          </Button>
+        </Space>
+      </Card>
+
+      {contextHint && <Alert type="info" showIcon style={{ marginBottom: 16 }} message={contextHint} />}
+
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        items={[
+          {
+            key: 'voucher',
+            label: '凭证',
+            children: (
+              <>
+                <Row gutter={16} style={{ marginBottom: 16 }}>
+                  <Col span={6}>
+                    <Card size="small">
+                      <Statistic title="本期凭证" value={summary?.total ?? 0} suffix="张" />
+                    </Card>
+                  </Col>
+                  <Col span={6}>
+                    <Card size="small">
+                      <Statistic
+                        title="草稿"
+                        value={summary?.draft ?? 0}
+                        suffix="张"
+                        valueStyle={{ color: (summary?.draft ?? 0) > 0 ? '#fa8c16' : undefined }}
+                      />
+                    </Card>
+                  </Col>
+                  <Col span={6}>
+                    <Card size="small">
+                      <Statistic
+                        title="已记账"
+                        value={summary?.posted ?? 0}
+                        suffix="张"
+                        valueStyle={{ color: '#52c41a' }}
+                      />
+                    </Card>
+                  </Col>
+                  <Col span={6}>
+                    <Card size="small">
+                      <Statistic
+                        title="已记账借方合计"
+                        value={summary?.postedDebitTotal ?? 0}
+                        precision={2}
+                        prefix="¥"
+                      />
+                    </Card>
+                  </Col>
+                </Row>
+
+                <Card
+                  title={
+                    <Space>
+                      <span>记账凭证</span>
+                      <Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 'normal' }}>
+                        {period.format('YYYY 年 M 月')} · 草稿不参与余额，记账后锁定
+                      </Typography.Text>
+                    </Space>
+                  }
+                  extra={
+                    <Select
+                      allowClear
+                      placeholder="状态"
+                      style={{ width: 130 }}
+                      value={statusFilter}
+                      onChange={(value) => {
+                        setStatusFilter(value);
+                        setVoucherPage(0);
+                      }}
+                      options={Object.entries(voucherStatusConfig).map(([value, cfg]) => ({
+                        value,
+                        label: cfg.label,
+                      }))}
+                    />
+                  }
+                >
+                  <Table<Voucher>
+                    rowKey="id"
+                    size="small"
+                    loading={voucherLoading}
+                    columns={voucherColumns}
+                    dataSource={vouchers}
+                    scroll={{ x: 1200 }}
+                    locale={{
+                      emptyText: (
+                        <Empty
+                          description={
+                            subjects.length === 0
+                              ? '还没有科目表。先点「初始化标准科目」，再新建凭证'
+                              : '本期还没有凭证。点「新建凭证」录入'
+                          }
+                        />
+                      ),
+                    }}
+                    pagination={{
+                      current: voucherPage + 1,
+                      pageSize: 10,
+                      total: voucherTotal,
+                      showSizeChanger: false,
+                      onChange: (p) => setVoucherPage(p - 1),
+                      showTotal: (t) => `共 ${t} 张`,
+                    }}
+                  />
+                </Card>
+              </>
+            ),
+          },
+          {
+            key: 'trial',
+            label: '试算平衡',
+            children: (
+              <>
+                {trial && (
+                  <Alert
+                    type={trial.balanced ? 'success' : 'error'}
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                    message={
+                      trial.balanced
+                        ? `账平：期末借贷双方各 ${money(trial.totalClosingDebit)} 元`
+                        : `账不平！期末借方合计 ${money(trial.totalClosingDebit)}，贷方合计 ${money(trial.totalClosingCredit)}`
+                    }
+                    description={
+                      trial.balanced
+                        ? '所有科目期末借方余额合计等于贷方余额合计。只统计已记账凭证，草稿与已作废凭证不参与。'
+                        : '账不平说明有凭证借贷不等或余额计算异常。请逐张检查本期凭证。'
+                    }
+                  />
+                )}
+                <Card
+                  title={
+                    <Space>
+                      <span>试算平衡表</span>
+                      <Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 'normal' }}>
+                        {period.format('YYYY 年 M 月')} · 只统计已记账凭证
+                      </Typography.Text>
+                    </Space>
+                  }
+                >
+                  <Table<TrialBalanceRow>
+                    rowKey="subjectCode"
+                    size="small"
+                    loading={trialLoading}
+                    columns={trialColumns}
+                    dataSource={trial?.rows ?? []}
+                    scroll={{ x: 1100 }}
+                    locale={{ emptyText: <Empty description="本期还没有已记账凭证，无余额数据" /> }}
+                    pagination={false}
+                    summary={() =>
+                      trial ? (
+                        <Table.Summary fixed>
+                          <Table.Summary.Row>
+                            <Table.Summary.Cell index={0} colSpan={2}>
+                              <strong>合计</strong>
+                            </Table.Summary.Cell>
+                            <Table.Summary.Cell index={2} align="right">
+                              {money(trial.totalOpeningDebit)}
+                            </Table.Summary.Cell>
+                            <Table.Summary.Cell index={3} align="right">
+                              {money(trial.totalOpeningCredit)}
+                            </Table.Summary.Cell>
+                            <Table.Summary.Cell index={4} align="right">
+                              {money(trial.totalPeriodDebit)}
+                            </Table.Summary.Cell>
+                            <Table.Summary.Cell index={5} align="right">
+                              {money(trial.totalPeriodCredit)}
+                            </Table.Summary.Cell>
+                            <Table.Summary.Cell index={6} align="right">
+                              <strong style={{ color: trial.balanced ? '#52c41a' : '#ff4d4f' }}>
+                                {money(trial.totalClosingDebit)}
+                              </strong>
+                            </Table.Summary.Cell>
+                            <Table.Summary.Cell index={7} align="right">
+                              <strong style={{ color: trial.balanced ? '#52c41a' : '#ff4d4f' }}>
+                                {money(trial.totalClosingCredit)}
+                              </strong>
+                            </Table.Summary.Cell>
+                          </Table.Summary.Row>
+                        </Table.Summary>
+                      ) : null
+                    }
+                  />
+                </Card>
+              </>
+            ),
+          },
+          {
+            key: 'subject',
+            label: '会计科目',
+            children: (
+              <Card
+                title={
+                  <Space>
+                    <span>会计科目</span>
+                    <Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 'normal' }}>
+                      按企业独立建账；停用科目不可新增分录，历史分录保留
+                    </Typography.Text>
+                  </Space>
+                }
+                extra={
+                  <Button icon={<ReloadOutlined />} onClick={() => void loadSubjects()}>
+                    刷新
+                  </Button>
+                }
+              >
+                <Table<AccountSubject>
+                  rowKey="id"
+                  size="small"
+                  loading={subjectLoading}
+                  columns={subjectColumns}
+                  dataSource={subjects}
+                  scroll={{ x: 900 }}
+                  locale={{
+                    emptyText: (
+                      <Empty description="还没有科目表。点上方「初始化标准科目」按常用科目一键建账" />
+                    ),
+                  }}
+                  pagination={{ pageSize: 50, showSizeChanger: false, showTotal: (t) => `共 ${t} 个科目` }}
+                />
+              </Card>
+            ),
+          },
+        ]}
+      />
+
+      {/* 凭证编辑弹窗 */}
+      <Modal
+        title={
+          editingId
+            ? '编辑凭证草稿'
+            : `新建凭证 · ${period.format('YYYY 年 M 月')}`
+        }
+        open={editorOpen}
+        confirmLoading={saving}
+        onCancel={() => setEditorOpen(false)}
+        width={1100}
+        destroyOnClose
+        footer={[
+          <Button key="cancel" onClick={() => setEditorOpen(false)}>取消</Button>,
+          <Button
+            key="save"
+            type="primary"
+            icon={<SaveOutlined />}
+            loading={saving}
+            onClick={() => void saveVoucher()}
+          >
+            保存草稿
+          </Button>,
+        ]}
+      >
+        <Form form={editorForm} layout="inline" style={{ marginBottom: 16 }}>
+          <Form.Item name="voucherWord" label="凭证字">
+            <Select
+              style={{ width: 90 }}
+              options={['记', '收', '付', '转'].map((w) => ({ value: w, label: w }))}
+            />
+          </Form.Item>
+          <Form.Item name="voucherDate" label="凭证日期">
+            <DatePicker />
+          </Form.Item>
+          <Form.Item name="attachmentCount" label="附件张数">
+            <InputNumber min={0} style={{ width: 90 }} />
+          </Form.Item>
+          <Form.Item name="remark" label="备注" style={{ minWidth: 260 }}>
+            <Input placeholder="整张凭证的说明" maxLength={500} />
+          </Form.Item>
+        </Form>
+
+        <Alert
+          type={Math.abs(balanceDiff) < 0.001 && totalDebit > 0 ? 'success' : 'warning'}
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={
+            Math.abs(balanceDiff) < 0.001 && totalDebit > 0
+              ? `借贷平衡：借方 = 贷方 = ${money(totalDebit)} 元`
+              : totalDebit === 0
+                ? '请录入分录金额（有借必有贷，借贷必相等）'
+                : `借贷不平衡：借方 ${money(totalDebit)} − 贷方 ${money(totalCredit)} = 差额 ${money(balanceDiff)} 元`
+          }
+        />
+
+        <Table<VoucherEntry>
+          size="small"
+          rowKey={(_, index) => String(index)}
+          dataSource={entries}
+          pagination={false}
+          scroll={{ y: 340 }}
+          columns={[
+            {
+              title: '行',
+              width: 50,
+              align: 'center',
+              render: (_, __, index) => index + 1,
+            },
+            {
+              title: '科目',
+              dataIndex: 'subjectCode',
+              width: 260,
+              render: (value: string, _record, index) => (
+                <Select
+                  showSearch
+                  style={{ width: '100%' }}
+                  placeholder="选择科目"
+                  value={value || undefined}
+                  optionFilterProp="label"
+                  onChange={(code) => {
+                    const subject = subjects.find((s) => s.subjectCode === code);
+                    updateEntry(index, {
+                      subjectCode: code,
+                      subjectName: subject?.subjectName,
+                    });
+                  }}
+                  options={subjects
+                    .filter((s) => s.status === 'ACTIVE')
+                    .map((s) => ({
+                      value: s.subjectCode,
+                      label: `${s.subjectCode} ${s.subjectName}`,
+                    }))}
+                />
+              ),
+            },
+            {
+              title: '摘要',
+              dataIndex: 'summary',
+              render: (value: string, _record, index) => (
+                <Input
+                  value={value}
+                  placeholder="业务说明"
+                  maxLength={200}
+                  onChange={(e) => updateEntry(index, { summary: e.target.value })}
+                />
+              ),
+            },
+            {
+              title: '借方金额',
+              dataIndex: 'debitAmount',
+              width: 150,
+              render: (value: number, _record, index) => (
+                <InputNumber
+                  style={{ width: '100%' }}
+                  min={0}
+                  precision={2}
+                  value={value as number}
+                  onChange={(v) => updateEntry(index, { debitAmount: Number(v) || 0 })}
+                />
+              ),
+            },
+            {
+              title: '贷方金额',
+              dataIndex: 'creditAmount',
+              width: 150,
+              render: (value: number, _record, index) => (
+                <InputNumber
+                  style={{ width: '100%' }}
+                  min={0}
+                  precision={2}
+                  value={value as number}
+                  onChange={(v) => updateEntry(index, { creditAmount: Number(v) || 0 })}
+                />
+              ),
+            },
+            {
+              title: '',
+              width: 50,
+              render: (_, __, index) => (
+                <Button
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  disabled={entries.length <= 2}
+                  onClick={() => removeEntry(index)}
+                />
+              ),
+            },
+          ]}
+          summary={() => (
+            <Table.Summary.Row>
+              <Table.Summary.Cell index={0} colSpan={3}>
+                <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={addEntry}>
+                  增加分录
+                </Button>
+              </Table.Summary.Cell>
+              <Table.Summary.Cell index={3} align="right">
+                <strong>{money(totalDebit)}</strong>
+              </Table.Summary.Cell>
+              <Table.Summary.Cell index={4} align="right">
+                <strong>{money(totalCredit)}</strong>
+              </Table.Summary.Cell>
+              <Table.Summary.Cell index={5} />
+            </Table.Summary.Row>
+          )}
+        />
+      </Modal>
+    </div>
+  );
+}
