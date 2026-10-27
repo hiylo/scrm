@@ -53,3 +53,7 @@ desktop.ini
 
 # Qoder 代理临时 worktree
 .qoder/
+
+# ---------- 前端构建产物 ----------
+# 由 frontend/ 构建后同步至此，随版本变化，不入库
+src/main/resources/static/

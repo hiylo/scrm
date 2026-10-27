@@ -462,6 +462,27 @@ describe('会话读取器', () => {
     expect(getRole()).toBe('sales');
   });
 
+  it('会计角色不被降级为 viewer，且可写财税域', () => {
+    localStorage.setItem('userRoles', JSON.stringify(['ACCOUNTANT']));
+    expect(getRole()).toBe('accountant');
+    // 财税作业是会计的本职写操作，必须放行
+    expect(hasPermission('scrm_tax_record:update')).toBe(true);
+    expect(hasPermission('scrm_voucher:create')).toBe(true);
+    // 非财税域不应放行
+    expect(hasPermission('scrm_campaign:create')).toBe(false);
+  });
+
+  it('主管角色按管理视角处理，不落成 viewer', () => {
+    localStorage.setItem('userRoles', JSON.stringify(['SUPERVISOR']));
+    expect(getRole()).toBe('supervisor');
+    expect(hasPermission('scrm_company:read')).toBe(true);
+  });
+
+  it('会计 + 经理双角色时以经理为主动角色', () => {
+    localStorage.setItem('userRoles', JSON.stringify(['ACCOUNTANT', 'MANAGER']));
+    expect(getRole()).toBe('manager');
+  });
+
   it('isAdmin 兼容 ROLE_ 前缀', () => {
     expect(isAdmin()).toBe(false);
 

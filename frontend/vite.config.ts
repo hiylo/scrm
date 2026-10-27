@@ -42,7 +42,13 @@ export default defineConfig(({ mode }) => ({
   },
   base: '/',
   server: {
-    port: 3001,
+    port: 3002,
     host: true,
+    // 前后端分离部署：开发期由 Vite 反向代理到后端，避免同源 404 与 CORS 配置漂移。
+    // 生产期由后端静态托管 dist 或 Nginx 反代，走同源即可。
+    proxy: {
+      '/scrm': { target: 'http://127.0.0.1:8840', changeOrigin: true },
+      '/api': { target: 'http://127.0.0.1:8840', changeOrigin: true },
+    },
   },
 }));

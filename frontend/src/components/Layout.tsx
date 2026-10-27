@@ -119,148 +119,80 @@ const navGroups: NavGroup[] = [
   {
     group: '概览',
     items: [
-      { key: '/', icon: '📊', label: '运营中心' },
+      { key: '/', icon: '📊', label: '财税概览' },
     ],
   },
   {
     group: '客户管理',
     items: [
-      { key: '/customers', icon: '👥', label: '客户列表', permission: 'scrm_customer:read', roles: ['admin', 'manager', 'sales', 'viewer'] },
-      { key: '/customer-groups', icon: '📁', label: '客户分组', permission: 'scrm_customer:read', roles: ['admin', 'manager', 'sales', 'viewer'] },
-      { key: '/customer-tags', icon: '🏷️', label: '标签管理', permission: 'scrm_customer:read', roles: ['admin', 'manager', 'sales', 'viewer'] },
+      { key: '/customers', icon: '👥', label: '客户列表', permission: 'scrm_customer:read', roles: ['admin', 'manager', 'sales', 'viewer', 'accountant'] },
+      { key: '/customer-groups', icon: '📁', label: '客户分组', permission: 'scrm_customer:read', roles: ['admin', 'manager', 'sales', 'viewer', 'accountant'] },
+      { key: '/customer-tags', icon: '🏷️', label: '标签管理', permission: 'scrm_customer:read', roles: ['admin', 'manager', 'sales', 'viewer', 'accountant'] },
+      { key: '/follow-ups', icon: '📌', label: '客户跟进', permission: 'scrm_follow_up_task:read', roles: ['admin', 'manager', 'sales', 'accountant'] },
+      { key: '/customer-care', icon: '💝', label: '客户关怀', permission: 'scrm_customer_care:read', roles: ['admin', 'manager', 'sales', 'accountant'] },
     ],
   },
   {
-    group: '引流获客',
+    group: '财税业务',
     items: [
-      { key: '/channel-codes', icon: '📱', label: '渠道活码', permission: 'scrm_channel_code:read', roles: ['admin', 'manager', 'sales'] },
-      { key: '/welcome-messages', icon: '👋', label: '欢迎语', permission: 'scrm_welcome_message:read', roles: ['admin', 'manager', 'sales'] },
-      { key: '/auto-tags', icon: '🏷️', label: '自动打标', permission: 'scrm_auto_tag_rule:read', roles: ['admin', 'manager', 'sales'] },
+      { key: '/workbench', icon: '🧑‍💼', label: '会计工作台', permission: 'scrm_company:read', roles: ['admin', 'manager', 'sales', 'viewer', 'accountant'] },
+      { key: '/compliance', icon: '📋', label: '合规到期', permission: 'scrm_annual_report:read', roles: ['admin', 'manager', 'sales', 'viewer', 'accountant'] },
+      { key: '/payroll', icon: '🧾', label: '社保个税', permission: 'scrm_employee:read', roles: ['admin', 'manager', 'sales', 'viewer', 'accountant'] },
+      { key: '/documents', icon: '🗄️', label: '资料归档', permission: 'scrm_customer_document:read', roles: ['admin', 'manager', 'sales', 'viewer', 'accountant'] },
+      { key: '/vouchers', icon: '📒', label: '记账凭证', permission: 'scrm_voucher:read', roles: ['admin', 'manager', 'sales', 'viewer', 'accountant'] },
+      { key: '/accounting-reports', icon: '📊', label: '账务报表', permission: 'scrm_voucher:read', roles: ['admin', 'manager', 'sales', 'viewer', 'accountant'] },
+      { key: '/companies', icon: '🏢', label: '公司主体', permission: 'scrm_company:read', roles: ['admin', 'manager', 'sales', 'viewer', 'accountant'] },
+      { key: '/license-ocr', icon: '📄', label: '证照识别', permission: 'scrm_license_ocr:read', roles: ['admin', 'manager', 'sales', 'accountant'] },
+      { key: '/inspections', icon: '🔍', label: '巡检与公告', permission: 'scrm_inspection_task:read', roles: ['admin', 'manager'] },
+      { key: '/finance-readiness', icon: '🧭', label: '就绪看板', permission: 'scrm_inspection_task:read', roles: ['admin'] },
+      { key: '/tax-calendar', icon: '📅', label: '报税日历', permission: 'scrm_tax_record:read', roles: ['admin', 'manager', 'sales', 'accountant'] },
+      { key: '/tax-holidays', icon: '🎏', label: '假期维护', permission: 'scrm_tax_holiday:read', roles: ['admin', 'manager'] },
+      { key: '/renewals', icon: '🔄', label: '服务续费', permission: 'scrm_renewal_task:read', roles: ['admin', 'manager', 'sales', 'accountant'] },
+      { key: '/policy-push', icon: '📢', label: '政策推送', permission: 'scrm_policy_push_task:read', roles: ['admin', 'manager'] },
     ],
   },
   {
     group: '会话与通讯',
     items: [
-      { key: '/conversations', icon: '💬', label: '会话列表', permission: 'scrm_conversation:read', roles: ['admin', 'manager', 'sales', 'viewer'] },
-      { key: '/ai-assistant', icon: '🤖', label: 'AI 助手', permission: 'scrm_ai_assistant:read', roles: ['admin', 'manager', 'sales'] },
-      { key: '/groups', icon: '👪', label: '客户群', permission: 'scrm_wework:read', roles: ['admin', 'manager', 'sales'] },
-      { key: '/wework-departments', icon: '🏢', label: '部门通讯录', permission: 'scrm_wework:read', roles: ['admin', 'manager', 'sales'] },
+      { key: '/conversations', icon: '💬', label: '会话列表', permission: 'scrm_conversation:read', roles: ['admin', 'manager', 'sales', 'viewer', 'accountant'] },
     ],
   },
-  {
-    group: '平台账号',
-    items: [
-      { key: '/accounts', icon: '🔐', label: '平台账号管理', permission: 'scrm_account:read', roles: ['admin', 'sales'] },
-      { key: '/account-health', icon: '💚', label: '健康度', permission: 'scrm_account:read', roles: ['admin'] },
-      { key: '/personas', icon: '🎭', label: '人设管理', permission: 'scrm_persona:read', roles: ['admin', 'manager'] },
-    ],
-  },
-  {
-    group: '营销触达',
-    items: [
-      { key: '/campaigns', icon: '🚀', label: '任务管理', permission: 'scrm_campaign:read', roles: ['admin', 'manager', 'sales', 'viewer'] },
-      { key: '/mass-sends', icon: '📣', label: '群发任务', permission: 'scrm_mass_send:read', roles: ['admin', 'manager', 'sales'] },
-      { key: '/group-broadcast', icon: '👥', label: '群群发', permission: 'scrm_community_message:read', roles: ['admin', 'manager', 'sales'] },
-      { key: '/message-templates', icon: '📝', label: '消息模板', permission: 'scrm_message_template:read', roles: ['admin', 'manager', 'sales'] },
-    ],
-  },
-  {
-    group: '沟通效率',
-    items: [
-      { key: '/quick-replies', icon: '⚡', label: '快捷回复', permission: 'scrm_quick_reply:read', roles: ['admin', 'manager', 'sales'] },
-      { key: '/speeches', icon: '🗣️', label: '话术库', permission: 'scrm_speech:read', roles: ['admin', 'manager', 'sales'] },
-      { key: '/assets', icon: '🗂️', label: '素材库', permission: 'scrm_asset:read', roles: ['admin', 'manager', 'sales'] },
-    ],
-  },
-  {
-    group: '销售转化',
-    items: [
-      { key: '/public-sea', icon: '🌊', label: '公海客户', permission: 'scrm_public_sea:read', roles: ['admin', 'manager', 'sales'] },
-      { key: '/opportunities', icon: '💼', label: '商机管理', permission: 'scrm_opportunity:read', roles: ['admin', 'manager', 'sales'] },
-      { key: '/tickets', icon: '🎫', label: '客户工单', permission: 'scrm_ticket:read', roles: ['admin', 'manager', 'sales'] },
-    ],
-  },
-  {
-    group: '客户运营',
-    items: [
-      { key: '/membership', icon: '👑', label: '会员体系', permission: 'scrm_membership:read', roles: ['admin', 'manager', 'sales'] },
-      { key: '/points', icon: '⭐', label: '积分管理', permission: 'scrm_points:read', roles: ['admin', 'manager', 'sales'] },
-      { key: '/coupons', icon: '🎟️', label: '优惠券', permission: 'scrm_coupon:read', roles: ['admin', 'manager', 'sales'] },
-      { key: '/surveys', icon: '📊', label: 'NPS 问卷', permission: 'scrm_survey:read', roles: ['admin', 'manager', 'sales'] },
-    ],
-  },
+  // 「平台账号」分组（账号管理 / 健康度 / 人设管理）已从菜单摘除：
+  // 这组功能服务于「多企微账号运营」，代账场景无用。
+  // 路由与后端接口保留 —— 会话列表仍要显示 accountName，且日后要恢复只需加回菜单。
+  // 「营销触达」分组（任务管理 / 群发任务 / 群群发 / 消息模板）已从菜单摘除：
+  // 本系统定位为财税代账作业平台，批量营销与代账业务无关。
+  // 路由与后端接口保留 —— 日后要恢复只需加回菜单。
+  // 「沟通效率」分组（快捷回复 / 话术库 / 素材库）已从菜单摘除：
+  // 快捷回复已内建在会话页输入框上方，不需要独立页面；
+  // 话术库、素材库服务于营销话术沉淀，代账场景不用。
+  // 路由与后端接口保留 —— 日后要恢复只需加回菜单。
   {
     group: '内容与知识',
     items: [
-      { key: '/knowledge-base', icon: '📚', label: '知识库', permission: 'scrm_knowledge_base:read', roles: ['admin', 'manager', 'sales'] },
-      { key: '/content-marketing', icon: '📣', label: '内容营销', permission: 'scrm_content:read', roles: ['admin', 'manager', 'sales'] },
-      { key: '/quality-inspections', icon: '🛡️', label: '会话质检', permission: 'scrm_quality_inspection:read', roles: ['admin', 'manager'] },
-    ],
-  },
-  {
-    group: '数据分析',
-    items: [
-      { key: '/rfm', icon: '📈', label: 'RFM 分析', permission: 'scrm_rfm:read', roles: ['admin', 'manager'] },
-      { key: '/ltv', icon: '💰', label: 'LTV 预测', permission: 'scrm_ltv:read', roles: ['admin', 'manager'] },
-      { key: '/attribution', icon: '🎯', label: '归因分析', permission: 'scrm_attribution:read', roles: ['admin', 'manager'] },
-    ],
-  },
-  {
-    group: '风控合规',
-    items: [
-      { key: '/blacklist', icon: '🚫', label: '风险黑名单', permission: 'scrm_blacklist:read', roles: ['admin', 'manager'] },
-      { key: '/risk-rules', icon: '⚠️', label: '风控规则', permission: 'scrm_risk_rule:read', roles: ['admin', 'manager'] },
-      { key: '/risk-signals', icon: '📡', label: '风险信号', permission: 'scrm_risk_signal:read', roles: ['admin', 'manager'] },
+      { key: '/knowledge-base', icon: '📚', label: '知识库', permission: 'scrm_knowledge_base:read', roles: ['admin', 'manager', 'sales', 'accountant'] },
     ],
   },
   {
     group: '商务闭环',
     items: [
       { key: '/contracts', icon: '📄', label: '合同管理', permission: 'scrm_contract:read', roles: ['admin', 'manager'] },
-      { key: '/orders', icon: '🧾', label: '产品订单', permission: 'scrm_order:read', roles: ['admin', 'manager'] },
-      { key: '/commissions', icon: '💵', label: '佣金结算', permission: 'scrm_commission:read', roles: ['admin', 'manager'] },
       { key: '/invoices', icon: '🧮', label: '发票管理', permission: 'scrm_invoice:read', roles: ['admin', 'manager'] },
     ],
   },
   {
     group: '系统集成',
     items: [
-      { key: '/lead-scoring', icon: '🎯', label: '线索打分', permission: 'scrm_lead_scoring:read', roles: ['admin', 'manager'] },
       { key: '/notifications', icon: '🔔', label: '通知中心', permission: 'scrm_notification:read', roles: ['admin', 'manager'] },
       { key: '/webhooks', icon: '🔗', label: 'Webhook', permission: 'scrm_webhook:read', roles: ['admin'] },
     ],
   },
   {
-    group: '系统配置',
-    items: [
-      { key: '/data-dictionaries', icon: '📖', label: '数据字典', permission: 'scrm_data_dictionary:read', roles: ['admin'] },
-      { key: '/data-transfers', icon: '🔄', label: '导入导出', permission: 'scrm_data_transfer:read', roles: ['admin'] },
-      { key: '/customer-journeys', icon: '🧭', label: '客户旅程', permission: 'scrm_customer_journey:read', roles: ['admin', 'manager'] },
-    ],
-  },
-  {
     group: '运营协同',
     items: [
-      { key: '/marketing-calendar', icon: '📅', label: '营销日历', permission: 'scrm_marketing_calendar:read', roles: ['admin', 'manager'] },
       { key: '/approvals', icon: '✅', label: '审批中心', permission: 'scrm_approval:read', roles: ['admin', 'manager'] },
       { key: '/reports', icon: '📊', label: '报表中心', permission: 'scrm_report:read', roles: ['admin', 'manager'] },
-    ],
-  },
-  {
-    group: '客户运营执行',
-    items: [
-      { key: '/customer-care', icon: '💝', label: '客户关怀', permission: 'scrm_customer_care:read', roles: ['admin', 'manager', 'sales'] },
-      { key: '/visits', icon: '🤝', label: '客户拜访', permission: 'scrm_visit:read', roles: ['admin', 'manager', 'sales'] },
-      { key: '/follow-ups', icon: '📌', label: '客户跟进', permission: 'scrm_follow_up:read', roles: ['admin', 'manager', 'sales'] },
-      { key: '/work-orders', icon: '🔧', label: '工单管理', permission: 'scrm_work_order:read', roles: ['admin', 'manager'] },
-      { key: '/interaction-calendar', icon: '🗓️', label: '互动日历', permission: 'scrm_interaction_calendar:read', roles: ['admin', 'manager', 'sales'] },
-    ],
-  },
-  {
-    group: '情报与预算',
-    items: [
-      { key: '/competitors', icon: '🕵️', label: '竞品监测', permission: 'scrm_competitor:read', roles: ['admin', 'manager'] },
-      { key: '/budgets', icon: '💰', label: '预算管理', permission: 'scrm_budget:read', roles: ['admin', 'manager'] },
+      { key: '/work-orders', icon: '🔧', label: '工单管理', permission: 'scrm_work_order:read', roles: ['admin', 'manager', 'sales', 'accountant'] },
     ],
   },
   {
@@ -268,18 +200,9 @@ const navGroups: NavGroup[] = [
     items: [
       { key: '/data-dictionaries', icon: '📖', label: '数据字典', permission: 'scrm_data_dictionary:read', roles: ['admin'] },
       { key: '/data-transfers', icon: '🔄', label: '导入导出', permission: 'scrm_data_transfer:read', roles: ['admin'] },
-      { key: '/customer-journeys', icon: '🧭', label: '客户旅程', permission: 'scrm_customer_journey:read', roles: ['admin', 'manager'] },
-      { key: '/segments', icon: '🎯', label: '客户分群', permission: 'scrm_segment:read', roles: ['admin', 'manager'] },
       { key: '/task-scheduler', icon: '⏰', label: '任务调度', permission: 'scrm_task_scheduler:read', roles: ['admin'] },
       { key: '/open-api-apps', icon: '🔐', label: 'OpenAPI', permission: 'scrm_open_api:read', roles: ['admin'] },
-      { key: '/message-template-center', icon: '🗂️', label: '模板中心', permission: 'scrm_message_template_center:read', roles: ['admin', 'manager', 'sales'] },
-    ],
-  },
-  {
-    group: '风控管理',
-    items: [
-      { key: '/risk-rules', icon: '🚨', label: '风险规则', permission: 'scrm_risk_rule:read', roles: ['admin', 'manager'] },
-      { key: '/risk-signals', icon: '⚠️', label: '风控信号', permission: 'scrm_risk_signal:read', roles: ['admin', 'manager'] },
+      { key: '/message-template-center', icon: '🗂️', label: '模板中心', permission: 'scrm_message_template_center:read', roles: ['admin', 'manager', 'sales', 'accountant'] },
     ],
   },
   {
@@ -666,14 +589,14 @@ export default function Layout() {
     if (location.pathname.startsWith('/customers/')) return '客户详情';
     if (location.pathname.startsWith('/conversations/')) return '会话详情';
     if (location.pathname.startsWith('/campaigns/')) return '任务详情';
-    return '运营中心';
+    return '财税概览';
   };
 
   /** 获取当前页面副标题 */
   const getPageSubtitle = (): string => {
     switch (location.pathname) {
       case '/':
-        return 'SCRM 自动化运营概览';
+        return '代账财税作业总览';
       case '/customers':
         return '管理多平台客户信息和标签';
       case '/customer-groups':
@@ -699,13 +622,13 @@ export default function Layout() {
       case '/personas':
         return '人设身份管理与维护';
       case '/dashboard':
-        return '运营数据分析和趋势看板';
+        return '旧运营看板（SCRM 口径，已从菜单摘除）';
       case '/audit-logs':
         return '操作审计日志查询';
       case '/settings':
         return '平台连接配置与系统参数管理';
       default:
-        return 'SCRM 自动化运营引擎';
+        return '代账财税作业平台';
     }
   };
 

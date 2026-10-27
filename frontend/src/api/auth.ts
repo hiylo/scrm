@@ -118,8 +118,12 @@ function extractRolesFromToken(token: string): string[] {
 const ROLE_PRIORITY: Record<string, number> = {
   ADMIN: 1,
   MANAGER: 2,
+  // 主管与经理同属管理视角；未单列会让 SUPERVISOR 退化成 viewer
+  SUPERVISOR: 2,
   OPERATOR: 3,
   SALES: 3,
+  // 会计是财税域的执行岗：能写、但数据范围受限（只看到自己负责的主体）
+  ACCOUNTANT: 3,
   VIEWER: 4,
 };
 
@@ -137,6 +141,7 @@ function normalizeRole(roles: string[]): string {
     const priority = ROLE_PRIORITY[normalized];
     if (priority !== undefined && priority < bestPriority) {
       // OPERATOR (下级用户) 与 SALES 同等对待: 可编辑自己的账号并与其用户聊天
+      // ACCOUNTANT 不被降级为 sales：它有独立的财税数据范围与菜单
       bestRole = normalized === 'OPERATOR' ? 'sales' : normalized.toLowerCase();
       bestPriority = priority;
     }
@@ -348,8 +353,17 @@ export const isAdmin = (): boolean => {
  */
 export const hasPermission = (permission: string): boolean => {
   const role = getRole();
-  // admin/manager 拥有所有权限
-  if (role === 'admin' || role === 'manager') return true;
+  // admin/manager/supervisor 是管理视角，拥有所有权限
+  if (role === 'admin' || role === 'manager' || role === 'supervisor') return true;
+  // accountant: 财税作业执行岗，放行财税域读写（数据范围由后端按负责主体限制）
+  if (role === 'accountant') {
+    const accountantPermissions = [
+      'scrm_company', 'scrm_tax_record', 'scrm_voucher', 'scrm_employee',
+      'scrm_customer_document', 'scrm_renewal_task', 'scrm_annual_report',
+      'scrm_customer', 'scrm_conversation',
+    ];
+    return accountantPermissions.some(p => permission.startsWith(p));
+  }
   // sales: 客户/会话/营销/消息模板权限
   if (role === 'sales') {
     const salesPermissions = [

@@ -19,6 +19,7 @@ import Login from './pages/Login';
 
 // 懒加载业务页面
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const FinanceOverview = lazy(() => import('./pages/FinanceOverview'));
 const Customers = lazy(() => import('./pages/Customers'));
 const CustomerDetail = lazy(() => import('./pages/CustomerDetail'));
 const CustomerGroups = lazy(() => import('./pages/CustomerGroups'));
@@ -53,6 +54,20 @@ const Points = lazy(() => import('./pages/Points'));
 const Coupons = lazy(() => import('./pages/Coupons'));
 const Surveys = lazy(() => import('./pages/Surveys'));
 const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase'));
+const Companies = lazy(() => import('./pages/Companies'));
+const LicenseOcr = lazy(() => import('./pages/LicenseOcr'));
+const Inspections = lazy(() => import('./pages/Inspections'));
+const Readiness = lazy(() => import('./pages/Readiness'));
+const TaxCalendar = lazy(() => import('./pages/TaxCalendar'));
+const TaxHoliday = lazy(() => import('./pages/TaxHoliday'));
+const Renewal = lazy(() => import('./pages/Renewal'));
+const PolicyPush = lazy(() => import('./pages/PolicyPush'));
+const AccountantWorkbench = lazy(() => import('./pages/AccountantWorkbench'));
+const Compliance = lazy(() => import('./pages/Compliance'));
+const Payroll = lazy(() => import('./pages/Payroll'));
+const DocumentArchive = lazy(() => import('./pages/DocumentArchive'));
+const Voucher = lazy(() => import('./pages/Voucher'));
+const AccountingReports = lazy(() => import('./pages/AccountingReports'));
 const ContentMarketing = lazy(() => import('./pages/ContentMarketing'));
 const QualityInspections = lazy(() => import('./pages/QualityInspections'));
 const RfmAnalysis = lazy(() => import('./pages/RfmAnalysis'));
@@ -94,7 +109,7 @@ const PageLoading = () => (
 
 /** 路由配置数组 */
 const appRoutes: Array<{ path?: string; index?: boolean; element: React.ReactElement }> = [
-  { index: true, element: <Dashboard /> },
+  { index: true, element: <FinanceOverview /> },
   { path: 'customers', element: <Customers /> },
   { path: 'customers/:id', element: <CustomerDetail /> },
   { path: 'customer-groups', element: <CustomerGroups /> },
@@ -141,6 +156,33 @@ const appRoutes: Array<{ path?: string; index?: boolean; element: React.ReactEle
   { path: 'commissions', element: <Commissions /> },
   { path: 'invoices', element: <Invoices /> },
   { path: 'lead-scoring', element: <LeadScoring /> },
+  { path: 'companies', element: <Companies /> },
+  { path: 'license-ocr', element: <LicenseOcr /> },
+  { path: 'inspections', element: <Inspections /> },
+  { path: 'finance-readiness', element: <Readiness /> },
+  { path: 'tax-calendar', element: <TaxCalendar /> },
+  { path: 'tax-holidays', element: <TaxHoliday /> },
+  { path: 'renewals', element: <Renewal /> },
+  { path: 'workbench', element: <AccountantWorkbench /> },
+  { path: 'compliance', element: <Compliance /> },
+  { path: 'payroll', element: <Payroll /> },
+  { path: 'documents', element: <DocumentArchive /> },
+  { path: 'vouchers', element: <Voucher /> },
+  { path: 'accounting-reports', element: <AccountingReports /> },
+  { path: 'policy-push', element: <PolicyPush /> },
+  // 以下 7 个页面菜单里可点，但此前漏注册路由，点击会被 * 通配重定向回首页。
+  // 按「只摘菜单、保留路由」的约定补齐，保证既有页面可达。
+  { path: 'approvals', element: <Approvals /> },
+  { path: 'reports', element: <Reports /> },
+  { path: 'data-dictionaries', element: <DataDictionaries /> },
+  { path: 'data-transfers', element: <DataTransfers /> },
+  { path: 'task-scheduler', element: <TaskScheduler /> },
+  { path: 'open-api-apps', element: <OpenApiApps /> },
+  { path: 'message-template-center', element: <MessageTemplateCenter /> },
+  // 代账客户维护相关的三个页面：菜单已恢复，此处补齐路由
+  { path: 'follow-ups', element: <FollowUps /> },
+  { path: 'customer-care', element: <CustomerCare /> },
+  { path: 'work-orders', element: <WorkOrders /> },
   { path: 'notifications', element: <Notifications /> },
   { path: 'webhooks', element: <Webhooks /> },
   { path: 'dashboard', element: <Dashboard /> },

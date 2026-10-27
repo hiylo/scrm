@@ -73,3 +73,114 @@
 .ant-card-extra .ant-btn {
   margin-left: 8px;
 }
+/* ============================================================
+   会话页：占满内容区高度，左右两栏各自滚动（页面本身不滚）
+   ------------------------------------------------------------
+   原实现用 calc(100vh - 360px) 估算消息区高度：那个 360 是拍出来的
+   魔法数（header 60 + 内容区上下 padding 40 + 卡片头 + 筛选区…），
+   任何一处高度变化都会让消息区高度错位，输入框被挤出屏幕或被留出空档。
+
+   同时 .app-content 自身 overflow:auto、消息区又 overflow:auto，
+   滚动鼠标时是"先滚内层、滚到底再滚外层"的双层滚动，手感很别扭；
+   左侧会话列表则完全没有滚动容器，逐页加载后会把整页越撑越长。
+
+   改法：把高度沿 flex 链一路传下去，让两栏各自成为独立滚动容器。
+   用 :has() 限定只有挂 .conv-fill 的页面生效，不影响其余页面。
+   ============================================================ */
+
+.page-transition:has(> .ant-tabs.conv-fill) {
+  height: 100%;
+  min-height: 0;
+}
+
+/* antd Tabs 默认不传递高度，需要逐层撑开 */
+.ant-tabs.conv-fill {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ant-tabs.conv-fill > .ant-tabs-nav {
+  flex: none;
+  margin-bottom: 8px;
+}
+
+.ant-tabs.conv-fill .ant-tabs-content-holder {
+  flex: 1;
+  min-height: 0;
+}
+
+.ant-tabs.conv-fill .ant-tabs-content {
+  height: 100%;
+}
+
+.ant-tabs.conv-fill .ant-tabs-tabpane {
+  height: 100%;
+  min-height: 0;
+}
+
+/* 左右两栏等高 */
+.conv-row {
+  height: 100%;
+  min-height: 0;
+}
+
+.conv-col {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Card 改成 flex 容器，让 body 成为可分配空间的孩子 */
+.conv-col > .ant-card {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.conv-col > .ant-card > .ant-card-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 左侧会话列表的滚动区（筛选区与"加载更多"固定在两端） */
+.conv-list-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* 窄屏：两栏会堆叠，固定高度没有意义，退回自然高度 + 整页滚动 */
+@media (max-width: 767px) {
+  .page-transition:has(> .ant-tabs.conv-fill) {
+    height: auto;
+  }
+  .ant-tabs.conv-fill {
+    height: auto;
+  }
+  .ant-tabs.conv-fill .ant-tabs-content {
+    height: auto;
+  }
+  .ant-tabs.conv-fill .ant-tabs-tabpane {
+    height: auto;
+  }
+  .conv-row,
+  .conv-col,
+  .conv-col > .ant-card {
+    height: auto;
+  }
+  .conv-col > .ant-card > .ant-card-body {
+    overflow: visible;
+  }
+  .conv-list-scroll {
+    overflow-y: visible;
+    flex: none;
+  }
+}
