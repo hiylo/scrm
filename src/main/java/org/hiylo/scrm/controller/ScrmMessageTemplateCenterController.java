@@ -14,6 +14,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.hiylo.scrm.dto.ScrmMessageTemplateCenterDto;
 import org.hiylo.scrm.dto.ScrmMessageTemplateGroupDto;
 import org.hiylo.scrm.dto.ScrmMessageTemplateVersionDto;
+import org.hiylo.scrm.dto.ScrmMarketingBatchGenerateDto;
+import org.hiylo.scrm.dto.ScrmMarketingBatchSaveDto;
 import org.hiylo.scrm.dto.ScrmTemplateQueryDto;
 import org.hiylo.scrm.dto.ScrmTemplateRenderDto;
 import org.hiylo.scrm.dto.ScrmTemplateReviewDto;
@@ -24,6 +26,8 @@ import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.rbac.annotation.RateLimit;
 import org.hiylo.scrm.rbac.annotation.RequirePermission;
 import org.hiylo.scrm.service.ScrmMessageTemplateCenterService;
+import org.hiylo.scrm.service.marketing.ScrmMarketingBatchGenerationService;
+import org.hiylo.scrm.service.marketing.ScrmMarketingTemplateService;
 import org.hiylo.scrm.common.OperationResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -66,6 +70,12 @@ public class ScrmMessageTemplateCenterController {
 
     /** 消息模板中心服务 */
     private final ScrmMessageTemplateCenterService templateCenterService;
+
+    /** 财税营销 AI 批量生成服务 (模块④) */
+    private final ScrmMarketingBatchGenerationService marketingBatchGenerationService;
+
+    /** 财税营销变体落库服务 (模块④) */
+    private final ScrmMarketingTemplateService marketingBatchTemplateService;
 
     // ============================================================
     // 模板分组管理
@@ -660,6 +670,50 @@ public class ScrmMessageTemplateCenterController {
     public OperationResponse<List<Map<String, Object>>> batchRender(
             @RequestBody List<ScrmTemplateRenderDto> renderDtos) {
         return OperationResponse.build(templateCenterService.batchRender(renderDtos));
+    }
+
+    // ============================================================
+    // 财税营销 AI 批量生成（模块④）
+    // ============================================================
+
+    /**
+     * AI 批量生成多套营销文案变体（不落库, 返回变体供预览/确认）。
+     * <p>
+     * 链路: 模板编码 → 加载模板 → 提示词注入 → 调用 AI → 合规校验 → 返回通过项。
+     * 通过项需再调 {@code POST /scrm/message-template-center/marketing/save-drafts} 落库为
+     * DRAFT 进入人工审核; AI 不可用/全部不合规时返回 error 与空 variants。
+     * </p>
+     *
+     * @param dto 生成请求 (模板编码 + 占位符取值 + 语气/渠道/变体数量)
+     * @return 生成结果 (templateCode/channel/variants/warnings/error?)
+     * @throws ScrmException 模板不存在 / 占位符取值非法
+     */
+    @RequirePermission(resource = "scrm_message_template_center", action = "create")
+    @RateLimit(capacity = 20, refillTokens = 20, refillPeriodSeconds = 60)
+    @PostMapping("/marketing/generate")
+    public OperationResponse<Map<String, Object>> marketingGenerate(
+            @Valid @RequestBody ScrmMarketingBatchGenerateDto dto) throws ScrmException {
+        return OperationResponse.build(marketingBatchGenerationService.batchGenerate(dto));
+    }
+
+    /**
+     * 将 AI 批量生成通过合规校验的变体落库为 DRAFT 模板（进入人工审核队列）。
+     * <p>
+     * 服务端会基于源模板重新调用 AI 生成并执行合规校验, 防止绕过校验直接入库;
+     * 保存前必填 sourceTemplateCode / variantCount。落库行 status=DRAFT,
+     * review_status=PENDING, 审核通过 (APPROVED) 后方可发布/渲染分发。
+     * </p>
+     *
+     * @param dto 保存请求 (源模板编码 + 生成参数)
+     * @return 已保存的 DRAFT 模板列表
+     * @throws ScrmException 源模板不存在
+     */
+    @RequirePermission(resource = "scrm_message_template_center", action = "create")
+    @RateLimit(capacity = 10, refillTokens = 10, refillPeriodSeconds = 60)
+    @PostMapping("/marketing/save-drafts")
+    public OperationResponse<List<ScrmMessageTemplateCenterEntity>> marketingSaveDrafts(
+            @Valid @RequestBody ScrmMarketingBatchSaveDto dto) throws ScrmException {
+        return OperationResponse.build(marketingBatchTemplateService.saveGeneratedDrafts(dto));
     }
 
     // ============================================================

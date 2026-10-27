@@ -26,6 +26,9 @@ import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.rbac.annotation.RateLimit;
 import org.hiylo.scrm.rbac.annotation.RequirePermission;
 import org.hiylo.scrm.service.ScrmAiAssistantService;
+import org.hiylo.scrm.service.finance.ScrmFinanceKnowledgeCitationService;
+import org.hiylo.scrm.service.finance.ScrmFinanceKnowledgeImportService;
+import org.hiylo.scrm.service.finance.ScrmFinanceKnowledgeReviewService;
 import org.hiylo.scrm.common.OperationResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -39,6 +42,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -62,6 +66,15 @@ public class ScrmAiAssistantController {
 
     /** AI 助手服务 */
     private final ScrmAiAssistantService scrmAiAssistantService;
+
+    /** 模块③ T06 模板批量导入服务 */
+    private final ScrmFinanceKnowledgeImportService financeKnowledgeImportService;
+
+    /** 模块③ 版本复核服务（复核日期 / 待复核检索） */
+    private final ScrmFinanceKnowledgeReviewService financeKnowledgeReviewService;
+
+    /** 模块③ 引用溯源服务（答复附知识条目 id/title） */
+    private final ScrmFinanceKnowledgeCitationService financeKnowledgeCitationService;
 
     // ============================================================
     // 配置管理 /configs
@@ -614,6 +627,94 @@ public class ScrmAiAssistantController {
     public OperationResponse<ScrmAiKnowledgeDocumentEntity> getDocument(@PathVariable Long id)
             throws ScrmException {
         return OperationResponse.build(scrmAiAssistantService.getDocument(id));
+    }
+
+    // ============================================================
+    // 模块③ 财税知识库增强（T06 批量导入 / 版本复核 / 引用溯源）
+    // ============================================================
+
+    /**
+     * 按 T06 模板批量导入财税知识条目（md / docx）。
+     * <p>
+     * 解析 T06 规范的模板文件, 落库为 AiKnowledgeDocument
+     * （sourceType=IMPORT, contentType=MARKDOWN）, 并写入最后人工复核日期 /
+     * 建议下次复核日期 / 复核周期。同标题重复导入自动跳过。
+     * </p>
+     *
+     * @param files 模板文件列表 (multipart 字段名 files, 支持 .md / .docx)
+     * @return 逐文件导入结果 [{fileName, success, message, articleCode, title, documentId}]
+     * @throws ScrmException 文件列表为空
+     */
+    @RequirePermission(resource = "scrm_ai_assistant", action = "create")
+    @RateLimit(capacity = 10, refillTokens = 10, refillPeriodSeconds = 60)
+    @PostMapping("/knowledge-bases/import/templates")
+    public OperationResponse<List<Map<String, Object>>> importKnowledgeTemplates(
+            @RequestParam("files") List<MultipartFile> files) throws ScrmException {
+        return OperationResponse.build(financeKnowledgeImportService.importTemplateFiles(files));
+    }
+
+    /**
+     * 复核 AI 知识库文档条目（更新最后人工复核日期 / 下次复核日期）。
+     *
+     * @param documentId 文档 ID
+     * @param reviewedAt 复核日期 (可空, ISO 格式, 默认当前时间)
+     * @param cycleDays  复核周期天数 (可空, 默认 180)
+     * @param reviewer   复核人 (可空)
+     * @return 更新后的文档
+     * @throws ScrmException 文档不存在
+     */
+    @RequirePermission(resource = "scrm_ai_assistant", action = "update")
+    @RateLimit(capacity = 30, refillTokens = 30, refillPeriodSeconds = 60)
+    @PostMapping("/knowledge-bases/documents/{documentId}/review")
+    public OperationResponse<ScrmAiKnowledgeDocumentEntity> reviewKnowledgeDocument(
+            @PathVariable Long documentId,
+            @RequestParam(required = false) LocalDateTime reviewedAt,
+            @RequestParam(required = false) Integer cycleDays,
+            @RequestParam(required = false) String reviewer) throws ScrmException {
+        return OperationResponse.build(financeKnowledgeReviewService.reviewDocument(
+                documentId, reviewedAt, cycleDays, reviewer));
+    }
+
+    /**
+     * 分页查询待复核的 AI 知识库文档（未复核或已过下次复核日期）。
+     *
+     * @param knowledgeBaseId 知识库 ID 过滤 (可空)
+     * @param page            页码（从 0 开始, 默认 0）
+     * @param size            每页大小（默认 20）
+     * @return 待复核文档分页结果
+     */
+    @RequirePermission(resource = "scrm_ai_assistant", action = "read")
+    @GetMapping("/knowledge-bases/documents/due-for-review")
+    public OperationResponse<Page<ScrmAiKnowledgeDocumentEntity>> listDocumentsDueForReview(
+            @RequestParam(required = false) Long knowledgeBaseId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        PageRequest pageable = PageRequest.of(page, size);
+        return OperationResponse.build(financeKnowledgeReviewService.listDocumentsDueForReview(
+                knowledgeBaseId, pageable));
+    }
+
+    /**
+     * 知识库搜索并返回引用溯源（知识条目 id/title + 免责行）。
+     * <p>
+     * AI 答复带引用: 答复正文由调用方生成, 本端点返回 citations 与 disclaimer,
+     * 供前端在答复下方展示来源与合规免责声明。
+     * </p>
+     *
+     * @param body 请求体: {knowledgeBaseId (可空), query}
+     * @return {citations: [{id,title,articleCode,category,lastReviewedAt,snippet}], disclaimer}
+     */
+    @RequirePermission(resource = "scrm_ai_assistant", action = "read")
+    @RateLimit(capacity = 60, refillTokens = 60, refillPeriodSeconds = 60)
+    @PostMapping("/knowledge-bases/citations")
+    public OperationResponse<Map<String, Object>> buildKnowledgeCitations(@RequestBody Map<String, Object> body) {
+        Long knowledgeBaseId = body != null && body.get("knowledgeBaseId") != null
+                ? Long.valueOf(body.get("knowledgeBaseId").toString()) : null;
+        String query = body != null && body.get("query") != null ? body.get("query").toString() : null;
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("citations", financeKnowledgeCitationService.buildCitations(knowledgeBaseId, query));
+        result.put("disclaimer", financeKnowledgeCitationService.disclaimer());
+        return OperationResponse.build(result);
     }
 
     // ============================================================

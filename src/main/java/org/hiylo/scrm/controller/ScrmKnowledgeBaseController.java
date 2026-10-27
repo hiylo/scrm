@@ -23,6 +23,7 @@ import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.rbac.annotation.RateLimit;
 import org.hiylo.scrm.rbac.annotation.RequirePermission;
 import org.hiylo.scrm.service.ScrmKnowledgeBaseService;
+import org.hiylo.scrm.service.finance.ScrmFinanceKnowledgeReviewService;
 import org.hiylo.scrm.common.OperationResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -62,6 +63,9 @@ public class ScrmKnowledgeBaseController {
 
     /** 知识库服务 */
     private final ScrmKnowledgeBaseService scrmKnowledgeBaseService;
+
+    /** 模块③ 版本复核服务 (知识文章复核 / 待复核检索 / 概览) */
+    private final ScrmFinanceKnowledgeReviewService financeKnowledgeReviewService;
 
     // ============================================================
     // 分类管理
@@ -949,6 +953,65 @@ public class ScrmKnowledgeBaseController {
             @RequestParam(defaultValue = "20") int size) throws ScrmException {
         PageRequest pageable = PageRequest.of(page, size);
         return OperationResponse.build(scrmKnowledgeBaseService.getReviewHistory(articleId, pageable));
+    }
+
+    // ============================================================
+    // 模块③ 版本复核（最后人工复核日期 / 待复核检索 / 概览）
+    // ============================================================
+
+    /**
+     * 复核知识文章（更新最后人工复核日期, 并创建版本快照版本号 +1 旧版归档）。
+     * <p>
+     * 语义对齐 T06 模板总则第 6/8 条: 复核后更新「最后人工复核日期」并做版本号 +1;
+     * 变更说明记录复核人 / 复核时间 / 变更摘要。
+     * </p>
+     *
+     * @param articleId  文章 ID
+     * @param reviewedAt 复核日期 (可空, ISO 格式, 默认当前时间)
+     * @param cycleDays  复核周期天数 (可空, 默认 180)
+     * @param changeLog  变更说明 (可空)
+     * @param reviewer   复核人 (可空)
+     * @return 更新后的主文章
+     * @throws ScrmException 文章不存在
+     */
+    @RequirePermission(resource = "scrm_knowledge", action = "update")
+    @RateLimit(capacity = 30, refillTokens = 30, refillPeriodSeconds = 60)
+    @PostMapping("/reviews/{articleId}/reviewed")
+    public OperationResponse<ScrmKnowledgeArticleEntity> reviewArticle(
+            @PathVariable Long articleId,
+            @RequestParam(required = false) LocalDateTime reviewedAt,
+            @RequestParam(required = false) Integer cycleDays,
+            @RequestParam(required = false) String changeLog,
+            @RequestParam(required = false) String reviewer) throws ScrmException {
+        return OperationResponse.build(financeKnowledgeReviewService.reviewArticle(
+                articleId, reviewedAt, cycleDays, changeLog, reviewer));
+    }
+
+    /**
+     * 分页查询待复核的知识文章（未复核或已过下次复核日期）。
+     *
+     * @param page 页码（从 0 开始, 默认 0）
+     * @param size 每页大小（默认 20）
+     * @return 待复核文章分页结果
+     */
+    @RequirePermission(resource = "scrm_knowledge", action = "read")
+    @GetMapping("/reviews/due")
+    public OperationResponse<Page<ScrmKnowledgeArticleEntity>> listArticlesDueForReview(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        PageRequest pageable = PageRequest.of(page, size);
+        return OperationResponse.build(financeKnowledgeReviewService.listArticlesDueForReview(pageable));
+    }
+
+    /**
+     * 待复核概览（AI 知识文档 / 知识文章两个域的待复核数量）。
+     *
+     * @return {documentsDue, articlesDue, reviewCycleDays}
+     */
+    @RequirePermission(resource = "scrm_knowledge", action = "read")
+    @GetMapping("/reviews/due-overview")
+    public OperationResponse<Map<String, Object>> getReviewOverview() {
+        return OperationResponse.build(financeKnowledgeReviewService.getReviewOverview());
     }
 
     // ============================================================
