@@ -106,10 +106,17 @@ describe('QualityInspections', () => {
     fireEvent.click(screen.getByRole('button', { name: cn('新建规则') }));
     await waitFor(() => expect(screen.getByLabelText('规则名称')).toBeInTheDocument());
     await userEvent.type(screen.getByLabelText('规则名称'), '禁骂规则');
+    // 规则类型是受后端 @Pattern 约束的下拉，必须选合法枚举
+    await userEvent.click(screen.getByLabelText('规则类型'));
+    await userEvent.click(await screen.findByText('关键词匹配（KEYWORD_MATCH）'));
     // JSON 含花括号, userEvent 会解析键盘描述, 用 fireEvent.change 直接设值
     fireEvent.change(screen.getByLabelText('规则配置 JSON'), { target: { value: '{"keywords":["滚"]}' } });
     fireEvent.click(screen.getByRole('button', { name: cn('确定') }));
-    await waitFor(() => expect(post).toHaveBeenCalledWith('/scrm/quality-inspections/rules', expect.objectContaining({ ruleName: '禁骂规则' })));
+    // 断言提交的是后端白名单内的值，而不是此前 placeholder 里那个不存在的 KEYWORD_REGEX
+    await waitFor(() => expect(post).toHaveBeenCalledWith(
+      '/scrm/quality-inspections/rules',
+      expect.objectContaining({ ruleName: '禁骂规则', ruleType: 'KEYWORD_MATCH' }),
+    ));
   });
 
   it('切换到任务 Tab, 执行任务', async () => {

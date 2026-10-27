@@ -17,6 +17,7 @@ import {
   Form,
   Input,
   Modal,
+  Select,
   Space,
   Table,
   Tabs,
@@ -52,6 +53,37 @@ const instanceStatusConfig: Record<string, { color: string; label: string }> = {
   REJECTED: { color: 'red', label: '已驳回' },
   CANCELLED: { color: 'default', label: '已撤销' },
 };
+
+/**
+ * 审批流程类型。
+ * <p><b>必须与后端白名单一致</b>：{@code ScrmApprovalFlowDto.flowType} 有 @Pattern，
+ * 只接受 CONTRACT/EXPENSE/LEAVE/REFUND/DISCOUNT/PRICE_CHANGE/CUSTOMER_MERGE/
+ * CONTENT/PURCHASE/OTHER/CUSTOM。这里不是「单人/多人」语义——那是节点配置的事。</p>
+ * <p>注意 {@code getFlowByBusinessType} 是拿 businessType 去匹配 flowType，
+ * 因此流程类型选错会导致该业务永远匹配不到流程。</p>
+ */
+const FLOW_TYPE_OPTIONS = [
+  { value: 'CONTRACT', label: '合同（CONTRACT）' },
+  { value: 'EXPENSE', label: '费用报销（EXPENSE）' },
+  { value: 'LEAVE', label: '请假（LEAVE）' },
+  { value: 'REFUND', label: '退款（REFUND）' },
+  { value: 'DISCOUNT', label: '折扣（DISCOUNT）' },
+  { value: 'PRICE_CHANGE', label: '改价（PRICE_CHANGE）' },
+  { value: 'CUSTOMER_MERGE', label: '客户合并（CUSTOMER_MERGE）' },
+  { value: 'CONTENT', label: '内容（CONTENT）' },
+  { value: 'PURCHASE', label: '采购（PURCHASE）' },
+  { value: 'OTHER', label: '其他（OTHER）' },
+  { value: 'CUSTOM', label: '自定义（CUSTOM）' },
+];
+
+/**
+ * 审批适用模块。
+ * <p>口径与流程类型保持一致（同一套后端枚举），因为实际派发时
+ * {@code businessType} 就是去匹配 {@code flowType} 的。
+ * 后端 {@code applicable_module} 只是展示用字段（存而不读），
+ * 因此这里固定成下拉，避免录入与流程类型对不上的值造成误导。</p>
+ */
+const MODULE_OPTIONS = FLOW_TYPE_OPTIONS;
 
 /** 审批动作映射 */
 const actionConfig: Record<string, { color: string; label: string }> = {
@@ -191,7 +223,7 @@ export default function Approvals() {
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ flowType: 'SINGLE' });
+    form.setFieldsValue({ flowType: 'CONTRACT' });
     setOpen(true);
   };
 
@@ -261,7 +293,15 @@ export default function Approvals() {
   const flowColumns: ColumnsType<ScrmApprovalFlow> = useMemo(() => [
     { title: '流程名称', dataIndex: 'flowName', render: (v: string) => <span style={{ fontWeight: 600 }}>{v}</span> },
     { title: '流程编码', dataIndex: 'flowCode', width: 160, render: (v: string) => <Text code>{v}</Text> },
-    { title: '流程类型', dataIndex: 'flowType', width: 110, render: (v?: string) => v || '-' },
+    {
+      title: '流程类型',
+      dataIndex: 'flowType',
+      width: 130,
+      render: (v?: string) => {
+        const hit = FLOW_TYPE_OPTIONS.find(o => o.value === v);
+        return hit ? hit.label : (v || '-');
+      },
+    },
     { title: '适用模块', dataIndex: 'applicableModule', width: 120, render: (v?: string) => v || '-' },
     {
       title: '状态',
@@ -413,11 +453,22 @@ export default function Approvals() {
           <Form.Item name="flowCode" label="流程编码" rules={[{ required: true, message: '请输入流程编码' }]}>
             <Input placeholder="如: CONTRACT_APPROVAL" maxLength={50} />
           </Form.Item>
-          <Form.Item name="applicableModule" label="适用模块">
-            <Input placeholder="如: CONTRACT" maxLength={100} />
+          <Form.Item
+            name="applicableModule"
+            label="适用模块"
+            extra="仅用于标识，实际派发按「流程类型」匹配业务类型。"
+          >
+            <Select
+              showSearch
+              allowClear
+              placeholder="请选择适用模块"
+              options={MODULE_OPTIONS}
+              optionFilterProp="label"
+            />
           </Form.Item>
-          <Form.Item name="flowType" label="流程类型">
-            <Input placeholder="如: SINGLE / MULTI" maxLength={30} />
+          <Form.Item name="flowType" label="流程类型" initialValue="CONTRACT"
+            rules={[{ required: true, message: '请选择流程类型' }]}>
+            <Select placeholder="请选择流程类型" options={FLOW_TYPE_OPTIONS} />
           </Form.Item>
           <Form.Item name="approverRules" label="审批人规则 JSON">
             <Input.TextArea rows={2} placeholder='[{"node":"财务审批","approver":"u1"}]' />

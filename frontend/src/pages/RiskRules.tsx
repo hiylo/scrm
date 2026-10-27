@@ -45,6 +45,7 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { apiClient } from '../api/client';
 import { useDebounce } from '../hooks/useDebounce';
+import { usePlatforms } from '../hooks/usePlatforms';
 
 const { Paragraph, Text } = Typography;
 
@@ -201,6 +202,13 @@ export default function RiskRules() {
   const [evaluateOpen, setEvaluateOpen] = useState(false);
   const [evaluating, setEvaluating] = useState(false);
   const [evaluateForm] = Form.useForm<EvaluateFormValues>();
+
+  // 平台下拉选项（当前仅企业微信，来自统一 hook，避免各处硬编码平台名）
+  const { platforms } = usePlatforms();
+  const platformOptions = platforms.map(p => ({
+    value: p.platformType.toLowerCase(),
+    label: p.displayName,
+  }));
   const [evaluateResult, setEvaluateResult] = useState<ScrmRiskSignal[]>([]);
   // 评估是否已执行 (用于展示 Alert)
   const [evaluateHasRun, setEvaluateHasRun] = useState(false);
@@ -761,7 +769,11 @@ export default function RiskRules() {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="platformType" label="平台类型">
-                <Input placeholder="如 wework" />
+                <Select
+                  allowClear
+                  placeholder="全部平台"
+                  options={platformOptions}
+                />
               </Form.Item>
             </Col>
             <Col span={12}>

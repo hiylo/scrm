@@ -134,4 +134,23 @@ describe('Approvals', () => {
     await waitFor(() => expect(screen.getByText('财务审批')).toBeInTheDocument());
     expect(screen.getByText('同意')).toBeInTheDocument();
   });
+
+  it('流程类型下拉只给后端白名单内的值，不再出现 SINGLE/MULTI', async () => {
+    get.mockImplementation(() => Promise.resolve(page([])));
+
+    renderWithProviders(<Approvals />);
+    await waitFor(() => expect(screen.getByText('新建审批流')).toBeInTheDocument());
+    await userEvent.click(screen.getByText('新建审批流'));
+
+    // 新建时默认值是后端认可的 CONTRACT
+    await waitFor(() => expect(screen.getByLabelText('流程类型')).toBeInTheDocument());
+    await userEvent.click(screen.getByLabelText('流程类型'));
+
+    const options = await screen.findAllByRole('option');
+    const values = options.map(o => (o.getAttribute('title') || o.textContent || ''));
+    // 后端 ScrmApprovalFlowDto.flowType 的 @Pattern 不含 SINGLE/MULTI，出现即会 400
+    expect(values.some(v => v.includes('SINGLE'))).toBe(false);
+    expect(values.some(v => v.includes('MULTI'))).toBe(false);
+    expect(values.some(v => v.includes('CONTRACT'))).toBe(true);
+  });
 });

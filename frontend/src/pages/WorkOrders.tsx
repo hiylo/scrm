@@ -101,6 +101,17 @@ const priorityConfig: Record<string, { color: string; label: string }> = {
 };
 
 /**
+ * 工单类型。
+ * <p>后端实际只用到 SERVICE / REPAIR / COMPLAINT 三种（自由字符串字段，
+ * 原先是让用户手敲），固定成下拉避免拼错导致筛选/统计对不上。</p>
+ */
+const orderTypeConfig: Record<string, string> = {
+  SERVICE: '服务请求',
+  REPAIR: '维修',
+  COMPLAINT: '投诉',
+};
+
+/**
  * 工单管理页
  * <p>
  * 内部工单执行体系: 工单 CRUD + 状态机 (分配→接单→开始→解决→关闭, 可重开/取消/升级)
@@ -408,7 +419,11 @@ export default function WorkOrders() {
           </Form.Item>
           <Space size={16} wrap>
             <Form.Item name="orderType" label="工单类型" rules={[{ required: true }]}>
-              <Input placeholder="如: SERVICE" style={{ width: 150 }} />
+              <Select
+                placeholder="请选择工单类型"
+                style={{ width: 150 }}
+                options={Object.entries(orderTypeConfig).map(([v, l]) => ({ value: v, label: l }))}
+              />
             </Form.Item>
             <Form.Item name="priority" label="优先级" rules={[{ required: true }]}>
               <Select style={{ width: 120 }} options={Object.entries(priorityConfig).map(([v, c]) => ({ value: v, label: c.label }))} />

@@ -54,6 +54,20 @@ const taskStatusConfig: Record<string, { color: string; label: string }> = {
   FAILED: { color: 'red', label: '失败' },
 };
 
+/**
+ * 质检规则类型。
+ * <p>后端 {@code ScrmQualityInspectionRuleDto.ruleType} 有 @Pattern 白名单，
+ * 只接受这 5 个值。此前是自由输入框、placeholder 还写成了不存在的
+ * {@code KEYWORD_REGEX}，照着填会被后端 400 拒绝，故改为固定下拉。</p>
+ */
+const RULE_TYPE_OPTIONS = [
+  { value: 'KEYWORD_MATCH', label: '关键词匹配（KEYWORD_MATCH）' },
+  { value: 'REGEX', label: '正则匹配（REGEX）' },
+  { value: 'DURATION', label: '会话时长（DURATION）' },
+  { value: 'RESPONSE_TIME', label: '响应时间（RESPONSE_TIME）' },
+  { value: 'AI_EVALUATE', label: 'AI 评估（AI_EVALUATE）' },
+];
+
 /** 质检规则实体 */
 interface ScrmQualityRule {
   id: string;
@@ -267,7 +281,12 @@ export default function QualityInspections() {
         return <Tag color={cfg.color}>{cfg.label}</Tag>;
       },
     },
-    { title: '规则类型', dataIndex: 'ruleType', width: 130, render: (v?: string) => v || '-' },
+    {
+      title: '规则类型',
+      dataIndex: 'ruleType',
+      width: 150,
+      render: (v?: string) => RULE_TYPE_OPTIONS.find(o => o.value === v)?.label ?? (v || '-'),
+    },
     { title: '通过条件', dataIndex: 'passCondition', width: 120, render: (v?: string) => v || '-' },
     { title: '权重', dataIndex: 'scoreWeight', width: 70, render: (v?: number) => v ?? '-' },
     {
@@ -412,8 +431,8 @@ export default function QualityInspections() {
             <Form.Item name="category" label="类别" rules={[{ required: true }]}>
               <Select style={{ width: 180 }} options={Object.entries(categoryConfig).map(([v, c]) => ({ value: v, label: c.label }))} />
             </Form.Item>
-            <Form.Item name="ruleType" label="规则类型">
-              <Input placeholder="如: KEYWORD_REGEX" style={{ width: 180 }} />
+            <Form.Item name="ruleType" label="规则类型" rules={[{ required: true, message: '请选择规则类型' }]}>
+              <Select placeholder="请选择规则类型" style={{ width: 220 }} options={RULE_TYPE_OPTIONS} />
             </Form.Item>
           </Space>
           <Form.Item name="ruleConfig" label="规则配置 JSON" rules={[{ required: true, message: '请输入规则配置 JSON' }]}>

@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { App as AntApp } from 'antd';
 import Users from './Users';
 import { apiClient } from '../api/client';
 import { renderWithProviders } from '../test/render';
@@ -107,6 +108,59 @@ describe('Users 页面', () => {
     );
   });
 
+  it('角色是多选下拉：默认 OPERATOR，选中会计后提交逗号串', async () => {
+    get.mockResolvedValueOnce(userPage());
+    post.mockResolvedValueOnce(OPERATOR);
+
+    renderWithProviders(<Users />);
+    await waitFor(() => expect(screen.getByText('创建用户')).toBeTruthy());
+    await userEvent.click(screen.getByText('创建用户'));
+
+    await userEvent.type(screen.getByLabelText('用户名'), 'lisi');
+    await userEvent.type(screen.getByLabelText('初始密码'), 'Passw0rd123');
+    await userEvent.type(screen.getByLabelText('昵称'), '李四');
+
+    // 展开角色下拉，选中「会计」
+    const roleBox = screen.getByLabelText('角色');
+    await userEvent.click(roleBox);
+    const accountantOption = await screen.findByText(/会计（只看自己负责的主体）（ACCOUNTANT）/);
+    await userEvent.click(accountantOption);
+
+    await userEvent.click(screen.getByRole('button', { name: /确\s*定/ }));
+
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        '/scrm/users',
+        expect.objectContaining({ roles: expect.stringContaining('ACCOUNTANT') }),
+      ),
+    );
+  });
+
+  it('编辑用户时把 roles 逗号串正确拆回多选回填', async () => {
+    const multiRole = { ...OPERATOR, roles: 'ADMIN,MANAGER' };
+    get.mockResolvedValue(userPage(multiRole));
+    put.mockResolvedValueOnce(multiRole);
+
+    renderWithProviders(<Users />);
+    await waitFor(() => expect(screen.getByText('编辑')).toBeTruthy());
+    await userEvent.click(screen.getByText('编辑'));
+
+    // 回填后应显示两个已选角色标签，而不是一项 "ADMIN,MANAGER"
+    await waitFor(() => {
+      expect(screen.getByText(/系统管理员（ADMIN）/)).toBeInTheDocument();
+      expect(screen.getByText(/经理（看全部）（MANAGER）/)).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /确\s*定/ }));
+
+    await waitFor(() =>
+      expect(put).toHaveBeenCalledWith(
+        '/scrm/users/1001',
+        expect.objectContaining({ roles: 'ADMIN,MANAGER' }),
+      ),
+    );
+  });
+
   it('点击禁用触发状态更新请求', async () => {
     get.mockResolvedValueOnce(userPage(OPERATOR));
     // 禁用后刷新会再次拉取
@@ -140,5 +194,38 @@ describe('Users 页面', () => {
         newPassword: 'NewPass123',
       }),
     );
+  });
+
+  it('管理角色 + 受限角色并存时弹出风险提示，取消则不提交', async () => {
+    get.mockResolvedValueOnce(userPage());
+    // App.useApp() 的 modal 由 AntApp 上下文提供，不经过静态 Modal.confirm，需在上下文里打桩
+    const confirmSpy = vi.fn();
+    const appSpy = vi.spyOn(AntApp, 'useApp').mockReturnValue({
+      message: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
+      notification: { success: vi.fn(), error: vi.fn() },
+      modal: { confirm: confirmSpy, info: vi.fn(), success: vi.fn(), error: vi.fn(), warning: vi.fn() },
+    } as never);
+
+    renderWithProviders(<Users />);
+    await waitFor(() => expect(screen.getByText('创建用户')).toBeTruthy());
+    await userEvent.click(screen.getByText('创建用户'));
+
+    await userEvent.type(screen.getByLabelText('用户名'), 'wangwu');
+    await userEvent.type(screen.getByLabelText('初始密码'), 'Passw0rd123');
+    await userEvent.type(screen.getByLabelText('昵称'), '王五');
+
+    // 同时选择「系统管理员」与「会计」：按最高角色生效，会计的数据隔离会失效
+    await userEvent.click(screen.getByLabelText('角色'));
+    await userEvent.click(await screen.findByText(/系统管理员（ADMIN）/));
+    await userEvent.click(screen.getByLabelText('角色'));
+    await userEvent.click(await screen.findByText(/会计（只看自己负责的主体）（ACCOUNTANT）/));
+
+    await userEvent.click(screen.getByRole('button', { name: /确\s*定/ }));
+
+    // 应弹出确认框而不是直接提交
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
+    expect(confirmSpy.mock.calls[0][0].title).toContain('数据隔离失效');
+    expect(post).not.toHaveBeenCalled();
+    appSpy.mockRestore();
   });
 });
