@@ -47,7 +47,7 @@ class RealAiResponseGeneratorSmokeTest {
         String apiKey = System.getenv("SCRM_SMOKE_AI_KEY");
         String model = System.getenv().getOrDefault("SCRM_SMOKE_AI_MODEL", "intern-deepseek-v4-flash-0731");
 
-        AiChatClient client = new AiChatClient(baseUrl, true, "/v1/chat/completions", apiKey);
+        AiChatClient client = new AiChatClient(baseUrl, true, "/v1/chat/completions", apiKey, "gpt-4o-mini", false, 10000, 180000);
         RealAiResponseGenerator generator = new RealAiResponseGenerator(
                 client, new DefaultAiResponseGenerator(), model, 0.7, 200);
 
