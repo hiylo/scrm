@@ -127,8 +127,13 @@ public class SecurityConfig {
                         .accessDeniedHandler(forbiddenHandler()))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PERMIT_ALL_PATHS.toArray(new String[0])).permitAll()
+                        // 监控端点保持鉴权（纵深防御）
+                        .requestMatchers("/actuator/**").authenticated()
+                        // 数据接口一律要求 JWT
                         .requestMatchers("/scrm/**").authenticated()
-                        .anyRequest().authenticated());
+                        // 其余为前端静态资源与 SPA 路由壳（/、/assets/**、/companies 等）。
+                        // 壳本身不含数据，真实数据仍由上面的 /scrm/** 保护，故放行。
+                        .anyRequest().permitAll());
 
         log.info("SCRM 安全配置已生效: 放行 {} 条路径, 其余 /scrm/** 需 JWT 认证", PERMIT_ALL_PATHS.size());
         return http.build();

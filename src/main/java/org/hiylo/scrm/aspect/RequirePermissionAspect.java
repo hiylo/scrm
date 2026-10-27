@@ -53,9 +53,16 @@ public class RequirePermissionAspect {
     /** 只读动作名, 任何已登录用户可访问 */
     private static final Set<String> READ_ACTIONS = Set.of("read");
 
-    /** 允许执行写类动作的角色集合 */
+    /**
+     * 允许执行写类动作的角色集合。
+     * <p>
+     * {@code ACCOUNTANT} 必须在列：申报、记账、上传资料都是会计的本职写操作，
+     * 缺了它会计只能只读，代账业务无法推进。数据范围由
+     * {@code FinanceDataScope} 另行限制为公司主体维度。
+     * </p>
+     */
     private static final Set<String> WRITE_ALLOWED_ROLES = Set.of(
-            "ADMIN", "SUPERADMIN", "OPERATOR", "MANAGER"
+            "ADMIN", "SUPERADMIN", "OPERATOR", "MANAGER", "SUPERVISOR", "ACCOUNTANT"
     );
 
     /**

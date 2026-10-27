@@ -8,7 +8,6 @@
  */
 package org.hiylo.scrm.aspect;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -283,11 +282,13 @@ public class AuditLogAspect {
      * @return 脱敏后的 JSON 字符串
      */
     private String maskSensitivePayload(Map<String, Object> params) {
-        ObjectNode root = objectMapper.valueToTree(params);
-        maskSensitiveKeys(root);
         try {
+            ObjectNode root = objectMapper.valueToTree(params);
+            maskSensitiveKeys(root);
             return objectMapper.writeValueAsString(root);
-        } catch (JsonProcessingException e) {
+        } catch (Exception e) {
+            // 审计日志绝不能阻断业务: valueToTree 对不可序列化对象抛的是
+            // IllegalArgumentException(而非 JsonProcessingException), 一并兜住。
             log.debug("审计日志参数序列化失败, 回退脱敏文本: {}", e.getMessage());
             return SensitiveDataUtils.maskSensitiveMessage(params.toString());
         }
@@ -350,12 +351,24 @@ public class AuditLogAspect {
      * @param arg 实参
      * @return true 表示排除
      */
-    private boolean isExcludedArg(Object arg) {
-        return arg instanceof HttpServletRequest
+    boolean isExcludedArg(Object arg) {
+        if (arg instanceof HttpServletRequest
                 || arg instanceof HttpServletResponse
                 || arg instanceof MultipartFile
                 || arg instanceof org.springframework.ui.Model
-                || arg instanceof org.springframework.validation.BindingResult;
+                || arg instanceof org.springframework.validation.BindingResult) {
+            return true;
+        }
+        // MultipartFile 的集合/数组: 元素含 inputStream 不可序列化。
+        // 仅判 instanceof MultipartFile 会漏掉 List<MultipartFile> / MultipartFile[],
+        // 导致审计日志序列化时抛 IllegalArgumentException 并阻断业务请求。
+        if (arg instanceof java.util.Collection<?> collection) {
+            return collection.stream().anyMatch(MultipartFile.class::isInstance);
+        }
+        if (arg instanceof Object[] array) {
+            return java.util.Arrays.stream(array).anyMatch(MultipartFile.class::isInstance);
+        }
+        return false;
     }
 
     /**
@@ -370,7 +383,7 @@ public class AuditLogAspect {
         }
         try {
             return objectMapper.writeValueAsString(obj);
-        } catch (JsonProcessingException e) {
+        } catch (Exception e) {
             log.debug("审计日志响应序列化失败, 回退 toString: {}", e.getMessage());
             return obj.toString();
         }
