@@ -62,6 +62,38 @@ beforeEach(() => {
 });
 
 describe('InteractionCalendars', () => {
+  it('计划日期/时间已改成选择器，提交为字符串而非 dayjs', async () => {
+    get.mockResolvedValue(page([]));
+    post.mockResolvedValue({ id: '1' });
+
+    renderWithProviders(<InteractionCalendars />);
+    await waitFor(() => expect(screen.getByText('新建计划')).toBeTruthy());
+    await userEvent.click(screen.getByText('新建计划'));
+
+    await userEvent.type(screen.getByLabelText('计划名称'), '电话回访');
+    await userEvent.type(screen.getByLabelText('客户 ID'), '1001');
+
+    const dateInput = screen.getByLabelText('计划日期');
+    await userEvent.type(dateInput, '2026-10-10');
+    await userEvent.keyboard('{Enter}');
+    const timeInput = screen.getByLabelText('计划时间');
+    await userEvent.type(timeInput, '10:30');
+    await userEvent.keyboard('{Enter}');
+
+    // 页面里可能同时存在多个「确定」，限定在打开的这个弹窗内点
+    const modal = document.querySelector('.ant-modal') as HTMLElement;
+    const okBtn = Array.from(modal.querySelectorAll('button'))
+      .find(b => /确\s*定/.test(b.textContent || '')) as HTMLElement;
+    await userEvent.click(okBtn);
+
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        expect.stringContaining('/interaction-calendar'),
+        expect.objectContaining({ plannedDate: '2026-10-10', plannedTime: '10:30' }),
+      ),
+    );
+  });
+
   it('加载互动计划列表', async () => {
     get.mockImplementation((url: string) => {
       if (url.includes('/plans/list')) return Promise.resolve(page([plan('1'), plan('2')]));

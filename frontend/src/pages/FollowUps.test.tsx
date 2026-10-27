@@ -56,6 +56,33 @@ beforeEach(() => {
 });
 
 describe('FollowUps', () => {
+  it('跟进类型已改成下拉，选中后提交枚举值', async () => {
+    get.mockResolvedValue(page([]));
+    post.mockResolvedValue({ id: '1' });
+
+    renderWithProviders(<FollowUps />);
+    await waitFor(() => expect(screen.getByText('新建任务')).toBeTruthy());
+    await userEvent.click(screen.getByText('新建任务'));
+
+    await userEvent.type(screen.getByLabelText('任务名称'), '回访客户');
+    await userEvent.type(screen.getByLabelText('客户 ID'), '1001');
+
+    // 跟进类型是 Select：默认 PHONE，改选「微信」
+    const typeBox = screen.getByLabelText('跟进类型');
+    await userEvent.click(typeBox);
+    const wechat = await screen.findByText('微信');
+    await userEvent.click(wechat);
+
+    await userEvent.click(screen.getByRole('button', { name: /确\s*定/ }));
+
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        expect.stringContaining('/follow-up'),
+        expect.objectContaining({ followType: 'WECHAT' }),
+      ),
+    );
+  });
+
   it('加载跟进任务列表', async () => {
     get.mockImplementation((url: string) => {
       if (url.includes('/tasks/list')) return Promise.resolve(page([task('1'), task('2')]));

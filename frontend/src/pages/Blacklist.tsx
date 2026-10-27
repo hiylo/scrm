@@ -20,6 +20,7 @@ import {
   Space,
   Table,
   Tag,
+  DatePicker,
 } from 'antd';
 import {
   PlusOutlined,
@@ -140,6 +141,8 @@ export default function Blacklist() {
   /** 提交加入 */
   const handleSubmit = async () => {
     const values = await form.validateFields();
+    // 后端是 ISO 字符串，DatePicker 返回 dayjs，提交前转换
+    if (values.expireAt) values.expireAt = values.expireAt.format('YYYY-MM-DDTHH:mm:ss');
     setSaving(true);
     try {
       await apiClient.post('/scrm/risk/blacklist', values);
@@ -293,8 +296,8 @@ export default function Blacklist() {
           <Form.Item name="reason" label="原因">
             <Input.TextArea rows={2} placeholder="加入原因" />
           </Form.Item>
-          <Form.Item name="expireAt" label="过期时间 (ISO, 留空永久)">
-            <Input placeholder="如 2026-12-31T23:59:59" />
+          <Form.Item name="expireAt" label="过期时间（留空表示永久）">
+            <DatePicker showTime placeholder="选择过期时间" style={{ width: 220 }} />
           </Form.Item>
         </Form>
       </Modal>

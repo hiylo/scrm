@@ -102,6 +102,19 @@ const templateTypeConfig: Record<string, { color: string; label: string }> = {
   GREETING: { color: 'purple', label: '问候' },
 };
 
+/**
+ * 通知渠道。
+ * <p>后端只认这五种，原先是让用户手敲 "IN_APP,SMS" 逗号串，
+ * 漏一个逗号或大小写不对就会被后端忽略，因此固定成多选。</p>
+ */
+const CHANNEL_OPTIONS = [
+  { value: 'IN_APP', label: '站内信（IN_APP）' },
+  { value: 'SMS', label: '短信（SMS）' },
+  { value: 'EMAIL', label: '邮件（EMAIL）' },
+  { value: 'WECHAT', label: '微信（WECHAT）' },
+  { value: 'PUSH', label: '推送（PUSH）' },
+];
+
 /** 状态映射 */
 const statusConfig: Record<string, { color: string; label: string }> = {
   DRAFT: { color: 'default', label: '草稿' },
@@ -253,20 +266,26 @@ export default function MessageTemplateCenter() {
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ templateType: 'MARKETING', channels: 'IN_APP', status: 'DRAFT' });
+    form.setFieldsValue({ templateType: 'MARKETING', channels: ['IN_APP'], status: 'DRAFT' });
     setOpen(true);
   };
 
   /** 打开编辑模板 */
   const openEdit = (record: ScrmTemplateCenter) => {
     setEditing(record);
-    form.setFieldsValue(record);
+    // channels 后端是逗号串，多选组件需要数组才能正确回填
+    form.setFieldsValue({
+      ...record,
+      channels: (record.channels || '').split(',').map(c => c.trim()).filter(Boolean),
+    });
     setOpen(true);
   };
 
   /** 提交模板 */
   const handleSubmit = async () => {
     const values = await form.validateFields();
+    // 后端 channels 是逗号分隔字符串，多选组件给的是数组
+    if (Array.isArray(values.channels)) values.channels = values.channels.join(',');
     setSaving(true);
     try {
       if (editing) {
@@ -526,7 +545,13 @@ export default function MessageTemplateCenter() {
               <Select style={{ width: 150 }} options={Object.entries(templateTypeConfig).map(([v, c]) => ({ value: v, label: c.label }))} />
             </Form.Item>
             <Form.Item name="channels" label="适用渠道" rules={[{ required: true }]}>
-              <Input placeholder="如: IN_APP,SMS" style={{ width: 180 }} />
+              <Select
+                mode="multiple"
+                placeholder="选择渠道"
+                options={CHANNEL_OPTIONS}
+                optionFilterProp="label"
+                style={{ minWidth: 240 }}
+              />
             </Form.Item>
           </Space>
           <Form.Item name="content" label="模板内容" rules={[{ required: true, message: '请输入模板内容' }]}>

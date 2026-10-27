@@ -19,6 +19,8 @@ import {
   Space,
   Table,
   Tag,
+  DatePicker,
+  TimePicker,
 } from 'antd';
 import {
   PlusOutlined,
@@ -133,8 +135,9 @@ export default function InteractionCalendars() {
       customerId: record.customerId,
       planType: record.planType,
       ownerId: record.ownerId,
-      plannedDate: record.plannedDate,
-      plannedTime: record.plannedTime,
+      // DatePicker / TimePicker 需要 dayjs 对象
+      plannedDate: record.plannedDate ? dayjs(record.plannedDate) : undefined,
+      plannedTime: record.plannedTime ? dayjs(record.plannedTime, 'HH:mm') : undefined,
       description: record.description,
     });
     setOpen(true);
@@ -143,6 +146,9 @@ export default function InteractionCalendars() {
   /** 提交新建/编辑 */
   const handleSubmit = async () => {
     const values = await form.validateFields();
+    // 后端存日期与时分字符串，选择器返回 dayjs，提交前统一转换
+    if (values.plannedDate) values.plannedDate = values.plannedDate.format('YYYY-MM-DD');
+    if (values.plannedTime) values.plannedTime = values.plannedTime.format('HH:mm');
     setSaving(true);
     try {
       if (editing) {
@@ -279,10 +285,10 @@ export default function InteractionCalendars() {
           </Space>
           <Space size={16} wrap>
             <Form.Item name="plannedDate" label="计划日期">
-              <Input placeholder="如 2026-10-10" style={{ width: 140 }} />
+              <DatePicker placeholder="选择日期" style={{ width: 140 }} />
             </Form.Item>
             <Form.Item name="plannedTime" label="计划时间">
-              <Input placeholder="如 10:30" style={{ width: 120 }} />
+              <TimePicker placeholder="选择时间" format="HH:mm" style={{ width: 120 }} />
             </Form.Item>
           </Space>
           <Form.Item name="description" label="说明">

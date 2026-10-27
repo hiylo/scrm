@@ -23,6 +23,7 @@ import {
   Table,
   Tag,
   Typography,
+  DatePicker,
 } from 'antd';
 import {
   PlusOutlined,
@@ -174,7 +175,11 @@ export default function MassSends() {
 
   const openEdit = (record: ScrmMassSend) => {
     setEditing(record);
-    form.setFieldsValue(record);
+    // scheduledAt 后端是 ISO 字符串，DatePicker 需要 dayjs 对象才能正确回填
+    form.setFieldsValue({
+      ...record,
+      scheduledAt: record.scheduledAt ? dayjs(record.scheduledAt) : undefined,
+    });
     setOpen(true);
   };
 
@@ -182,6 +187,8 @@ export default function MassSends() {
     const values = await form.validateFields();
     // ALL 目标类型无需筛选, 清零避免误提交
     if (values.targetType === 'ALL') values.targetFilter = undefined;
+    // 计划发送时间后端是 ISO 字符串，DatePicker 返回 dayjs 对象，提交前转换
+    if (values.scheduledAt) values.scheduledAt = values.scheduledAt.format('YYYY-MM-DDTHH:mm:ss');
     setSaving(true);
     try {
       if (editing) {
@@ -374,8 +381,8 @@ export default function MassSends() {
           <Form.Item name="messageTemplateId" label="关联消息模板 ID (可选)">
             <Input placeholder="消息模板 ID" />
           </Form.Item>
-          <Form.Item name="scheduledAt" label="计划发送时间 (可选, ISO 格式)">
-            <Input placeholder="如 2026-10-09T10:00:00" />
+          <Form.Item name="scheduledAt" label="计划发送时间（可选，留空立即发送）">
+            <DatePicker showTime placeholder="选择发送时间" style={{ width: 220 }} />
           </Form.Item>
         </Form>
       </Modal>

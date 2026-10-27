@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
 import Conversations from './Conversations';
@@ -519,6 +519,55 @@ describe('Conversations 时间展示与搜索高亮接线', () => {
     const marks = Array.from(document.querySelectorAll('mark'));
     expect(marks.map((m) => m.textContent)).toEqual(['价格']);
     expect(marks[0].parentElement?.textContent).toBe('我们有三档方案, 价格按席位计');
+  });
+
+  it('收到 WebSocket 新消息后刷新列表不把已加载的会话截断', async () => {
+    const user = userEvent.setup();
+    // 造 30 条会话：首屏 size=20 拿 20 条，点「加载更多」后共 30 条。
+    // 关键断言：WS 刷新后仍是 30 条（而不是被截回 20 条——那会让滚动位置跳回顶部）
+    const all = Array.from({ length: 30 }, (_, i) =>
+      conversation({ id: String(6000 + i), customerNickname: `会话${i + 1}` }),
+    );
+    get.mockImplementation(((url: string) => {
+      const u = String(url);
+      if (u.includes('/messages')) return Promise.resolve(page([]));
+      if (u.startsWith('/scrm/message-templates')) return Promise.resolve(page([]));
+      if (u.startsWith('/scrm/conversations')) {
+        const sp = new URL(u, 'http://x').searchParams;
+        const pageNo = Number(sp.get('page'));
+        const size = Number(sp.get('size'));
+        const from = pageNo * size;
+        return Promise.resolve(
+          page(all.slice(from, from + size), { totalElements: all.length }),
+        );
+      }
+      return Promise.resolve(page([]));
+    }) as never);
+
+    renderConversations();
+    await screen.findByText('会话1');
+    expect(screen.getAllByText(/^会话\d+$/).length).toBe(20);
+
+    await user.click(screen.getByRole('button', { name: cn('加载更多') }));
+    await screen.findByText('会话21');
+    expect(screen.getAllByText(/^会话\d+$/).length).toBe(30);
+
+    // 触发一次 WS 新消息通知（页面收到后应刷新会话列表）
+    const wsMock = vi.mocked(useScrmWebSocket);
+    const opts = wsMock.mock.calls[wsMock.mock.calls.length - 1][0] as unknown as {
+      onNotification?: (n: unknown) => void;
+    };
+    act(() => {
+      opts.onNotification?.({
+        type: 'NEW_MESSAGE',
+        data: { conversationId: '6000', message: { id: 'ws-msg-1' } },
+      });
+    });
+
+    // 刷新后仍保留 30 条，列表没有被截断
+    await waitFor(() => {
+      expect(screen.getAllByText(/^会话\d+$/).length).toBe(30);
+    });
   });
 
   it('加载更多: 下一页累加到列表末尾且按 id 去重', async () => {

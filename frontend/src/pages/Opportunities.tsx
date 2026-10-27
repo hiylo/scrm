@@ -24,6 +24,7 @@ import {
   Statistic,
   Table,
   Tag,
+  DatePicker,
 } from 'antd';
 import {
   PlusOutlined,
@@ -164,7 +165,11 @@ export default function Opportunities() {
   /** 打开编辑弹窗 */
   const openEdit = (record: ScrmOpportunity) => {
     setEditing(record);
-    form.setFieldsValue(record);
+    // expectedCloseDate 后端是字符串，DatePicker 需要 dayjs 对象
+    form.setFieldsValue({
+      ...record,
+      expectedCloseDate: record.expectedCloseDate ? dayjs(record.expectedCloseDate) : undefined,
+    });
     setOpen(true);
   };
 
@@ -175,6 +180,11 @@ export default function Opportunities() {
       values = await form.validateFields();
     } catch {
       return;
+    }
+    // DatePicker 返回 dayjs，后端要 YYYY-MM-DD 字符串
+    const closeDate = values.expectedCloseDate as { format?: (f: string) => string } | undefined;
+    if (closeDate && typeof closeDate.format === 'function') {
+      values.expectedCloseDate = closeDate.format('YYYY-MM-DD');
     }
     setSaving(true);
     try {
@@ -360,7 +370,7 @@ export default function Opportunities() {
           </Space>
           <Space size={16} wrap>
             <Form.Item name="expectedCloseDate" label="预计成交日期">
-              <Input placeholder="如 2026-12-31" style={{ width: 180 }} />
+              <DatePicker placeholder="选择日期" style={{ width: 180 }} />
             </Form.Item>
             <Form.Item name="source" label="来源">
               <Input placeholder="如: 渠道活码" style={{ width: 180 }} />

@@ -20,7 +20,6 @@ import {
   Image,
   Input,
   List,
-  Pagination,
   Popover,
   Row,
   Select,
@@ -224,8 +223,19 @@ export default function Conversations() {
   const [messages, setMessages] = useState<ScrmConversationMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [msgPage, setMsgPage] = useState(0);
-  const [msgSize, setMsgSize] = useState(50);
+  /** 每次加载的消息条数（滚动到底加载更早，不提供切换入口） */
+  const msgSize = 50;
   const [msgTotal, setMsgTotal] = useState(0);
+  /**
+   * 是否正在加载「更早的消息」。
+   * <p>
+   * 必须与 messagesLoading 分开：messagesLoading 为 true 时列表会被整体替换成
+   * 全屏 spinner（首次进入会话用），若追加加载也走这条路，已有消息会被卸载，
+   * scrollHeight 骤降、scrollTop 被浏览器钳到 0，锚点补偿随之失效——
+   * 表现就是「加载更早之后画面突然跳到别处」。
+   * </p>
+   */
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
   // AI 总结
   const [summary, setSummary] = useState<ConversationSummaryVo | null>(null);
   const [summarizing, setSummarizing] = useState(false);
@@ -253,14 +263,33 @@ export default function Conversations() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   // 记录用户是否手动向上滚动 (避免新消息时强制拉到底部)
   const isNearBottomRef = useRef(true);
+  // 「加载更早消息」的 ref 桥（handleScroll 定义在前，避免声明顺序互相依赖）
+  const loadEarlierRef = useRef<(() => void) | null>(null);
+  // 前插更早消息时记录锚点（可见首条消息 id + 其相对容器顶部的偏移），
+  // 渲染后按该元素的位移反向补偿 scrollTop —— 比算 scrollHeight 差值可靠，
+  // 因为差值补偿会被「前插内容高度 + 布局抖动」的累积误差带偏。
+  const prependingRef = useRef(false);
+  const preAnchorRef = useRef<{ id: string; top: number } | null>(null);
+  // 上一次选中的会话，用于区分「切换会话」与「新消息」
+  const prevSelectedIdRef = useRef<string | null>(null);
   const prevMsgCountRef = useRef(0);
 
-  /** 检测用户是否在底部附近 (底部 80px 范围内) */
+  /**
+   * 滚动处理：记录是否在底部附近，并在滚到顶部时自动加载更早的消息。
+   * <p>
+   * 聊天界面的习惯是「往上滚看历史」，所以靠近顶部就预取下一页，
+   * 而不是让用户去点分页器（分页器还放在最新消息那一端，方向是反的）。
+   * </p>
+   */
   const handleScroll = useCallback(() => {
     const el = messagesContainerRef.current;
     if (!el) return;
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     isNearBottomRef.current = distFromBottom < 80;
+    // 距顶部 60px 内触发加载更早的消息（一次性，受 loading 与 total 双重约束）
+    if (el.scrollTop < 60) {
+      loadEarlierRef.current?.();
+    }
   }, []);
 
   /** 拉取会话分页列表（微信式滚动加载） */
@@ -348,28 +377,137 @@ export default function Conversations() {
     loadedConversationPageRef.current = 0;
   }, [statusFilter]);
 
-  /** 拉取指定会话的消息记录 */
-  const fetchMessages = useCallback(async () => {
+  /**
+   * 拉取指定会话的消息记录。
+   * <p>
+   * 后端按 {@code sentAt DESC} 分页（第 0 页是最新的 N 条）。聊天界面需要
+   * 时间正序，且翻页语义是「往上滚看更早」而不是「换一页替换当前内容」——
+   * 原实现整页替换会导致加载第 2 页后最新消息从视图里消失。
+   * 这里改成累加：加载更早的消息时把结果并入现有列表，由 sortedMessages 统一排序。
+   * </p>
+   *
+   * @param pageArg 目标页（默认当前 msgPage）
+   * @param append  true 表示加载更早的消息（累加），false 表示重置加载（仅第 0 页）
+   */
+  const fetchMessages = useCallback(async (pageArg?: number, append = false) => {
     if (!selectedId) {
       setMessages([]);
       setMsgTotal(0);
       return;
     }
-    setMessagesLoading(true);
+    const targetPage = pageArg ?? msgPage;
+    // 追加加载不进入全屏 loading，否则已有消息会被卸载、滚动位置丢失
+    if (append) {
+      setLoadingEarlier(true);
+    } else {
+      setMessagesLoading(true);
+    }
     try {
       const data = await apiClient.get<Page<ScrmConversationMessage>>(
-        `/scrm/conversations/${selectedId}/messages?page=${msgPage}&size=${msgSize}`,
+        `/scrm/conversations/${selectedId}/messages?page=${targetPage}&size=${msgSize}`,
       );
-      setMessages(data.content || []);
+      const rows = data.content || [];
+      if (append) {
+        // 按 id 去重后并入，避免分页边界重复
+        setMessages((prev) => {
+          const seen = new Set(prev.map((m) => m.id));
+          return [...rows.filter((m) => !seen.has(m.id)), ...prev];
+        });
+      } else {
+        setMessages(rows);
+      }
       setMsgTotal(data.totalElements || 0);
     } catch {
       // 错误已由 axios 拦截器统一提示
-      setMessages([]);
-      setMsgTotal(0);
+      if (append) {
+        // 前插失败时清掉锚点标记，否则下一次消息变化会被误判成「前插」而跳过贴底
+        prependingRef.current = false;
+        preAnchorRef.current = null;
+      } else {
+        setMessages([]);
+        setMsgTotal(0);
+      }
     } finally {
-      setMessagesLoading(false);
+      if (append) {
+        setLoadingEarlier(false);
+      } else {
+        setMessagesLoading(false);
+      }
     }
   }, [selectedId, msgPage, msgSize]);
+
+  /** 加载更早的消息（滚到顶部触发） */
+  const handleLoadEarlierMessages = useCallback(() => {
+    const loaded = Math.ceil(messages.length / msgSize);
+    if (messages.length >= msgTotal || messagesLoading) {
+      return;
+    }
+    // 前插前采集锚点：当前可见的第一条消息及其相对容器顶部的偏移
+    const el = messagesContainerRef.current;
+    if (el) {
+      const boxTop = el.getBoundingClientRect().top;
+      const nodes = Array.from(el.querySelectorAll<HTMLElement>('[data-mid]'));
+      const firstVisible = nodes.find((n) => n.getBoundingClientRect().bottom > boxTop);
+      preAnchorRef.current = firstVisible
+          ? { id: firstVisible.dataset.mid || '', top: firstVisible.getBoundingClientRect().top - boxTop }
+          : null;
+    } else {
+      preAnchorRef.current = null;
+    }
+    prependingRef.current = true;
+    const next = loaded;
+    setMsgPage(next);
+    fetchMessages(next, true);
+  }, [messages.length, msgTotal, msgSize, messagesLoading, fetchMessages]);
+
+
+  /**
+   * 刷新会话列表，但<b>保留已加载的条数</b>。
+   * <p>
+   * 为什么不能用 fetchConversations() 直接刷新：它不带 append 时只会取第 0 页
+   * （size=20）并整体替换列表。用户如果已经点过「加载更多」把列表拉到 60 条，
+   * 此时收到一条 WebSocket 新消息就会把列表截回 20 条——内容变短，
+   * 浏览器把 scrollTop 钳到新的最大值，表现就是「列表突然跳回顶部」。
+   * 这里按「当前已加载条数」作为 size 重新拉一次，列表长度不变，滚动位置就不会丢。
+   * </p>
+   */
+  const refreshConversations = useCallback(async () => {
+    const alreadyLoaded = Math.max(size, conversations.length);
+    setConversationsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set('page', '0');
+      params.set('size', String(alreadyLoaded));
+      if (debouncedKeyword) params.set('keyword', debouncedKeyword);
+      if (statusFilter && statusFilter !== 'ALL') params.set('status', statusFilter);
+      const data = await apiClient.get<Page<ScrmConversation>>(
+        `/scrm/conversations?${params.toString()}`,
+      );
+      setConversations(data.content || []);
+      setTotal(data.totalElements || 0);
+    } catch {
+      // 错误已由 axios 拦截器统一提示
+    } finally {
+      setConversationsLoading(false);
+    }
+  }, [size, conversations.length, debouncedKeyword, statusFilter]);
+
+  // 把最新的加载函数挂到 ref 上，供 handleScroll 调用
+  useEffect(() => {
+    loadEarlierRef.current = handleLoadEarlierMessages;
+  }, [handleLoadEarlierMessages]);
+
+  /**
+   * fetchMessages 的最新引用。
+   * <p>
+   * 下面的「切换会话重置」effect 必须只用它调用、且依赖只写 selectedId——
+   * 因为 fetchMessages 依赖 msgPage，而「加载更早消息」会改 msgPage；
+   * 若把 fetchMessages 写进依赖，加载更早会触发这个 effect，
+   * 立刻 setMsgPage(0) 并整页替换回最新 50 条，表现为「点了加载更早没反应」。
+   * </p>
+   */
+  const fetchMessagesRef = useRef(fetchMessages);
+  fetchMessagesRef.current = fetchMessages;
 
   useEffect(() => {
     // 选中会话变化时重置消息与总结, 然后加载消息
@@ -379,7 +517,8 @@ export default function Conversations() {
       // 清空媒体 URL 缓存 (避免上一会话的媒体 URL 残留)
       setMediaUrls({});
       setMediaLoading({});
-      fetchMessages();
+      // 显式按第 0 页重置，不受上一次 msgPage 残留影响
+      fetchMessagesRef.current(0, false);
     } else {
       setMessages([]);
       setMsgTotal(0);
@@ -387,25 +526,66 @@ export default function Conversations() {
       setMediaUrls({});
       setMediaLoading({});
     }
-  }, [selectedId, fetchMessages]);
+    // 依赖刻意只写 selectedId：见上方 fetchMessagesRef 的说明
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
 
-  // 消息列表变化时, 仅在用户位于底部附近或有新消息时自动滚动
+  /**
+   * 消息列表变化时的滚动策略，分三种情形：
+   * <ol>
+   *   <li><b>加载更早消息（前插）</b>：保持当前可见内容不动——
+   *       记录前插前的 scrollHeight，渲染后按增量补偿 scrollTop，
+   *       否则画面会突然跳到更早的位置；</li>
+   *   <li><b>切换会话</b>：直接贴底（进入会话就该看到最新消息）；</li>
+   *   <li><b>新消息到达</b>：仅当用户本来就在底部附近才跟随滚动，
+   *       避免用户正在翻历史时被强行拽到底部。</li>
+   * </ol>
+   */
   useEffect(() => {
     const el = messagesContainerRef.current;
     if (!el) return;
-    const hasNewMessages = messages.length > prevMsgCountRef.current;
     prevMsgCountRef.current = messages.length;
-    // 切换会话时总是滚动到底部; 新消息时仅在用户位于底部附近才滚动
-    if (isNearBottomRef.current || !hasNewMessages) {
+
+    // 情形 1：前插更早消息，锁住可见位置
+    if (prependingRef.current) {
+      prependingRef.current = false;
+      const anchor = preAnchorRef.current;
+      preAnchorRef.current = null;
+      if (anchor && anchor.id) {
+        // 等两帧再补偿：useEffect 执行时同批 DOM 可能还没完成布局，
+        // 此时读到的 rect 是旧值，直接补偿会留下固定偏差。
+        const compensate = () => {
+          const node = el.querySelector<HTMLElement>(`[data-mid="${anchor.id}"]`);
+          if (!node) return;
+          const boxTop = el.getBoundingClientRect().top;
+          const nowTop = node.getBoundingClientRect().top - boxTop;
+          const delta = nowTop - anchor.top;
+          if (Math.abs(delta) >= 1) {
+            el.scrollTop += delta;
+          }
+        };
+        requestAnimationFrame(() => requestAnimationFrame(compensate));
+      }
+      return;
+    }
+
+    const switched = prevSelectedIdRef.current !== selectedId;
+    prevSelectedIdRef.current = selectedId;
+
+    if (switched) {
+      el.scrollTop = el.scrollHeight;
+      return;
+    }
+    if (isNearBottomRef.current) {
       el.scrollTop = el.scrollHeight;
     }
   }, [messages, selectedId]);
 
   // WebSocket 回调使用 ref 保存最新函数引用，避免依赖频繁变化导致重连
-  const fetchMessagesRef = useRef(fetchMessages);
-  fetchMessagesRef.current = fetchMessages;
   const fetchConversationsRef = useRef(fetchConversations);
   fetchConversationsRef.current = fetchConversations;
+  const refreshConversationsRef = useRef(refreshConversations);
+  refreshConversationsRef.current = refreshConversations;
 
   const { connected: wsConnected } = useScrmWebSocket({
     token: wsToken,
@@ -429,7 +609,8 @@ export default function Conversations() {
           }
         }
         // 会话列表更新 lastMessageSummary / unreadCount, 仍需刷新
-        fetchConversationsRef.current();
+        // 用保留已加载条数的方式，避免列表被截断导致滚动位置跳回顶部
+        refreshConversationsRef.current();
       }
     },
   });
@@ -601,7 +782,8 @@ export default function Conversations() {
       }
       setMessageInput('');
       // 仅刷新会话列表以更新 lastMessageSummary, 不重新拉取消息
-      fetchConversations();
+      // 保留已加载条数，避免列表被截断导致滚动位置跳回顶部
+      void refreshConversations();
     } catch {
       // 发送失败, 标记临时消息为失败状态
       setMessageStatusMap((prev) => ({ ...prev, [tempId]: 'failed' }));
@@ -668,7 +850,7 @@ export default function Conversations() {
       } else {
         setMessageStatusMap((prev) => ({ ...prev, [tempId]: 'sent' }));
       }
-      fetchConversations();
+      void refreshConversations();
     } catch {
       setMessageStatusMap((prev) => ({ ...prev, [tempId]: 'failed' }));
     } finally {
@@ -788,6 +970,7 @@ export default function Conversations() {
 
   return (
     <Tabs
+      className="conv-fill"
       defaultActiveKey="scrm"
       items={[
         {
@@ -795,9 +978,9 @@ export default function Conversations() {
           label: '会话列表',
           children: (
             <>
-    <Row gutter={16}>
+    <Row gutter={16} className="conv-row">
       {/* 左侧会话列表 */}
-      <Col xs={24} md={8}>
+      <Col xs={24} md={8} className="conv-col">
         <Card
           title="会话列表"
           size="small"
@@ -854,6 +1037,8 @@ export default function Conversations() {
               />
             </Space>
           </div>
+          {/* 会话列表独立滚动：逐页加载不会再把整页撑长 */}
+          <div className="conv-list-scroll">
           <Spin spinning={conversationsLoading}>
             {conversations.length === 0 && !conversationsLoading ? (
               <Empty description="暂无会话" style={{ padding: 48 }} />
@@ -953,7 +1138,8 @@ export default function Conversations() {
               />
             )}
           </Spin>
-          <div style={{ padding: 12, textAlign: 'center' }}>
+          </div>
+          <div style={{ padding: 12, textAlign: 'center', flexShrink: 0 }}>
             {total > 0 && conversations.length >= total ? (
               <span style={{ color: 'var(--color-text-tertiary)', fontSize: 12 }}>
                 已加载全部 {conversations.length} 个会话
@@ -973,18 +1159,29 @@ export default function Conversations() {
       </Col>
 
       {/* 右侧消息区域 */}
-      <Col xs={24} md={16}>
+      <Col xs={24} md={16} className="conv-col">
         <Card
           size="small"
           title={
             selected ? (
-              <Space wrap>
+              <Space size={8} style={{ minWidth: 0 }}>
                 <Avatar src={selected.customerAvatarUrl} size="small">
                   {selected.customerNickname?.[0]?.toUpperCase()}
                 </Avatar>
-                <span>{selected.customerNickname || `客户 ${selected.customerId}`}</span>
-                <Tag>{selected.accountName || `账号 ${selected.accountId}`}</Tag>
-                <Tag>{selected.platformType}</Tag>
+                <Tooltip
+                  title={`账号 ${selected.accountName || selected.accountId} · ${selected.platformType}`}
+                >
+                  <span
+                    style={{
+                      maxWidth: 220,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {selected.customerNickname || `客户 ${selected.customerId}`}
+                  </span>
+                </Tooltip>
                 {(() => {
                   const cfg = statusConfig[selected.status] || {
                     label: selected.status,
@@ -1056,7 +1253,7 @@ export default function Conversations() {
                       try {
                         await apiClient.put(`/scrm/conversations/${selectedId}/status?status=ACTIVE`);
                         message.success('会话已重新开启');
-                        fetchConversations();
+                        void refreshConversations();
                       } catch {
                         // 错误已由拦截器处理
                       }
@@ -1074,7 +1271,7 @@ export default function Conversations() {
                       try {
                         await apiClient.put(`/scrm/conversations/${selectedId}/status?status=CLOSED`);
                         message.success('会话已关闭');
-                        fetchConversations();
+                        void refreshConversations();
                       } catch {
                         // 错误已由拦截器处理
                       }
@@ -1095,7 +1292,7 @@ export default function Conversations() {
               {searchResults.length > 0 && (
                 <Card
                   size="small"
-                  style={{ marginBottom: 8, maxHeight: 240, overflowY: 'auto' }}
+                  style={{ marginBottom: 8, maxHeight: 240, overflowY: 'auto', flexShrink: 0 }}
                   title={
                     <Space size="small">
                       <SnippetsOutlined />
@@ -1156,19 +1353,27 @@ export default function Conversations() {
                 ref={messagesContainerRef}
                 onScroll={handleScroll}
                 style={{
-                  maxHeight: 'calc(100vh - 360px)',
-                  minHeight: 300,
+                  // 不再用 calc(100vh - 360px) 估算：改为 flex 撑满剩余空间，
+                  // 窗口高度变化、卡片头部增减都不会再错位
+                  flex: 1,
+                  minHeight: 0,
                   overflowY: 'auto',
+                  overscrollBehavior: 'contain',
+                  // 前插补偿是手动的，关掉浏览器原生 scroll anchoring 避免双重校正
+                  overflowAnchor: 'none',
                   paddingRight: 4,
                 }}
               >
-                {messagesLoading ? (
+                {messagesLoading && messages.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: 48 }}>
                     <Spin />
                   </div>
                 ) : messages.length === 0 ? (
                   <Empty description="暂无消息" />
                 ) : (
+                  <>
+                  {/* 不在列表顶部插提示条：它会改变 scrollHeight，让锚点补偿多算一个提示条高度，
+                      导致加载完成后画面整体位移。加载状态由底部按钮的 loading 表达。 */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {groupedMessages.map((group, gi) => (
                       <div key={gi}>
@@ -1195,6 +1400,7 @@ export default function Conversations() {
                           return (
                             <div
                               key={msg.id}
+                              data-mid={msg.id}
                               style={{
                                 display: 'flex',
                                 justifyContent: out ? 'flex-end' : 'flex-start',
@@ -1312,6 +1518,7 @@ export default function Conversations() {
                       </div>
                     ))}
                   </div>
+                  </>
                 )}
 
                 {/* AI 总结结果 (用 Alert 组件展示) */}
@@ -1352,26 +1559,36 @@ export default function Conversations() {
                   />
                 )}
 
-                {/* 消息分页 */}
-                {msgTotal > msgSize && (
-                  <div style={{ textAlign: 'center', marginTop: 12 }}>
-                    <Pagination
-                      size="small"
-                      current={msgPage + 1}
-                      pageSize={msgSize}
-                      total={msgTotal}
-                      showSizeChanger
-                      onChange={(p, s) => {
-                        setMsgPage(p - 1);
-                        setMsgSize(s);
-                      }}
-                    />
-                  </div>
-                )}
+              </div>
+
+              {/* 加载更早的入口：常驻一行占位（加载完用 visibility 隐藏而不是卸载）。
+                  高度必须恒定：这一行若随「是否还有更早消息」出现/消失，
+                  容器可用高度就变，浏览器会把 scrollTop 钳回去，
+                  画面会整体跳动（实测固定 28px）。 */}
+              <div
+                style={{
+                  textAlign: 'center',
+                  flexShrink: 0,
+                  paddingTop: 4,
+                  minHeight: 28,
+                  visibility: msgTotal > messages.length ? 'visible' : 'hidden',
+                }}
+              >
+                <Button
+                  type="link"
+                  size="small"
+                  loading={loadingEarlier}
+                  disabled={msgTotal <= messages.length}
+                  onClick={handleLoadEarlierMessages}
+                >
+                  {msgTotal > messages.length
+                    ? `加载更早的 ${Math.min(msgSize, msgTotal - messages.length)} 条消息`
+                    : '已加载全部消息'}
+                </Button>
               </div>
 
               {/* 消息发送区 */}
-              <div style={{ display: 'flex', gap: 8, marginTop: 12, marginBottom: 20, alignItems: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8, marginBottom: 4, alignItems: 'flex-end', flexShrink: 0 }}>
                 <Popover
                   open={templatePopoverOpen}
                   onOpenChange={(open) => {

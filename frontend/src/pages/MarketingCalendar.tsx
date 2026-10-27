@@ -22,6 +22,7 @@ import {
   Table,
   Tabs,
   Tag,
+  DatePicker,
 } from 'antd';
 import {
   PlusOutlined,
@@ -166,12 +167,20 @@ export default function MarketingCalendar() {
 
   const openEdit = (record: ScrmMarketingEvent) => {
     setEditing(record);
-    form.setFieldsValue(record);
+    // 日期字段后端是字符串，DatePicker 需要 dayjs 对象才能正确回填
+    form.setFieldsValue({
+      ...record,
+      startDate: record.startDate ? dayjs(record.startDate) : undefined,
+      endDate: record.endDate ? dayjs(record.endDate) : undefined,
+    });
     setOpen(true);
   };
 
   const handleSubmit = async () => {
     const values = await form.validateFields();
+    // 日期字段后端是 YYYY-MM-DD 字符串，DatePicker 返回 dayjs 对象，提交前转换
+    if (values.startDate) values.startDate = values.startDate.format('YYYY-MM-DD');
+    if (values.endDate) values.endDate = values.endDate.format('YYYY-MM-DD');
     setSaving(true);
     try {
       if (editing) {
@@ -204,6 +213,7 @@ export default function MarketingCalendar() {
 
   const handleSubmitHoliday = async () => {
     const values = await holidayForm.validateFields();
+    if (values.holidayDate) values.holidayDate = values.holidayDate.format('YYYY-MM-DD');
     setHolidaySaving(true);
     try {
       await apiClient.post('/scrm/marketing-calendar/holidays', values);
@@ -374,10 +384,10 @@ export default function MarketingCalendar() {
           </Space>
           <Space size={16} wrap>
             <Form.Item name="startDate" label="开始日期" rules={[{ required: true }]}>
-              <Input placeholder="如 2026-06-01" style={{ width: 150 }} />
+              <DatePicker placeholder="选择开始日期" style={{ width: 150 }} />
             </Form.Item>
             <Form.Item name="endDate" label="结束日期" rules={[{ required: true }]}>
-              <Input placeholder="如 2026-06-03" style={{ width: 150 }} />
+              <DatePicker placeholder="选择结束日期" style={{ width: 150 }} />
             </Form.Item>
           </Space>
           <Form.Item name="ownerId" label="负责人 ID">
@@ -402,10 +412,18 @@ export default function MarketingCalendar() {
             <Input placeholder="如: 国庆节" maxLength={100} />
           </Form.Item>
           <Form.Item name="holidayType" label="假日类型">
-            <Input placeholder="如: NATIONAL" maxLength={30} />
+            <Select
+              placeholder="请选择假日类型"
+              options={[
+                { value: 'NATIONAL', label: '法定节假日（NATIONAL）' },
+                { value: 'TRADITIONAL', label: '传统节日（TRADITIONAL）' },
+                { value: 'COMPANY', label: '公司自定义（COMPANY）' },
+                { value: 'TAX', label: '税务申报期（TAX）' },
+              ]}
+            />
           </Form.Item>
-          <Form.Item name="holidayDate" label="日期" rules={[{ required: true, message: '请输入日期' }]}>
-            <Input placeholder="如 2026-10-01" maxLength={20} />
+          <Form.Item name="holidayDate" label="日期" rules={[{ required: true, message: '请选择日期' }]}>
+            <DatePicker placeholder="选择日期" style={{ width: 180 }} />
           </Form.Item>
           <Form.Item name="description" label="说明">
             <Input placeholder="假日说明" />

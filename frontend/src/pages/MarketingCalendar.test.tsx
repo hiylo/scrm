@@ -87,10 +87,23 @@ describe('MarketingCalendar', () => {
     fireEvent.click(screen.getByRole('button', { name: cn('新建事件') }));
     await waitFor(() => expect(screen.getByLabelText('事件标题')).toBeInTheDocument());
     await userEvent.type(screen.getByLabelText('事件标题'), '618 预热');
-    await userEvent.type(screen.getByLabelText('开始日期'), '2026-06-01');
-    await userEvent.type(screen.getByLabelText('结束日期'), '2026-06-03');
+    // 日期已改成 DatePicker：在输入框里键入日期文本后回车确认
+    const startInput = screen.getByLabelText('开始日期');
+    await userEvent.type(startInput, '2026-06-01');
+    await userEvent.keyboard('{Enter}');
+    const endInput = screen.getByLabelText('结束日期');
+    await userEvent.type(endInput, '2026-06-03');
+    await userEvent.keyboard('{Enter}');
     fireEvent.click(screen.getByRole('button', { name: cn('确定') }));
-    await waitFor(() => expect(post).toHaveBeenCalledWith('/scrm/marketing-calendar', expect.objectContaining({ eventTitle: '618 预热' })));
+    // 断言提交的是格式化后的字符串，而不是 dayjs 对象
+    await waitFor(() => expect(post).toHaveBeenCalledWith(
+      '/scrm/marketing-calendar',
+      expect.objectContaining({
+        eventTitle: '618 预热',
+        startDate: '2026-06-01',
+        endDate: '2026-06-03',
+      }),
+    ));
   });
 
   it('确认事件: 待确认调用 confirm', async () => {

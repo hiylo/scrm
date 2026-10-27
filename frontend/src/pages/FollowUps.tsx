@@ -16,6 +16,7 @@ import {
   Form,
   Input,
   Modal,
+  Select,
   Space,
   Table,
   Tabs,
@@ -345,8 +346,14 @@ export default function FollowUps() {
           <Form.Item name="customerId" label="客户 ID" rules={[{ required: true, message: '请输入客户 ID' }]}>
             <Input placeholder="客户 ID" />
           </Form.Item>
-          <Form.Item name="followType" label="跟进类型">
-            <Input placeholder="如: PHONE / WECHAT / VISIT" maxLength={30} />
+          <Form.Item name="followType" label="跟进类型" initialValue="PHONE">
+            <Select
+              placeholder="请选择跟进类型"
+              options={Object.entries(followTypeConfig).map(([v, c]) => ({
+                value: v,
+                label: c.label,
+              }))}
+            />
           </Form.Item>
           <Form.Item name="plannedAt" label="计划时间">
             <Input placeholder="如 2026-10-10T10:00:00" maxLength={30} />

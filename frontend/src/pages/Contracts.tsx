@@ -24,6 +24,7 @@ import {
   Table,
   Tag,
   Typography,
+  DatePicker,
 } from 'antd';
 import {
   PlusOutlined,
@@ -151,6 +152,9 @@ export default function Contracts() {
   /** 提交 */
   const handleSubmit = async () => {
     const values = await form.validateFields();
+    // 日期字段后端是 YYYY-MM-DD 字符串，DatePicker 返回 dayjs 对象，提交前统一转换
+    if (values.startDate) values.startDate = values.startDate.format('YYYY-MM-DD');
+    if (values.endDate) values.endDate = values.endDate.format('YYYY-MM-DD');
     setSaving(true);
     try {
       if (editing) {
@@ -300,10 +304,10 @@ export default function Contracts() {
           </Space>
           <Space size={16} wrap>
             <Form.Item name="startDate" label="开始日期">
-              <Input placeholder="如 2026-01-01" style={{ width: 160 }} />
+              <DatePicker placeholder="选择开始日期" style={{ width: 160 }} />
             </Form.Item>
             <Form.Item name="endDate" label="结束日期">
-              <Input placeholder="如 2026-12-31" style={{ width: 160 }} />
+              <DatePicker placeholder="选择结束日期" style={{ width: 160 }} />
             </Form.Item>
           </Space>
           <Form.Item name="signUserId" label="签署人 ID">
