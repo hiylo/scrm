@@ -159,6 +159,22 @@ public interface ScrmApprovalInstanceRepository extends JpaRepository<ScrmApprov
     List<ScrmApprovalInstanceEntity> findPendingInstances();
 
     /**
+     * 统计某流程下「进行中」的实例数 (PENDING / APPROVING)。
+     * <p>
+     * 供删除流程前做引用检查：审批推进需要读流程节点定义，
+     * 流程被删后这些实例会因找不到流程而永久卡死（无法通过、也无法驳回）。
+     * 已完结的实例不受影响——它们的流程名与节点历史已在提交时快照保存。
+     * </p>
+     *
+     * @param flowId 流程 ID
+     * @return 进行中的实例数
+     */
+    @Query(value = "SELECT COUNT(t) FROM ScrmApprovalInstanceEntity t "
+                          + "WHERE t.flowId = :flowId AND t.status IN ('PENDING', 'APPROVING')")
+    long countActiveInstancesByFlowId(@Param("flowId") Long flowId);
+
+
+    /**
      * 统计审批人参与实例数与通过率 (基于日志表)。
      *
      * @param approverId 审批人 ID

@@ -72,7 +72,7 @@ class ScrmApprovalServiceTest {
 
     @BeforeEach
     void setUp() {
-        ScrmApprovalFlowService flowService = new ScrmApprovalFlowService(objectMapper, flowRepository);
+        ScrmApprovalFlowService flowService = new ScrmApprovalFlowService(objectMapper, flowRepository, instanceRepository);
         ScrmApprovalLogService logService = new ScrmApprovalLogService(instanceRepository, logRepository);
         // 事件发布器用 mock：审批用例只关心流程推进，不关心业务回调
         org.springframework.context.ApplicationEventPublisher eventPublisher =
@@ -291,7 +291,7 @@ class ScrmApprovalServiceTest {
     @Test
     @DisplayName("节点结构校验：只配审批节点（无 END）应被拒绝，否则提交即自动通过")
     void validateNodeStructure_rejectsMissingEnd() {
-        ScrmApprovalFlowService flowService = new ScrmApprovalFlowService(objectMapper, flowRepository);
+        ScrmApprovalFlowService flowService = new ScrmApprovalFlowService(objectMapper, flowRepository, instanceRepository);
         String nodes = "[{\"nodeId\":\"n1\",\"nodeName\":\"审核\",\"nodeType\":\"APPROVE\"}]";
 
         assertThatThrownBy(() -> flowService.validateNodeStructure(nodes))
@@ -302,7 +302,7 @@ class ScrmApprovalServiceTest {
     @Test
     @DisplayName("节点结构校验：没有审批节点应被拒绝")
     void validateNodeStructure_rejectsMissingApprove() {
-        ScrmApprovalFlowService flowService = new ScrmApprovalFlowService(objectMapper, flowRepository);
+        ScrmApprovalFlowService flowService = new ScrmApprovalFlowService(objectMapper, flowRepository, instanceRepository);
         String nodes = "[{\"nodeId\":\"s\",\"nodeType\":\"START\"},"
                 + "{\"nodeId\":\"e\",\"nodeType\":\"END\"}]";
 
@@ -314,12 +314,65 @@ class ScrmApprovalServiceTest {
     @Test
     @DisplayName("节点结构校验：START + APPROVE + END 通过")
     void validateNodeStructure_acceptsCompleteFlow() throws Exception {
-        ScrmApprovalFlowService flowService = new ScrmApprovalFlowService(objectMapper, flowRepository);
+        ScrmApprovalFlowService flowService = new ScrmApprovalFlowService(objectMapper, flowRepository, instanceRepository);
         String nodes = "[{\"nodeId\":\"s\",\"nodeType\":\"START\"},"
                 + "{\"nodeId\":\"n1\",\"nodeType\":\"APPROVE\"},"
                 + "{\"nodeId\":\"e\",\"nodeType\":\"END\"}]";
 
         // 不抛异常即通过
         flowService.validateNodeStructure(nodes);
+    }
+
+    @Test
+    @DisplayName("有进行中的审批实例时禁止删除流程：否则实例会永久卡死")
+    void deleteFlow_rejectsWhenActiveInstancesExist() {
+        ScrmApprovalFlowService flowService =
+                new ScrmApprovalFlowService(objectMapper, flowRepository, instanceRepository);
+        ScrmApprovalFlowEntity flow = new ScrmApprovalFlowEntity();
+        flow.setId(8001L);
+        flow.setFlowName("续费审批流");
+        flow.setStatus("INACTIVE");
+        when(flowRepository.findById(8001L)).thenReturn(java.util.Optional.of(flow));
+        // 仍有 1 个 APPROVING 实例挂在该流程上
+        when(instanceRepository.countActiveInstancesByFlowId(8001L)).thenReturn(1L);
+
+        assertThatThrownBy(() -> flowService.deleteFlow(8001L))
+                .isInstanceOf(ScrmException.class)
+                .hasMessageContaining("进行中的审批实例");
+
+        // 关键：不能真的删掉
+        verify(flowRepository, never()).delete(any(ScrmApprovalFlowEntity.class));
+    }
+
+    @Test
+    @DisplayName("没有进行中实例时允许删除（已完结实例不受影响）")
+    void deleteFlow_allowsWhenNoActiveInstances() throws Exception {
+        ScrmApprovalFlowService flowService =
+                new ScrmApprovalFlowService(objectMapper, flowRepository, instanceRepository);
+        ScrmApprovalFlowEntity flow = new ScrmApprovalFlowEntity();
+        flow.setId(8002L);
+        flow.setFlowName("旧流程");
+        flow.setStatus("INACTIVE");
+        when(flowRepository.findById(8002L)).thenReturn(java.util.Optional.of(flow));
+        when(instanceRepository.countActiveInstancesByFlowId(8002L)).thenReturn(0L);
+
+        flowService.deleteFlow(8002L);
+
+        verify(flowRepository).delete(flow);
+    }
+
+    @Test
+    @DisplayName("ACTIVE 流程仍然不可删除（原有行为不回退）")
+    void deleteFlow_rejectsActiveFlow() {
+        ScrmApprovalFlowService flowService =
+                new ScrmApprovalFlowService(objectMapper, flowRepository, instanceRepository);
+        ScrmApprovalFlowEntity flow = new ScrmApprovalFlowEntity();
+        flow.setId(8003L);
+        flow.setStatus("ACTIVE");
+        when(flowRepository.findById(8003L)).thenReturn(java.util.Optional.of(flow));
+
+        assertThatThrownBy(() -> flowService.deleteFlow(8003L))
+                .isInstanceOf(ScrmException.class)
+                .hasMessageContaining("已激活的流程不可删除");
     }
 }

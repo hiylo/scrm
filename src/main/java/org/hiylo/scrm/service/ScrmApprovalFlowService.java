@@ -115,6 +115,9 @@ public class ScrmApprovalFlowService {
     /** 流程定义数据访问层 */
     private final ScrmApprovalFlowRepository flowRepository;
 
+    /** 审批实例数据访问层 (删除流程前做引用检查) */
+    private final org.hiylo.scrm.repository.ScrmApprovalInstanceRepository instanceRepository;
+
     // ============================================================
     // 流程管理
     // ============================================================
@@ -208,15 +211,26 @@ public class ScrmApprovalFlowService {
 
     /**
      * 删除审批流程 (须为 INACTIVE / DRAFT 状态)。
+     * <p>
+     * 存在进行中 (PENDING / APPROVING) 的审批实例时拒绝删除——实例推进依赖流程节点定义,
+     * 流程被删后这些实例会永久卡死。已完结实例不受影响（流程名与节点历史已快照）。
+     * </p>
      *
      * @param id 流程 ID
-     * @throws ScrmException 流程不存在 / 状态非法
+     * @throws ScrmException 流程不存在 / 状态非法 / 存在进行中的实例
      */
     @Transactional
     public void deleteFlow(Long id) throws ScrmException {
         ScrmApprovalFlowEntity entity = findFlowOrThrow(id);
         if (FLOW_STATUS_ACTIVE.equals(entity.getStatus())) {
             throw ScrmException.conflict("已激活的流程不可删除, 请先停用: id=" + id);
+        }
+        // 有进行中的实例时禁止删除: 审批推进要读流程节点定义, 流程删掉后这些实例
+        // 既无法通过也无法驳回, 会永久卡死 (只能直接改库才能恢复)
+        long activeInstances = instanceRepository.countActiveInstancesByFlowId(id);
+        if (activeInstances > 0) {
+            throw ScrmException.conflict("该流程还有 " + activeInstances
+                    + " 个进行中的审批实例, 删除会导致这些审批无法继续。请先处理完实例再删除: id=" + id);
         }
         flowRepository.delete(entity);
         log.info("删除审批流程: id={}, name={}", id, entity.getFlowName());
