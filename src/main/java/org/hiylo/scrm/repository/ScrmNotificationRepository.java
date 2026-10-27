@@ -109,4 +109,15 @@ public interface ScrmNotificationRepository extends JpaRepository<ScrmNotificati
                                     @Param("channel") String channel,
                                     @Param("start") LocalDateTime start,
                                     @Param("end") LocalDateTime end);
+
+    /**
+     * 判断是否存在指定模板 + 关联业务对象的通知记录 (高意向推送幂等去重用)。
+     *
+     * @param relatedType  关联类型
+     * @param relatedId    关联业务对象 ID
+     * @param templateCode 通知模板编码
+     * @return true 已存在
+     */
+    boolean existsByRelatedTypeAndRelatedIdAndTemplateCode(String relatedType, String relatedId,
+                                                           String templateCode);
 }

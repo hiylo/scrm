@@ -12,6 +12,8 @@ import org.hiylo.scrm.entity.ScrmAiKnowledgeBaseEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
+import java.util.Optional;
+
 /**
  * SCRM AI 知识库数据访问层。
  * <p>
@@ -24,4 +26,12 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
  */
 public interface ScrmAiKnowledgeBaseRepository extends JpaRepository<ScrmAiKnowledgeBaseEntity, Long>,
         JpaSpecificationExecutor<ScrmAiKnowledgeBaseEntity> {
+
+    /**
+     * 按名称查询知识库 (批量导入幂等/复用)。
+     *
+     * @param kbName 知识库名称
+     * @return 知识库实体 (可选)
+     */
+    Optional<ScrmAiKnowledgeBaseEntity> findByKbName(String kbName);
 }

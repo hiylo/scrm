@@ -138,4 +138,16 @@ public class ScrmAiKnowledgeDocumentEntity {
     /** 创建人 */
     @Column(name = "created_by", length = 100)
     private String createdBy;
+
+    /** 最后人工复核日期: 最近一次业务人员逐条核对内容的日期 (可空) */
+    @Column(name = "last_reviewed_at")
+    private LocalDateTime lastReviewedAt;
+
+    /** 建议下次复核日期: 复核周期提醒, 默认 lastReviewedAt + reviewCycleDays (可空) */
+    @Column(name = "next_review_at")
+    private LocalDateTime nextReviewAt;
+
+    /** 复核周期(天): 政策类信息建议 ≤180 天, 默认 180 */
+    @Column(name = "review_cycle_days")
+    private Integer reviewCycleDays;
 }

@@ -16,6 +16,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * SCRM AI 对话记录数据访问层。
@@ -82,4 +83,12 @@ public interface ScrmAiConversationRepository extends JpaRepository<ScrmAiConver
     List<Object[]> countByFeedback(
                                     @Param("startTime") LocalDateTime startTime,
                                     @Param("endTime") LocalDateTime endTime);
+
+    /**
+     * 查询客户最近一条 AI 对话记录 (高意向推送对话摘要用)。
+     *
+     * @param customerId 客户 ID
+     * @return 最近对话记录 (不存在返回 null)
+     */
+    Optional<ScrmAiConversationEntity> findFirstByCustomerIdOrderByCreatedAtDesc(Long customerId);
 }

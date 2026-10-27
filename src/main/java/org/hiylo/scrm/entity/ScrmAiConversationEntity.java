@@ -156,4 +156,8 @@ public class ScrmAiConversationEntity {
     /** 对话发生时间 (业务时间, 默认当前时间) */
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
+
+    /** 知识库引用溯源 (JSON 数组, 可空: AI 答复来源的知识条目 id/title) */
+    @Column(name = "knowledge_citations", columnDefinition = "TEXT")
+    private String knowledgeCitations;
 }

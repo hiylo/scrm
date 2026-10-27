@@ -115,6 +115,10 @@ public class ScrmContractEntity {
     @JsonSerialize(using = ToStringSerializer.class)
     private Long customerId;
 
+    /** 服务主体（公司）ID（V14）；customerId 保留为签约/经办联系人 */
+    @Column(name = "company_id")
+    private Long companyId;
+
     /** 客户名称 (可空) */
     @Column(name = "customer_name", length = 200)
     private String customerName;

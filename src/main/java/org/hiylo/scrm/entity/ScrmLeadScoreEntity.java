@@ -155,11 +155,11 @@ public class ScrmLeadScoreEntity {
 
     /** 是否热线索 (默认 false) */
     @Column(name = "is_hot_lead", nullable = false)
-    private Boolean isHotLead;
+    private Boolean isHotLead = Boolean.FALSE;
 
     /** 是否合格线索 (默认 false) */
     @Column(name = "is_qualified", nullable = false)
-    private Boolean isQualified;
+    private Boolean isQualified = Boolean.FALSE;
 
     /** 最近计算时间 */
     @Column(name = "last_calculated_at", nullable = false)
@@ -195,7 +195,7 @@ public class ScrmLeadScoreEntity {
 
     /** 是否已转化 (默认 false) */
     @Column(name = "is_converted", nullable = false)
-    private Boolean isConverted;
+    private Boolean isConverted = Boolean.FALSE;
 
     /** 转化价值 */
     @Column(name = "conversion_value")

@@ -78,6 +78,13 @@ public class ScrmAbTestVariantEntity {
         if (version == null) {
             version = 0L;
         }
+        // 非空布尔字段兜底: 未显式赋值时按 false 落库, 避免 NOT NULL 约束报错
+        if (isControl == null) {
+            isControl = Boolean.FALSE;
+        }
+        if (isWinner == null) {
+            isWinner = Boolean.FALSE;
+        }
     }
 
     /**

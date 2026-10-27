@@ -77,4 +77,40 @@ public interface ScrmAiKnowledgeDocumentRepository extends JpaRepository<ScrmAiK
     @Query(value = "UPDATE ScrmAiKnowledgeDocumentEntity d SET d.viewCount = d.viewCount + 1, d.lastUsedAt = :usedAt "
                           + "WHERE d.id = :documentId")
     int incrementViewCount(@Param("documentId") Long documentId, @Param("usedAt") LocalDateTime usedAt);
+
+    /**
+     * 按标题精确匹配查询文档 (导入幂等去重用)。
+     *
+     * @param title 文档标题
+     * @return 是否存在同标题文档
+     */
+    boolean existsByTitle(String title);
+
+    /**
+     * 分页查询待复核文档 (未复核或已过建议复核日期), 按建议日期升序。
+     *
+     * @param knowledgeBaseId 知识库 ID 过滤 (可空, 为空查询全部)
+     * @param now             当前时间
+     * @param pageable        分页参数
+     * @return 待复核文档分页结果
+     */
+    @Query(value = "SELECT d FROM ScrmAiKnowledgeDocumentEntity d WHERE (:knowledgeBaseId IS NULL OR "
+                          + "d.knowledgeBaseId = :knowledgeBaseId) AND (d.nextReviewAt IS NULL OR "
+                          + "d.nextReviewAt < :now) ORDER BY COALESCE(d.nextReviewAt, d.createTime) ASC")
+    Page<ScrmAiKnowledgeDocumentEntity> findDueForReview(
+                                                          @Param("knowledgeBaseId") Long knowledgeBaseId,
+                                                          @Param("now") LocalDateTime now,
+                                                          Pageable pageable);
+
+    /**
+     * 统计待复核文档数。
+     *
+     * @param knowledgeBaseId 知识库 ID 过滤 (可空, 为空统计全部)
+     * @param now             当前时间
+     * @return 待复核文档数
+     */
+    @Query(value = "SELECT COUNT(d) FROM ScrmAiKnowledgeDocumentEntity d WHERE (:knowledgeBaseId IS NULL OR "
+                          + "d.knowledgeBaseId = :knowledgeBaseId) AND (d.nextReviewAt IS NULL OR "
+                          + "d.nextReviewAt < :now)")
+    long countDueForReview(@Param("knowledgeBaseId") Long knowledgeBaseId, @Param("now") LocalDateTime now);
 }

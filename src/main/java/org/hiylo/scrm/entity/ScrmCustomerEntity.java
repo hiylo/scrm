@@ -87,12 +87,19 @@ public class ScrmCustomerEntity {
 
     // ==================== 业务字段 ====================
 
-    /** 平台类型 */
-    @Column(name = "platform_type", nullable = false, length = 30)
+    /**
+     * 平台类型（联系方式之一）。
+     * <p>wework / wechat_personal / douyin / kuaishou / xiaohongshu / bilibili。
+     * 纯电话或线下沟通、尚未加任何平台好友的联系人为空。</p>
+     */
+    @Column(name = "platform_type", length = 30)
     private String platformType;
 
-    /** 平台客户唯一标识 */
-    @Column(name = "platform_customer_uid", nullable = false, length = 200)
+    /**
+     * 平台账号唯一标识（wxid / 企微 userid / openid 等）。
+     * <p><b>不可填手机号</b>——手机号是独立字段 {@link #phone}；两者并存不互斥。</p>
+     */
+    @Column(name = "platform_customer_uid", length = 200)
     private String platformCustomerUid;
 
     /** 客户昵称 */
@@ -126,4 +133,41 @@ public class ScrmCustomerEntity {
     /** 客户备注 (业务员私有备注, 仅当前账号可见) */
     @Column(name = "remark", columnDefinition = "TEXT")
     private String remark;
+
+    // ==================== 公司主体与联系方式（V14）====================
+
+    /**
+     * 所属公司主体 ID（引用 {@code scrm_company.id}）。
+     * <p>一个联系人只属一家公司；为空表示尚未关联主体（待认领）。</p>
+     */
+    @Column(name = "company_id")
+    private Long companyId;
+
+    /**
+     * 在公司内的角色。
+     * <p>BOSS(老板/法人) / FINANCE(财务) / CASHIER(出纳) / ADMIN(行政) /
+     * AGENT(经办/中介) / OTHER。</p>
+     */
+    @Column(name = "contact_role", length = 30)
+    private String contactRole;
+
+    /**
+     * 手机号（独立字段）。
+     * <p>与平台账号并存不互斥：微信好友也可留手机号，纯电话客户可以没有平台账号。
+     * 作为撞单检测与按号码检索的依据，写入前请归一化为纯数字（可带 +86）。</p>
+     */
+    @Column(name = "phone", length = 32)
+    private String phone;
+
+    /**
+     * 获客渠道（客户「从哪来」）。
+     * <p>抖音广告 / 朋友介绍 / 地推 / 官网 / 渠道活码等。<b>与联系方式是不同维度</b>：
+     * 联系方式见 {@link #platformType} 与 {@link #phone}。</p>
+     */
+    @Column(name = "source_channel", length = 100)
+    private String sourceChannel;
+
+    /** 来源渠道活码 ID（引用 {@code scrm_channel_code.id}） */
+    @Column(name = "source_channel_code_id")
+    private Long sourceChannelCodeId;
 }

@@ -50,6 +50,33 @@ public interface ScrmKnowledgeArticleRepository extends JpaRepository<ScrmKnowle
     boolean existsByArticleCode(String articleCode);
 
     /**
+     * 查询待复核的知识文章 (当前时间已过建议复核日期或从未复核), 按建议日期升序。
+     *
+     * @param now      当前时间
+     * @param statuses 参与复核的文章状态列表 (如 PUBLISHED)
+     * @param pageable 分页参数
+     * @return 待复核文章分页结果
+     */
+    @Query(value = "SELECT a FROM ScrmKnowledgeArticleEntity a WHERE a.status IN :statuses "
+                          + "AND (a.nextReviewAt IS NULL OR a.nextReviewAt < :now) ORDER BY "
+                          + "COALESCE(a.nextReviewAt, a.createTime) ASC")
+    Page<ScrmKnowledgeArticleEntity> findDueForReview(
+                                                       @Param("now") LocalDateTime now,
+                                                       @Param("statuses") List<String> statuses,
+                                                       Pageable pageable);
+
+    /**
+     * 统计待复核知识文章数。
+     *
+     * @param now      当前时间
+     * @param statuses 参与复核的文章状态列表
+     * @return 待复核文章数
+     */
+    @Query(value = "SELECT COUNT(a) FROM ScrmKnowledgeArticleEntity a WHERE a.status IN :statuses "
+                          + "AND (a.nextReviewAt IS NULL OR a.nextReviewAt < :now)")
+    long countDueForReview(@Param("now") LocalDateTime now, @Param("statuses") List<String> statuses);
+
+    /**
      * 按分类查询已发布文章 (分页)。
      *
      * @param categoryId 分类 ID

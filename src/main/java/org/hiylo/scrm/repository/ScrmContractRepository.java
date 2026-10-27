@@ -61,4 +61,12 @@ public interface ScrmContractRepository extends JpaRepository<ScrmContractEntity
      * @return 合同列表
      */
     List<ScrmContractEntity> findByRenewalOfId(Long renewalOfId);
+
+    /**
+     * 统计该主体关联的业务数据数量（公司 360 聚合用）。
+     *
+     * @param companyId 公司主体 ID
+     * @return 数量
+     */
+    long countByCompanyId(Long companyId);
 }
