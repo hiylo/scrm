@@ -70,8 +70,20 @@ public class ScrmContractTemplateService {
             "AGENCY", "MAINTENANCE", "RENTAL", "PURCHASE", "CUSTOM"));
 
     // ==================== 渲染常量 ====================
-    /** 变量占位符正则: {{variableName}} */
-    private static final Pattern VARIABLE_PATTERN = Pattern.compile("\\{\\{\\s*(\\w+)\\s*\\}\\}");
+    /**
+     * 变量占位符正则: 同时支持 {@code {{variableName}}} 与 {@code ${variableName}}。
+     * <p>
+     * 文档约定是双花括号，但实际录入的模板常写成 {@code ${xxx}}（与本项目
+     * {@code ScrmWelcomeMessageService} 的语法一致）。原先只认双花括号，
+     * 写 {@code ${}} 的模板能保存成功却不做任何替换，合同正文会带着未渲染的
+     * 占位符进入正式文件，且全程没有报错。这里放宽为两种语法都识别。
+     * </p>
+     */
+    private static final Pattern VARIABLE_PATTERN =
+            Pattern.compile("\\{\\{\\s*(\\w+)\\s*\\}\\}|\\$\\{\\s*(\\w+)\\s*\\}");
+
+    /** 无法识别的占位符写法 (漏写花括号的 {xxx} 等) */
+    private static final Pattern INVALID_PLACEHOLDER_PATTERN = Pattern.compile("\\{[^{}]*\\}");
 
     /** JSON 解析器 (解析模板变量与渲染) */
     private final ObjectMapper objectMapper;
@@ -97,6 +109,7 @@ public class ScrmContractTemplateService {
     @Transactional
     public ScrmContractTemplateDto createTemplate(ScrmContractTemplateDto dto) throws ScrmException {
         validateTemplateDto(dto, false);
+        validatePlaceholderSyntax(dto.getTemplateContent());
         if (templateRepository.findByTemplateCode(dto.getTemplateCode()).isPresent()) {
             throw ScrmException.conflict("模板编码已存在: code=" + dto.getTemplateCode());
         }
@@ -134,6 +147,7 @@ public class ScrmContractTemplateService {
     public ScrmContractTemplateDto updateTemplate(Long id, ScrmContractTemplateDto dto) throws ScrmException {
         ScrmContractTemplateEntity entity = findTemplateOrThrow(id);
         validateTemplateDto(dto, true);
+        validatePlaceholderSyntax(dto.getTemplateContent());
         if (dto.getTemplateCode() != null && !dto.getTemplateCode().equals(entity.getTemplateCode())) {
             if (templateRepository.findByTemplateCode(dto.getTemplateCode()).isPresent()) {
                 throw ScrmException.conflict("模板编码已存在: code=" + dto.getTemplateCode());
@@ -477,6 +491,30 @@ public class ScrmContractTemplateService {
     }
 
     /**
+     * 校验模板内容的占位符写法。
+     * <p>
+     * 只认 {@code {{xxx}}} 与 {@code ${xxx}} 两种语法。其余带花括号的写法
+     * （典型是漏写一层花括号的 {@code {xxx}}）会在渲染时原样保留，
+     * 生成出带未替换占位符的正式合同——因此录入时就要拦下并给出正确写法。
+     * </p>
+     *
+     * @param content 模板内容
+     * @throws ScrmException 存在无法识别的占位符写法
+     */
+    private void validatePlaceholderSyntax(String content) throws ScrmException {
+        if (content == null || content.isBlank()) {
+            return;
+        }
+        // 先摘掉两种合法写法，再看是否还残留花括号
+        String stripped = VARIABLE_PATTERN.matcher(content).replaceAll("");
+        java.util.regex.Matcher m = INVALID_PLACEHOLDER_PATTERN.matcher(stripped);
+        if (m.find()) {
+            throw ScrmException.badRequest("模板变量写法不正确: " + m.group()
+                    + "。请使用 {{变量名}} 或 ${变量名}，例如 {{customerName}}");
+        }
+    }
+
+    /**
      * 渲染合同内容: 将 {{variableName}} 占位符替换为变量值。
      * <p>未提供的变量保留占位符原样, 变量值统一转为字符串。</p>
      *
@@ -494,7 +532,8 @@ public class ScrmContractTemplateService {
         Matcher matcher = VARIABLE_PATTERN.matcher(content);
         StringBuilder sb = new StringBuilder();
         while (matcher.find()) {
-            String varName = matcher.group(1);
+            // 两种语法各自占一个捕获组，取非空的那个
+            String varName = matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
             Object value = varMap.get(varName);
             String replacement = value != null ? String.valueOf(value) : matcher.group(0);
             matcher.appendReplacement(sb, Matcher.quoteReplacement(replacement));
