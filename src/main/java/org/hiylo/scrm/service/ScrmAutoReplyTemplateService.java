@@ -11,6 +11,7 @@ import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.hiylo.scrm.common.util.TemplateRenderUtils;
 import org.hiylo.scrm.dto.ScrmAutoReplyTemplateDto;
 import org.hiylo.scrm.entity.ScrmAutoReplyTemplateEntity;
 import org.hiylo.scrm.exception.ScrmException;
@@ -247,13 +248,7 @@ public class ScrmAutoReplyTemplateService {
             merged.put(VAR_CUSTOMER_NAME, customerName);
             merged.put(VAR_NICKNAME, customerName);
         }
-        String rendered = content;
-        for (Map.Entry<String, String> entry : merged.entrySet()) {
-            if (entry.getValue() != null) {
-                rendered = rendered.replace("{" + entry.getKey() + "}", entry.getValue());
-            }
-        }
-        return rendered;
+        return TemplateRenderUtils.render(content, merged);
     }
 
     /**

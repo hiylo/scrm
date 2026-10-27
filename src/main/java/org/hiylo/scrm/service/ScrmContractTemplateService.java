@@ -15,6 +15,7 @@ import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.hiylo.scrm.common.util.TemplateRenderUtils;
 import org.hiylo.scrm.dto.ScrmContractTemplateDto;
 import org.hiylo.scrm.entity.ScrmContractEntity;
 import org.hiylo.scrm.entity.ScrmContractTemplateEntity;
@@ -70,18 +71,6 @@ public class ScrmContractTemplateService {
             "AGENCY", "MAINTENANCE", "RENTAL", "PURCHASE", "CUSTOM"));
 
     // ==================== 渲染常量 ====================
-    /**
-     * 变量占位符正则: 同时支持 {@code {{variableName}}} 与 {@code ${variableName}}。
-     * <p>
-     * 文档约定是双花括号，但实际录入的模板常写成 {@code ${xxx}}（与本项目
-     * {@code ScrmWelcomeMessageService} 的语法一致）。原先只认双花括号，
-     * 写 {@code ${}} 的模板能保存成功却不做任何替换，合同正文会带着未渲染的
-     * 占位符进入正式文件，且全程没有报错。这里放宽为两种语法都识别。
-     * </p>
-     */
-    private static final Pattern VARIABLE_PATTERN =
-            Pattern.compile("\\{\\{\\s*(\\w+)\\s*\\}\\}|\\$\\{\\s*(\\w+)\\s*\\}");
-
     /** 无法识别的占位符写法 (漏写花括号的 {xxx} 等) */
     private static final Pattern INVALID_PLACEHOLDER_PATTERN = Pattern.compile("\\{[^{}]*\\}");
 
@@ -505,8 +494,14 @@ public class ScrmContractTemplateService {
         if (content == null || content.isBlank()) {
             return;
         }
-        // 先摘掉两种合法写法，再看是否还残留花括号
-        String stripped = VARIABLE_PATTERN.matcher(content).replaceAll("");
+        // 合同是生成正式文件的场景，语法从严：只接受 {{var}} 与 ${var}。
+        // 单花括号 {var} 虽然渲染器也认（为兼容存量通知/话术模板），但这里必须拒绝——
+        // 合同模板写 {customerName} 几乎都是漏写一层花括号，放行会让错误模板进入正式合同。
+        String stripped = content;
+        for (String var : TemplateRenderUtils.extractVariables(content)) {
+            stripped = stripped.replace("{{" + var + "}}", "")
+                    .replace("${" + var + "}", "");
+        }
         java.util.regex.Matcher m = INVALID_PLACEHOLDER_PATTERN.matcher(stripped);
         if (m.find()) {
             throw ScrmException.badRequest("模板变量写法不正确: " + m.group()
@@ -523,22 +518,6 @@ public class ScrmContractTemplateService {
      * @return 渲染后的内容
      */
     String renderContent(String content, Map<String, Object> varMap) {
-        if (content == null || content.isEmpty()) {
-            return content;
-        }
-        if (varMap == null || varMap.isEmpty()) {
-            return content;
-        }
-        Matcher matcher = VARIABLE_PATTERN.matcher(content);
-        StringBuilder sb = new StringBuilder();
-        while (matcher.find()) {
-            // 两种语法各自占一个捕获组，取非空的那个
-            String varName = matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
-            Object value = varMap.get(varName);
-            String replacement = value != null ? String.valueOf(value) : matcher.group(0);
-            matcher.appendReplacement(sb, Matcher.quoteReplacement(replacement));
-        }
-        matcher.appendTail(sb);
-        return sb.toString();
+        return TemplateRenderUtils.render(content, varMap);
     }
 }

@@ -11,6 +11,7 @@ import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.hiylo.scrm.common.util.TemplateRenderUtils;
 import org.hiylo.scrm.dto.ScrmAutoReplyLogDto;
 import org.hiylo.scrm.dto.ScrmAutoReplyMatchDto;
 import org.hiylo.scrm.dto.ScrmAutoReplyTestDto;
@@ -649,13 +650,13 @@ public class ScrmAutoReplyMatchService {
         if (content == null) {
             return "";
         }
+        Map<String, String> vars = new HashMap<>();
+        vars.put(VAR_TIME, LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
         if (customerName != null) {
-            content = content.replace("{" + VAR_CUSTOMER_NAME + "}", customerName);
-            content = content.replace("{" + VAR_NICKNAME + "}", customerName);
+            vars.put(VAR_CUSTOMER_NAME, customerName);
+            vars.put(VAR_NICKNAME, customerName);
         }
-        content = content.replace("{" + VAR_TIME + "}",
-                LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
-        return content;
+        return TemplateRenderUtils.render(content, vars);
     }
 
     /**

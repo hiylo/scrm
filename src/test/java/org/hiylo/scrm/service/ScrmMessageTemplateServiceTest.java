@@ -9,6 +9,7 @@
 package org.hiylo.scrm.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.hiylo.scrm.common.util.TemplateRenderUtils;
 import org.hiylo.scrm.dto.ScrmMessageTemplateDto;
 import org.hiylo.scrm.entity.ScrmMessageTemplateEntity;
 import org.hiylo.scrm.exception.ScrmException;
@@ -329,24 +330,27 @@ class ScrmMessageTemplateServiceTest {
     }
 
     @Test
-    @DisplayName("renderContent: 缺失变量替换为空字符串")
-    void renderContent_missingVariableReplacedWithEmpty() {
+    @DisplayName("renderContent: 缺失变量保留原占位符（不静默变空）")
+    void renderContent_missingVariableKept() {
         String content = "Hello {{nickname}}, your code is {{code}}";
         Map<String, String> vars = Map.of("nickname", "Alice");
 
         String result = ScrmMessageTemplateService.renderContent(content, vars);
 
-        assertThat(result).isEqualTo("Hello Alice, your code is ");
+        // 语义变更：原先替换为空串，导致「漏传变量」表现为「内容缺一块」，难以排查；
+        // 现在保留 {{code}}，配合 TemplateRenderUtils.hasUnresolvedPlaceholder 可检出
+        assertThat(result).isEqualTo("Hello Alice, your code is {{code}}");
+        assertThat(TemplateRenderUtils.hasUnresolvedPlaceholder(result)).isTrue();
     }
 
     @Test
-    @DisplayName("renderContent: variables 为 null 时全部替换为空字符串")
-    void renderContent_nullVariablesAllEmpty() {
+    @DisplayName("renderContent: variables 为 null 时占位符原样保留")
+    void renderContent_nullVariablesKept() {
         String content = "Hello {{nickname}}";
 
         String result = ScrmMessageTemplateService.renderContent(content, null);
 
-        assertThat(result).isEqualTo("Hello ");
+        assertThat(result).isEqualTo("Hello {{nickname}}");
     }
 
     @Test

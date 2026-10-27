@@ -11,6 +11,7 @@ package org.hiylo.scrm.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.hiylo.scrm.common.util.TemplateRenderUtils;
 import org.hiylo.scrm.dto.ScrmWelcomeMessageDto;
 import org.hiylo.scrm.entity.ScrmWelcomeMessageEntity;
 import org.hiylo.scrm.exception.ScrmException;
@@ -36,7 +37,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -75,8 +75,6 @@ public class ScrmWelcomeMessageService {
     private static final String DEFAULT_MESSAGE_TYPE = "TEXT";
 
     /** 变量占位符正则: ${var} 形式 */
-    private static final Pattern VARIABLE_PATTERN = Pattern.compile("\\$\\{(\\w+)}");
-
     /** 时间格式: HH:mm */
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
 
@@ -356,16 +354,7 @@ public class ScrmWelcomeMessageService {
         if (customerInfo != null) {
             vars.putAll(customerInfo);
         }
-        Matcher matcher = VARIABLE_PATTERN.matcher(content);
-        StringBuilder result = new StringBuilder();
-        while (matcher.find()) {
-            String key = matcher.group(1);
-            Object value = vars.get(key);
-            String replacement = value == null ? "" : value.toString();
-            matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
-        }
-        matcher.appendTail(result);
-        return result.toString();
+        return TemplateRenderUtils.render(content, vars);
     }
 
     /**

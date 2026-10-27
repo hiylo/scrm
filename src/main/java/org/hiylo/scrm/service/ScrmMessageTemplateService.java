@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.hiylo.scrm.common.util.TemplateRenderUtils;
 import org.hiylo.scrm.dto.ScrmMessageTemplateDto;
 import org.hiylo.scrm.entity.ScrmMessageTemplateEntity;
 import org.hiylo.scrm.exception.ScrmException;
@@ -31,8 +32,6 @@ import jakarta.persistence.criteria.Predicate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * SCRM 消息模板服务（快捷回复）。
@@ -68,9 +67,6 @@ public class ScrmMessageTemplateService {
 
     /** 分类最大长度 */
     private static final int MAX_CATEGORY_LENGTH = 50;
-
-    /** 变量插值正则: 匹配 {{varName}} 形式, 捕获组 1 为变量名 */
-    private static final Pattern VARIABLE_PATTERN = Pattern.compile("\\{\\{(\\w+)\\}\\}");
 
     /** 消息模板数据访问层 */
     private final ScrmMessageTemplateRepository messageTemplateRepository;
@@ -248,20 +244,7 @@ public class ScrmMessageTemplateService {
      * @return 渲染后的内容
      */
     public static String renderContent(String content, Map<String, String> variables) {
-        if (content == null || content.isEmpty()) {
-            return content;
-        }
-        Matcher matcher = VARIABLE_PATTERN.matcher(content);
-        StringBuilder result = new StringBuilder();
-        while (matcher.find()) {
-            String key = matcher.group(1);
-            String value = (variables != null && variables.containsKey(key))
-                    ? String.valueOf(variables.get(key))
-                    : "";
-            matcher.appendReplacement(result, Matcher.quoteReplacement(value));
-        }
-        matcher.appendTail(result);
-        return result.toString();
+        return TemplateRenderUtils.render(content, variables);
     }
 
     /**
@@ -357,17 +340,7 @@ public class ScrmMessageTemplateService {
      * @throws ScrmException JSON 序列化失败
      */
     private String extractVariablesAsJson(String content) throws ScrmException {
-        java.util.List<String> variables = new java.util.ArrayList<>();
-        if (content != null && !content.isEmpty()) {
-            Matcher matcher = VARIABLE_PATTERN.matcher(content);
-            java.util.Set<String> seen = new java.util.HashSet<>();
-            while (matcher.find()) {
-                String name = matcher.group(1);
-                if (seen.add(name)) {
-                    variables.add(name);
-                }
-            }
-        }
+        java.util.List<String> variables = TemplateRenderUtils.extractVariables(content);
         try {
             return objectMapper.writeValueAsString(variables);
         } catch (JsonProcessingException e) {

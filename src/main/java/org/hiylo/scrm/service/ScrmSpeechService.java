@@ -27,6 +27,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.hiylo.scrm.common.util.TemplateRenderUtils;
 import org.hiylo.scrm.dto.ScrmSalesSpeechDto;
 import org.hiylo.scrm.entity.ScrmSalesSpeechEntity;
 import org.hiylo.scrm.entity.ScrmSpeechScenarioEntity;
@@ -332,13 +333,7 @@ public class ScrmSpeechService {
         if (variables != null) {
             merged.putAll(variables);
         }
-        String rendered = content;
-        for (Map.Entry<String, String> entry : merged.entrySet()) {
-            if (entry.getValue() != null) {
-                rendered = rendered.replace("{" + entry.getKey() + "}", entry.getValue());
-            }
-        }
-        return rendered;
+        return TemplateRenderUtils.render(content, merged);
     }
 
     /**

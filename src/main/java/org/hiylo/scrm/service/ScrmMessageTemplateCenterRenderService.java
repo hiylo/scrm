@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.hiylo.scrm.common.util.TemplateRenderUtils;
 import org.hiylo.scrm.dto.ScrmTemplateRenderDto;
 import org.hiylo.scrm.entity.ScrmMessageTemplateCenterEntity;
 import org.hiylo.scrm.exception.ScrmException;
@@ -43,9 +44,6 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 @Slf4j
 public class ScrmMessageTemplateCenterRenderService {
-
-    /** 变量插值正则: 匹配 {{varName}} 形式, 捕获组 1 为变量名 */
-    private static final Pattern VARIABLE_PATTERN = Pattern.compile("\\{\\{(\\w+)\\}}");
 
     /** HTML 标签剥离正则 */
     private static final Pattern HTML_TAG_PATTERN = Pattern.compile("<[^>]+>");
@@ -175,14 +173,7 @@ public class ScrmMessageTemplateCenterRenderService {
         if (content == null || content.isEmpty()) {
             return variables;
         }
-        Set<String> seen = new HashSet<>();
-        Matcher matcher = VARIABLE_PATTERN.matcher(content);
-        while (matcher.find()) {
-            String name = matcher.group(1);
-            if (seen.add(name)) {
-                variables.add(name);
-            }
-        }
+        variables.addAll(TemplateRenderUtils.extractVariables(content));
         return variables;
     }
 
@@ -243,19 +234,7 @@ public class ScrmMessageTemplateCenterRenderService {
      * @return 替换后文本
      */
     private String doReplace(String text, Map<String, Object> variables) {
-        if (text == null || text.isEmpty()) {
-            return text;
-        }
-        Matcher matcher = VARIABLE_PATTERN.matcher(text);
-        StringBuilder result = new StringBuilder();
-        while (matcher.find()) {
-            String key = matcher.group(1);
-            Object value = (variables != null && variables.containsKey(key)) ? variables.get(key) : null;
-            String replacement = value != null ? String.valueOf(value) : "";
-            matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
-        }
-        matcher.appendTail(result);
-        return result.toString();
+        return TemplateRenderUtils.render(text, variables);
     }
 
     /**

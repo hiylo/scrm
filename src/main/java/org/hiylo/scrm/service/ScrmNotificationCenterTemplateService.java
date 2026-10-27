@@ -12,6 +12,7 @@ import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.hiylo.scrm.common.util.TemplateRenderUtils;
 import org.hiylo.scrm.dto.ScrmNotificationTemplateDto;
 import org.hiylo.scrm.entity.ScrmNotificationTemplateEntity;
 import org.hiylo.scrm.exception.ScrmException;
@@ -313,17 +314,7 @@ public class ScrmNotificationCenterTemplateService {
      * @return 渲染后的字符串
      */
     public String render(String template, Map<String, String> variables) {
-        if (template == null) {
-            return null;
-        }
-        String result = template;
-        if (variables != null) {
-            for (Map.Entry<String, String> entry : variables.entrySet()) {
-                result = result.replace("{" + entry.getKey() + "}",
-                        entry.getValue() == null ? "" : entry.getValue());
-            }
-        }
-        return result;
+        return TemplateRenderUtils.render(template, variables);
     }
 
     /**

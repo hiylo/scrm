@@ -10,6 +10,7 @@ package org.hiylo.scrm.service.marketing;
 
 import org.hiylo.scrm.config.ScrmMarketingBatchProperties;
 import org.hiylo.scrm.dto.ScrmMarketingVariantDto;
+import org.hiylo.scrm.common.util.TemplateRenderUtils;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -31,8 +32,11 @@ import java.util.regex.Pattern;
 @Component
 public class MarketingComplianceValidator {
 
-    /** 占位符残留正则: {{var}} / {var} 未替换形式 */
-    private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\{\\{[^}]+}}|\\{[^{}]+}");
+    /**
+     * 占位符残留检测改用 {@link TemplateRenderUtils#hasUnresolvedPlaceholder}。
+     * <p>原正则只覆盖 {@code {{var}}} 与 {@code {var}}，漏掉了 {@code ${var}}——
+     * 用美元花括号写模板时，残留占位符能通过合规扫描流出去。</p>
+     */
 
     /** 合规禁语词表 (广告法最高级用语 + 保证收益 + 夸大承诺 + 违规暗示 + 虚假紧迫) */
     private static final String[] FORBIDDEN_WORDS = {
@@ -91,7 +95,7 @@ public class MarketingComplianceValidator {
             return violations;
         }
         // 1. 占位符完整性: 正文不得残留未替换占位符
-        if (PLACEHOLDER_PATTERN.matcher(content).find()) {
+        if (TemplateRenderUtils.hasUnresolvedPlaceholder(content)) {
             violations.add("残留未替换占位符");
         }
         // 2. 合规禁语扫描 (带上下文豁免: 「第一时间」不算绝对化「第一」)
