@@ -1,0 +1,190 @@
+/*
+ * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Project : scrm
+ * File : ScrmFinanceReadinessServiceTest.java
+ * Date : 2026/10/24 17:10:00
+ * Author : Hsi Chu
+ * Contact : hiylo@live.com
+ */
+package org.hiylo.scrm.service.finance;
+
+import org.hiylo.scrm.config.ScrmInspectionProperties;
+import org.hiylo.scrm.feign.OcrApiConfig;
+import org.hiylo.scrm.feign.QixinApiConfig;
+import org.hiylo.scrm.integration.wework.config.WeworkConfig;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+import org.springframework.core.env.Environment;
+
+import java.util.List;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
+
+/**
+ * {@link ScrmFinanceReadinessService} 单元测试。
+ * <p>
+ * 验证就绪汇总的核心语义：
+ * <ul>
+ *   <li>{@code ready} 必须是「开关已开 <b>且</b> 凭证/参数齐备」，只有开关不算就绪</li>
+ *   <li>未就绪必须给出可执行的 {@code blocker}，而不是笼统的「不可用」</li>
+ *   <li>全部就绪时 {@code allReady=true}</li>
+ *   <li><b>绝不回显 token/secret 明文</b></li>
+ * </ul>
+ * </p>
+ *
+ * @author Hsi Chu
+ * @since V1.0
+ */
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
+@DisplayName("财税域就绪汇总")
+class ScrmFinanceReadinessServiceTest {
+
+    @Mock
+    private Environment environment;
+
+    private OcrApiConfig ocrApiConfig;
+
+    private org.hiylo.scrm.config.VisionModelProperties visionProperties;
+
+    private QixinApiConfig qixinApiConfig;
+
+    private ScrmInspectionProperties inspectionProperties;
+
+    private WeworkConfig weworkConfig;
+
+    private ScrmFinanceReadinessService service;
+
+    @BeforeEach
+    void setUp() {
+        ocrApiConfig = new OcrApiConfig();
+        visionProperties = new org.hiylo.scrm.config.VisionModelProperties();
+        qixinApiConfig = new QixinApiConfig();
+        inspectionProperties = new ScrmInspectionProperties();
+        weworkConfig = new WeworkConfig();
+        when(environment.getProperty("scrm.ai.enabled", Boolean.class, false)).thenReturn(false);
+        when(environment.getProperty("scrm.ai.base-url", "")).thenReturn("http://localhost:14000");
+        when(environment.getProperty("scrm.push.getui.enabled", Boolean.class, false)).thenReturn(false);
+        service = new ScrmFinanceReadinessService(environment, ocrApiConfig, visionProperties,
+                qixinApiConfig, inspectionProperties, weworkConfig);
+    }
+
+    @Test
+    @DisplayName("默认配置：全部未就绪，每项都有可执行的 blocker")
+    void defaultConfig_nothingReady() {
+        Map<String, Object> result = service.readiness();
+
+        assertThat(result.get("allReady")).isEqualTo(false);
+        assertThat(result.get("totalCount")).isEqualTo(6);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> modules = (List<Map<String, Object>>) result.get("modules");
+        assertThat(modules).hasSize(6);
+        // 未就绪项必须都能说清缺什么
+        assertThat(modules).allSatisfy(m -> {
+            if (!Boolean.TRUE.equals(m.get("ready"))) {
+                assertThat(String.valueOf(m.get("blocker"))).isNotBlank();
+            }
+        });
+    }
+
+    @Test
+    @DisplayName("公告抓取：广东/浙江默认开启，应判定就绪")
+    void noticeReady_byDefaultProvinces() {
+        Map<String, Object> result = service.readiness();
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> modules = (List<Map<String, Object>>) result.get("modules");
+        Map<String, Object> notice = modules.stream()
+                .filter(m -> "noticeScraping".equals(m.get("key")))
+                .findFirst().orElseThrow();
+
+        assertThat(notice.get("ready")).isEqualTo(true);
+        assertThat(String.valueOf(notice.get("detail"))).contains("GD").contains("ZJ");
+    }
+
+    @Test
+    @DisplayName("公告抓取：全部源关闭则不就绪")
+    void noticeNotReady_whenAllSourcesOff() {
+        inspectionProperties.getNotice().setGuangdongEnabled(false);
+        inspectionProperties.getNotice().setZhejiangEnabled(false);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> modules = (List<Map<String, Object>>) service.readiness().get("modules");
+        Map<String, Object> notice = modules.stream()
+                .filter(m -> "noticeScraping".equals(m.get("key")))
+                .findFirst().orElseThrow();
+
+        assertThat(notice.get("ready")).isEqualTo(false);
+        assertThat(String.valueOf(notice.get("blocker"))).contains("公告源");
+    }
+
+    @Test
+    @DisplayName("启信宝：开关开了但没 token → 不就绪且说明缺 token")
+    void qixinNeedsToken() {
+        qixinApiConfig.setEnabled(true);
+        qixinApiConfig.setToken("");
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> modules = (List<Map<String, Object>>) service.readiness().get("modules");
+        Map<String, Object> qixin = modules.stream()
+                .filter(m -> "businessInspection".equals(m.get("key")))
+                .findFirst().orElseThrow();
+
+        assertThat(qixin.get("ready")).isEqualTo(false);
+        assertThat(String.valueOf(qixin.get("detail"))).contains("token");
+    }
+
+    @Test
+    @DisplayName("启信宝：开关 + token 齐备 → 就绪")
+    void qixinReadyWithToken() {
+        qixinApiConfig.setEnabled(true);
+        qixinApiConfig.setToken("some-token");
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> modules = (List<Map<String, Object>>) service.readiness().get("modules");
+        Map<String, Object> qixin = modules.stream()
+                .filter(m -> "businessInspection".equals(m.get("key")))
+                .findFirst().orElseThrow();
+
+        assertThat(qixin.get("ready")).isEqualTo(true);
+        assertThat(qixin.get("blocker")).isNull();
+    }
+
+    @Test
+    @DisplayName("全部依赖就绪：allReady=true")
+    void allReady_whenEverythingConfigured() {
+        when(environment.getProperty("scrm.ai.enabled", Boolean.class, false)).thenReturn(true);
+        when(environment.getProperty("scrm.push.getui.enabled", Boolean.class, false)).thenReturn(true);
+        visionProperties.setEnabled(true);
+        qixinApiConfig.setEnabled(true);
+        qixinApiConfig.setToken("t");
+        weworkConfig.setRealApiEnabled(true);
+        weworkConfig.setMockMode(false);
+
+        Map<String, Object> result = service.readiness();
+
+        assertThat(result.get("allReady")).isEqualTo(true);
+        assertThat(result.get("readyCount")).isEqualTo(6L);
+    }
+
+    @Test
+    @DisplayName("安全：汇总结果不含 token 明文")
+    void doesNotLeakToken() {
+        qixinApiConfig.setEnabled(true);
+        qixinApiConfig.setToken("super-secret-qixin-token");
+        ocrApiConfig.setToken("super-secret-ocr-token");
+
+        String dump = service.readiness().toString();
+
+        assertThat(dump).doesNotContain("super-secret-qixin-token");
+        assertThat(dump).doesNotContain("super-secret-ocr-token");
+    }
+}
