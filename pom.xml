@@ -20,10 +20,10 @@
     </parent>
 
     <groupId>org.hiylo</groupId>
-    <artifactId>scrm-server</artifactId>
+    <artifactId>scrm-finance-server</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
-    <name>SCRM Server</name>
+    <name>SCRM Finance Server</name>
     <description>SCRM 客户成功 CRM 单体应用 - 企业微信账号健康 / 会话分析 / 内容生成 / 外呼编排</description>
 
     <properties>

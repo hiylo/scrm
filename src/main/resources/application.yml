@@ -124,6 +124,13 @@ scrm:
     model: ${SCRM_AI_MODEL:gpt-4o-mini}
     temperature: ${SCRM_AI_TEMPERATURE:0.7}
     max-tokens: ${SCRM_AI_MAX_TOKENS:500}
+    # 是否启用模型思考模式: 默认 false (sensenova-6.8-flash-lite 等默认思考的模型会把 max_tokens
+    # 全部消耗在 reasoning 上, 导致正文为空/超时; 客服接待与批量文案必须关闭)
+    enable-thinking: ${SCRM_AI_ENABLE_THINKING:false}
+    # 建立连接超时 (毫秒)
+    connect-timeout-ms: ${SCRM_AI_CONNECT_TIMEOUT_MS:10000}
+    # 读取响应超时 (毫秒): 批量文案生成为长请求, 默认 180 秒
+    read-timeout-ms: ${SCRM_AI_READ_TIMEOUT_MS:180000}
   # 接口限流默认参数 (可被 @RateLimit 注解覆盖)
   rate-limit:
     default-capacity: ${SCRM_RATE_LIMIT_CAPACITY:60}
@@ -154,6 +161,111 @@ scrm:
       timeout-seconds: ${GETUI_TIMEOUT_SECONDS:10}
       # token 提前刷新安全余量 (秒, 避免临界过期导致 401)
       token-refresh-advance-seconds: ${GETUI_TOKEN_REFRESH_ADVANCE_SECONDS:300}
+
+  # ==================================================================
+  # 财税定制域配置（模块①②③④⑤, 详见文件末尾 finance: 总清单）
+  # 绑定这些前缀的 @ConfigurationProperties 类在 org.hiylo.scrm.config / feign 下,
+  # 本处仅做「finance.* → scrm.*」别名, 保证配置只有一个书写来源（finance 段）,
+  # 不覆盖上方任何既有 scrm.* 配置项。
+  # ==================================================================
+  # 模块② 证照 OCR（OcrApiConfig）
+  ocr:
+    enabled: ${finance.ocr.enabled}
+    base-url: ${finance.ocr.base-url}
+    token: ${finance.ocr.token}
+    connect-timeout-seconds: ${finance.ocr.connect-timeout-seconds}
+    read-timeout-seconds: ${finance.ocr.read-timeout-seconds}
+  # 模块① 工商税务巡检（ScrmInspectionProperties / QixinApiConfig）
+  inspection:
+    business-cron: ${finance.inspection.business-cron}
+    tax-cron: ${finance.inspection.tax-cron}
+    notify-recipient: ${finance.inspection.notify-recipient}
+    notify-rule-prefix: ${finance.inspection.notify-rule-prefix}
+    qixin:
+      enabled: ${finance.inspection.qixin.enabled}
+      base-url: ${finance.inspection.qixin.base-url}
+      token: ${finance.inspection.qixin.token}
+      connect-timeout-seconds: ${finance.inspection.qixin.connect-timeout-seconds}
+      read-timeout-seconds: ${finance.inspection.qixin.read-timeout-seconds}
+    notice:
+      guangdong-enabled: ${finance.inspection.notice.guangdong-enabled}
+      zhejiang-enabled: ${finance.inspection.notice.zhejiang-enabled}
+      credit-china-enabled: ${finance.inspection.notice.credit-china-enabled}
+  # 报税日历（ScrmTaxCalendarProperties）
+  tax-calendar:
+    generate-cron: ${finance.tax-calendar.generate-cron}
+    advance-cron: ${finance.tax-calendar.advance-cron}
+    warning-cron: ${finance.tax-calendar.warning-cron}
+    remind-days-before: ${finance.tax-calendar.remind-days-before}
+    escalate-overdue-days: ${finance.tax-calendar.escalate-overdue-days}
+    notify-recipient: ${finance.tax-calendar.notify-recipient}
+    remind-template-code: ${finance.tax-calendar.remind-template-code}
+    write-calendar-events: ${finance.tax-calendar.write-calendar-events}
+  # 续费流失（ScrmRenewalProperties）
+  renewal:
+    scan-cron: ${finance.renewal.scan-cron}
+    remind-cron: ${finance.renewal.remind-cron}
+    remind-days-before: ${finance.renewal.remind-days-before}
+    high-risk-threshold: ${finance.renewal.high-risk-threshold}
+    medium-risk-threshold: ${finance.renewal.medium-risk-threshold}
+    lost-after-days: ${finance.renewal.lost-after-days}
+    remind-template-code: ${finance.renewal.remind-template-code}
+    notify-recipient: ${finance.renewal.notify-recipient}
+  # 政策推送（ScrmPolicyPushProperties）
+  policy-push:
+    refresh-cron: ${finance.policy-push.refresh-cron}
+    sampling-audit-count: ${finance.policy-push.sampling-audit-count}
+    quota-per-30-days: ${finance.policy-push.quota-per-30-days}
+    remind-template-code: ${finance.policy-push.remind-template-code}
+    notify-recipient: ${finance.policy-push.notify-recipient}
+  # 合规域（ScrmComplianceProperties）: 工商年报 + 资质许可到期
+  compliance:
+    generate-cron: ${finance.compliance.generate-cron}
+    advance-cron: ${finance.compliance.advance-cron}
+    remind-cron: ${finance.compliance.remind-cron}
+    annual-remind-template-code: ${finance.compliance.annual-remind-template-code}
+    qualification-remind-template-code: ${finance.compliance.qualification-remind-template-code}
+    notify-recipient: ${finance.compliance.notify-recipient}
+    annual-remind-days-before: ${finance.compliance.annual-remind-days-before}
+    max-remind-per-round: ${finance.compliance.max-remind-per-round}
+  # 薪酬域（ScrmPayrollProperties）: 社保费率与基数上下限、个税基本减除
+  payroll:
+    base-floor: ${finance.payroll.base-floor}
+    base-ceiling: ${finance.payroll.base-ceiling}
+    pension-personal-rate: ${finance.payroll.pension-personal-rate}
+    pension-company-rate: ${finance.payroll.pension-company-rate}
+    medical-personal-rate: ${finance.payroll.medical-personal-rate}
+    medical-company-rate: ${finance.payroll.medical-company-rate}
+    unemployment-personal-rate: ${finance.payroll.unemployment-personal-rate}
+    unemployment-company-rate: ${finance.payroll.unemployment-company-rate}
+    injury-company-rate: ${finance.payroll.injury-company-rate}
+    maternity-company-rate: ${finance.payroll.maternity-company-rate}
+    housing-fund-personal-rate: ${finance.payroll.housing-fund-personal-rate}
+    housing-fund-company-rate: ${finance.payroll.housing-fund-company-rate}
+    iit-basic-deduction: ${finance.payroll.iit-basic-deduction}
+    max-generate-batch: ${finance.payroll.max-generate-batch}
+  # 模块③ 财税知识库（ScrmFinanceKnowledgeProperties）
+  finance-knowledge:
+    kb-name: ${finance.knowledge.kb-name}
+    review-cycle-days: ${finance.knowledge.review-cycle-days}
+    import-max-files: ${finance.knowledge.import-max-files}
+  # 模块⑤ 高意向推送（ScrmFinanceLeadPushProperties）
+  finance-lead-push:
+    enabled: ${finance.lead-push.enabled}
+    template-code: ${finance.lead-push.template-code}
+    recipient: ${finance.lead-push.recipient}
+    model-code: ${finance.lead-push.model-code}
+  # 模块④ AI 批量生成（ScrmMarketingBatchProperties）
+  marketing-batch:
+    model: ${finance.marketing-batch.model}
+    temperature: ${finance.marketing-batch.temperature}
+    max-tokens: ${finance.marketing-batch.max-tokens}
+    default-variant-count: ${finance.marketing-batch.default-variant-count}
+    max-variant-count: ${finance.marketing-batch.max-variant-count}
+    default-char-limit: ${finance.marketing-batch.default-char-limit}
+    sms-char-limit: ${finance.marketing-batch.sms-char-limit}
+    email-char-limit: ${finance.marketing-batch.email-char-limit}
+    prompt-resource: ${finance.marketing-batch.prompt-resource}
 
 # 雪花 ID 生成器: 多实例部署时每实例需配置不同的 worker-id / datacenter-id
 sequence:
@@ -208,3 +320,203 @@ sentry:
   # 禁用 Sentry 的 HandlerExceptionResolver, 避免 Spring 6 兼容性问题
   # (ModelAndViewDefiningException 在 Spring 6 中已移除, Sentry 的异常解析器仍引用它)
   exception-resolver-enabled: false
+
+# ======================================================================
+# 财税数字化系统配置总清单（D01~D06 报告需求汇总）
+# ======================================================================
+# 约定:
+#   1) 本段是财税定制域配置的【唯一书写来源】。上方 scrm.<域> 的同名项均以
+#      ${finance.<域>.<项>} 引用本段, 因此改本段即可生效, 不存在两处维护。
+#   2) 不覆盖任何既有配置: 上方 scrm.* 原有项（security/storage/ai/rate-limit/
+#      wework/workflow/push 等）保持原样, 本段只服务财税新增域。
+#   3) 所有敏感值（API key / OCR 令牌）一律 ${ENV:占位} 形式, 默认空 +
+#      fail-closed, 不落库、不入日志、不入提交（全局安全红线）。
+#   4) 开关类默认值统一为「关闭」: 未部署外部服务时不发起任何请求。
+#   5) 对应关系: 模块①=inspection, ②=ocr, ③=knowledge, ④=marketing-batch,
+#      ⑤=lead-push, 报税/续费/政策=tax-calendar/renewal/policy-push。
+# ----------------------------------------------------------------------
+finance:
+  # ========== 模块② 证照 OCR（D04, 详见 docs/tasks/D04-config.md）==========
+  # 对接 wx-console ocr-service（T07 契约）, 内部服务经内网访问, 不公网暴露。
+  ocr:
+    # 总开关: 默认 false（ocr-service 未部署前不发请求, fail-closed）
+    enabled: ${SCRM_OCR_ENABLED:false}
+    # 服务地址, 含 /api/ocr 前缀; 同机试点改为 http://127.0.0.1:8097/api/ocr
+    base-url: ${SCRM_OCR_BASE_URL:http://192.168.1.180:8097/api/ocr}
+    # 内部令牌（请求头 X-OCR-Token）: 与 ocr-service 端 OCR_TOKEN 一致,
+    # 生产用 openssl rand -hex 32 生成后经环境变量注入, 禁止写默认值
+    token: ${SCRM_OCR_TOKEN:}
+    # 连接超时（秒）
+    connect-timeout-seconds: ${SCRM_OCR_CONNECT_TIMEOUT_SECONDS:10}
+    # 读取超时（秒）: VL 180s 上限 + 排队余量
+    read-timeout-seconds: ${SCRM_OCR_READ_TIMEOUT_SECONDS:200}
+
+  # ========== 模块① 工商税务巡检（D05, 详见 docs/tasks/T02、T03）==========
+  inspection:
+    # 工商 API 巡检 cron（默认每天 02:30, 错峰）
+    business-cron: ${SCRM_INSPECTION_BUSINESS_CRON:0 30 2 * * ?}
+    # 税务公告抓取 cron（默认每天 03:00）
+    tax-cron: ${SCRM_INSPECTION_TAX_CRON:0 0 3 * * ?}
+    # 告警站内信接收人（复用 NotificationCenter）
+    notify-recipient: ${SCRM_INSPECTION_NOTIFY_RECIPIENT:admin}
+    # 告警信号 ruleId 前缀（RiskSignal 语义）
+    notify-rule-prefix: ${SCRM_INSPECTION_NOTIFY_RULE_PREFIX:inspection-}
+    # --- 工商状态主通道: 启信宝开放平台（data.qixin.com, T02 选型结论）---
+    qixin:
+      # 未签约前保持 false, 不发请求
+      enabled: ${SCRM_INSPECTION_QIXIN_ENABLED:false}
+      base-url: ${SCRM_INSPECTION_QIXIN_BASE_URL:https://api.qixin.com}
+      # 访问令牌: 企业实名 + 场景审核后从凭据页获取（支持 IP 白名单绑定）,
+      # 只走环境变量/配置中心, 不落库、不入日志
+      token: ${SCRM_INSPECTION_QIXIN_TOKEN:}
+      connect-timeout-seconds: ${SCRM_INSPECTION_QIXIN_CONNECT_TIMEOUT_SECONDS:5}
+      read-timeout-seconds: ${SCRM_INSPECTION_QIXIN_READ_TIMEOUT_SECONDS:10}
+    # --- 税务状态主通道: 公开公告抓取（T03 结论）---
+    # 站点与栏目: 广东通知公告 A1 + 欠税明细 B1; 浙江通知公告 A2 + 重大税收违法 A5 + 欠税明细 B4。
+    # 信源地址目前内置在各 Fetcher 常量（站点改版时随代码调整, 避免配置漂移导致解析器与
+    # 页面结构不匹配）; 信用中国按 T03 结论不自建（412 JS 反爬）, 由启信宝司法/处罚接口兜底。
+    notice:
+      # 省站静态列表抓取开关（欠税明细仍需验证码 OCR, 默认关闭自动过码）
+      guangdong-enabled: ${SCRM_INSPECTION_NOTICE_GD_ENABLED:true}
+      zhejiang-enabled: ${SCRM_INSPECTION_NOTICE_ZJ_ENABLED:true}
+      # 信用中国自建抓取: 默认 false（T03 C1: 全站 412, 不自建）
+      credit-china-enabled: ${SCRM_INSPECTION_NOTICE_CREDIT_CHINA_ENABLED:false}
+
+  # ========== 报税日历（D06A）==========
+  tax-calendar:
+    # 生成下期申报记录（默认每天 01:00）
+    generate-cron: ${SCRM_TAX_CALENDAR_GENERATE_CRON:0 0 1 * * ?}
+    # 状态推进 / 逾期判定（默认每天 08:00）
+    advance-cron: ${SCRM_TAX_CALENDAR_ADVANCE_CRON:0 0 8 * * ?}
+    # 预警推送（默认每天 09:00）
+    warning-cron: ${SCRM_TAX_CALENDAR_WARNING_CRON:0 0 9 * * ?}
+    # 预警节奏: 截止日前 7/3/1 天各推一次
+    remind-days-before: ${SCRM_TAX_CALENDAR_REMIND_DAYS_BEFORE:7,3,1}
+    # 逾期升级阈值（天）: 超过即建 HIGH 工单并升级主管
+    escalate-overdue-days: ${SCRM_TAX_CALENDAR_ESCALATE_OVERDUE_DAYS:5}
+    # 会计/主管站内信接收人
+    notify-recipient: ${SCRM_TAX_CALENDAR_NOTIFY_RECIPIENT:admin}
+    # 预警模板（V9 预置）
+    remind-template-code: ${SCRM_TAX_CALENDAR_REMIND_TEMPLATE_CODE:tax-deadline-remind}
+    # 日历事件落库开关（关闭时仅聚合查询展示）
+    write-calendar-events: ${SCRM_TAX_CALENDAR_WRITE_EVENTS:true}
+
+  # ========== 续费流失（D06B）==========
+  renewal:
+    # 到期扫描（默认每天 08:00）
+    scan-cron: ${SCRM_RENEWAL_SCAN_CRON:0 0 8 * * ?}
+    # 续费提醒推送（默认每天 09:00）
+    remind-cron: ${SCRM_RENEWAL_REMIND_CRON:0 0 9 * * ?}
+    # 三级提醒节奏: 30/7/3 天
+    remind-days-before: ${SCRM_RENEWAL_REMIND_DAYS_BEFORE:30,7,3}
+    # 流失评分阈值（与 ChurnWarning.riskScore 口径一致）
+    high-risk-threshold: ${SCRM_RENEWAL_HIGH_RISK_THRESHOLD:75}
+    medium-risk-threshold: ${SCRM_RENEWAL_MEDIUM_RISK_THRESHOLD:50}
+    # 到期未续转流失天数
+    lost-after-days: ${SCRM_RENEWAL_LOST_AFTER_DAYS:15}
+    # 续费提醒模板（V9 预置）
+    remind-template-code: ${SCRM_RENEWAL_REMIND_TEMPLATE_CODE:renewal-task-remind}
+    # 推送接收人（未指定时用合同销售）
+    notify-recipient: ${SCRM_RENEWAL_NOTIFY_RECIPIENT:admin}
+
+  # ========== 政策推送（D06D）==========
+  policy-push:
+    # 草稿期命中客户快照补算（默认每天 03:00）
+    refresh-cron: ${SCRM_POLICY_PUSH_REFRESH_CRON:0 0 3 * * ?}
+    # 抽样核验条数（二级人工闸门 SAMPLING 模式）
+    sampling-audit-count: ${SCRM_POLICY_PUSH_SAMPLING_AUDIT_COUNT:10}
+    # 单客户 30 天推送配额
+    quota-per-30-days: ${SCRM_POLICY_PUSH_QUOTA_PER_30_DAYS:2}
+    # 内部提醒模板（V9 预置）
+    remind-template-code: ${SCRM_POLICY_PUSH_REMIND_TEMPLATE_CODE:policy-push-remind}
+    # 内部提醒接收人
+    notify-recipient: ${SCRM_POLICY_PUSH_NOTIFY_RECIPIENT:admin}
+
+  # ========== 合规域: 工商年报 + 资质许可（V18）==========
+  compliance:
+    # 年报生成（默认每年 1 月 1 日 01:30 为在服企业生成上一年度年报任务）
+    generate-cron: ${SCRM_COMPLIANCE_GENERATE_CRON:0 30 1 1 1 ?}
+    # 年报逾期判定 + 证照到期状态推进（默认每日 01:00）
+    advance-cron: ${SCRM_COMPLIANCE_ADVANCE_CRON:0 0 1 * * ?}
+    # 到期提醒（默认每日 09:30）
+    remind-cron: ${SCRM_COMPLIANCE_REMIND_CRON:0 30 9 * * ?}
+    # 年报提醒模板（V18 预置）
+    annual-remind-template-code: ${SCRM_COMPLIANCE_ANNUAL_TEMPLATE:annual-report-remind}
+    # 资质到期提醒模板（V18 预置）
+    qualification-remind-template-code: ${SCRM_COMPLIANCE_QUALIFICATION_TEMPLATE:qualification-expire-remind}
+    # 默认收件人（主体未指派负责会计时回落）
+    notify-recipient: ${SCRM_COMPLIANCE_NOTIFY_RECIPIENT:admin}
+    # 年报提前提醒天数（距 6/30 还有几天开始提醒）
+    annual-remind-days-before: ${SCRM_COMPLIANCE_ANNUAL_REMIND_DAYS:30}
+    # 单轮最多推送条数（防止一次刷爆通知表）
+    max-remind-per-round: ${SCRM_COMPLIANCE_MAX_REMIND:200}
+
+  # ========== 薪酬域: 社保费率 + 个税（V19）==========
+  # 社保费率与基数上下限各地不同且每年调整, 因此全部可配, 不硬编码。
+  # 下列默认值按西安 2026 年口径填写, 换地区务必按当地公布口径覆盖。
+  payroll:
+    # 社保缴费基数下限（低于按下限计缴）
+    base-floor: ${SCRM_PAYROLL_BASE_FLOOR:4000}
+    # 社保缴费基数上限（高于按上限计缴）
+    base-ceiling: ${SCRM_PAYROLL_BASE_CEILING:25000}
+    # 养老 个人 8% / 单位 16%
+    pension-personal-rate: ${SCRM_PAYROLL_PENSION_PERSONAL:0.08}
+    pension-company-rate: ${SCRM_PAYROLL_PENSION_COMPANY:0.16}
+    # 医疗 个人 2% / 单位 7%
+    medical-personal-rate: ${SCRM_PAYROLL_MEDICAL_PERSONAL:0.02}
+    medical-company-rate: ${SCRM_PAYROLL_MEDICAL_COMPANY:0.07}
+    # 失业 个人 0.5% / 单位 0.5%
+    unemployment-personal-rate: ${SCRM_PAYROLL_UNEMPLOYMENT_PERSONAL:0.005}
+    unemployment-company-rate: ${SCRM_PAYROLL_UNEMPLOYMENT_COMPANY:0.005}
+    # 工伤 单位 0.4%（仅单位）
+    injury-company-rate: ${SCRM_PAYROLL_INJURY_COMPANY:0.004}
+    # 生育 单位 0.5%（仅单位）
+    maternity-company-rate: ${SCRM_PAYROLL_MATERNITY_COMPANY:0.005}
+    # 住房公积金 个人 5% / 单位 5%
+    housing-fund-personal-rate: ${SCRM_PAYROLL_FUND_PERSONAL:0.05}
+    housing-fund-company-rate: ${SCRM_PAYROLL_FUND_COMPANY:0.05}
+    # 个税基本减除费用（元/月, 全国统一 5000）
+    iit-basic-deduction: ${SCRM_PAYROLL_IIT_BASIC_DEDUCTION:5000}
+    # 单次批量生成的员工数上限
+    max-generate-batch: ${SCRM_PAYROLL_MAX_GENERATE_BATCH:500}
+
+  # ========== 模块③ 财税知识库（D03, T06 录入规范）==========
+  knowledge:
+    # 批量导入自动创建/复用的知识库名
+    kb-name: ${SCRM_FINANCE_KB_NAME:财税知识库}
+    # 默认复核周期（天）: T06 总则第 6 条建议 ≤180 天
+    review-cycle-days: ${SCRM_FINANCE_KB_REVIEW_CYCLE_DAYS:180}
+    # 单次批量导入文件数上限
+    import-max-files: ${SCRM_FINANCE_KB_IMPORT_MAX_FILES:100}
+
+  # ========== 模块⑤ 高意向线索推送（D01, T04 分级权重）==========
+  lead-push:
+    # 推送总开关（false 时仅记录不发送）
+    enabled: ${SCRM_FINANCE_LEAD_PUSH_ENABLED:true}
+    # 站内信模板（V13 预置）
+    template-code: ${SCRM_FINANCE_LEAD_PUSH_TEMPLATE_CODE:lead-hot-push}
+    # 推送接收人（可按销售团队调整）
+    recipient: ${SCRM_FINANCE_LEAD_PUSH_RECIPIENT:admin}
+    # 关联的财税评分模型编码（V13 已入库, 避免代码硬编码数值主键）
+    model-code: ${SCRM_FINANCE_LEAD_PUSH_MODEL_CODE:FIN_LEAD_SCORE_V1}
+
+  # ========== 模块④ 财税营销文案 AI 批量生成（D02, T05 提示词/审核清单）==========
+  marketing-batch:
+    # 生成模型（对齐 scrm.ai.model, 实际走既有 AiChatClient/scrm.ai.* 通道）
+    model: ${SCRM_MARKETING_BATCH_MODEL:gpt-4o-mini}
+    # 采样温度: 批量变体追求多样性, 建议 0.8~0.9
+    temperature: ${SCRM_MARKETING_BATCH_TEMPERATURE:0.8}
+    # 单次生成最大 token 数（批量 JSON 较长）
+    max-tokens: ${SCRM_MARKETING_BATCH_MAX_TOKENS:3000}
+    # 默认变体数量（范围 1~10）
+    default-variant-count: ${SCRM_MARKETING_BATCH_DEFAULT_VARIANT_COUNT:3}
+    # 单次最大变体数量（防滥用上限）
+    max-variant-count: ${SCRM_MARKETING_BATCH_MAX_VARIANT_COUNT:10}
+    # 企微/微信渠道字数上限（不含标点）
+    default-char-limit: ${SCRM_MARKETING_BATCH_DEFAULT_CHAR_LIMIT:120}
+    # 短信渠道硬上限（T05 prompts.md）
+    sms-char-limit: ${SCRM_MARKETING_BATCH_SMS_CHAR_LIMIT:67}
+    # 邮件渠道上限
+    email-char-limit: ${SCRM_MARKETING_BATCH_EMAIL_CHAR_LIMIT:300}
+    # 批量生成主指令提示词资源（复杂 Prompt 独立文件, 可版本管理）
+    prompt-resource: ${SCRM_MARKETING_BATCH_PROMPT_RESOURCE:classpath:prompts/marketing-batch.md}

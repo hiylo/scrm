@@ -6,7 +6,7 @@
 # Contact : hiylo@live.com
 #
 # 后端运行镜像 (多阶段构建):
-#   阶段 1 maven  编译打包出 scrm-server jar
+#   阶段 1 maven  编译打包出 scrm-finance-server jar
 #   阶段 2 jre    仅保留运行时依赖, 非 root 用户运行
 
 # ---------- 阶段 1: 编译 ----------
@@ -30,7 +30,7 @@ RUN apt-get update \
     && useradd -r -g appuser appuser
 
 WORKDIR /app
-COPY --from=build /build/target/scrm-server-*.jar app.jar
+COPY --from=build /build/target/scrm-finance-server-*.jar app.jar
 RUN chown -R appuser:appuser /app
 
 USER appuser
