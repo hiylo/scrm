@@ -20,6 +20,7 @@ import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.repository.ScrmContractReminderRepository;
 import org.hiylo.scrm.repository.ScrmContractRepository;
 import org.hiylo.scrm.repository.ScrmContractTemplateRepository;
+import org.hiylo.scrm.repository.ScrmCompanyRepository;
 import org.hiylo.scrm.repository.ScrmCustomerRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -70,6 +71,9 @@ class ScrmContractServiceTest {
     @Mock
     private ScrmCustomerRepository customerRepository;
 
+    @Mock
+    private ScrmCompanyRepository companyRepository;
+
     /** 被测服务实例 */
     private ScrmContractService service;
 
@@ -78,7 +82,8 @@ class ScrmContractServiceTest {
         ScrmContractTemplateService templateService =
                 new ScrmContractTemplateService(objectMapper, templateRepository, contractRepository);
         ScrmContractManageService manageService =
-                new ScrmContractManageService(contractRepository, reminderRepository, customerRepository, templateService);
+                new ScrmContractManageService(contractRepository, reminderRepository, customerRepository, templateService,
+                        new CompanyResolver(customerRepository, companyRepository));
         ScrmContractReminderService reminderService =
                 new ScrmContractReminderService(reminderRepository, contractRepository, manageService);
         ScrmContractStatService statsService =

@@ -74,8 +74,12 @@ class ScrmApprovalServiceTest {
     void setUp() {
         ScrmApprovalFlowService flowService = new ScrmApprovalFlowService(objectMapper, flowRepository);
         ScrmApprovalLogService logService = new ScrmApprovalLogService(instanceRepository, logRepository);
+        // 事件发布器用 mock：审批用例只关心流程推进，不关心业务回调
+        org.springframework.context.ApplicationEventPublisher eventPublisher =
+                org.mockito.Mockito.mock(org.springframework.context.ApplicationEventPublisher.class);
         ScrmApprovalInstanceService instanceService =
-                new ScrmApprovalInstanceService(instanceRepository, objectMapper, flowService, logService);
+                new ScrmApprovalInstanceService(eventPublisher, instanceRepository, objectMapper,
+                        flowService, logService);
         ScrmApprovalActionService actionService =
                 new ScrmApprovalActionService(instanceRepository, flowService, instanceService, logService);
         ScrmApprovalStatsService statsService =
@@ -188,7 +192,11 @@ class ScrmApprovalServiceTest {
         dto.setFlowName("合同审批流程");
         dto.setFlowCode("FLOW001");
         dto.setFlowType("CONTRACT");
-        dto.setNodes("[{\"nodeId\":\"n1\",\"nodeType\":\"START\"}]");
+        // 节点结构现在是配置期强校验项，桩数据需满足 START+APPROVE+END，
+        // 否则会先被结构校验拦下、测不到「编码重复」这个目标行为
+        dto.setNodes("[{\"nodeId\":\"s\",\"nodeType\":\"START\"},"
+                + "{\"nodeId\":\"n1\",\"nodeType\":\"APPROVE\"},"
+                + "{\"nodeId\":\"e\",\"nodeType\":\"END\"}]");
 
         assertThatThrownBy(() -> service.createFlow(dto))
                 .isInstanceOf(ScrmException.class)
@@ -279,4 +287,39 @@ class ScrmApprovalServiceTest {
      * 验证越权访问审批流程场景, 期望按不存在处理抛出 NOT_FOUND 异常
      */
     
+
+    @Test
+    @DisplayName("节点结构校验：只配审批节点（无 END）应被拒绝，否则提交即自动通过")
+    void validateNodeStructure_rejectsMissingEnd() {
+        ScrmApprovalFlowService flowService = new ScrmApprovalFlowService(objectMapper, flowRepository);
+        String nodes = "[{\"nodeId\":\"n1\",\"nodeName\":\"审核\",\"nodeType\":\"APPROVE\"}]";
+
+        assertThatThrownBy(() -> flowService.validateNodeStructure(nodes))
+                .isInstanceOf(ScrmException.class)
+                .hasMessageContaining("结束节点");
+    }
+
+    @Test
+    @DisplayName("节点结构校验：没有审批节点应被拒绝")
+    void validateNodeStructure_rejectsMissingApprove() {
+        ScrmApprovalFlowService flowService = new ScrmApprovalFlowService(objectMapper, flowRepository);
+        String nodes = "[{\"nodeId\":\"s\",\"nodeType\":\"START\"},"
+                + "{\"nodeId\":\"e\",\"nodeType\":\"END\"}]";
+
+        assertThatThrownBy(() -> flowService.validateNodeStructure(nodes))
+                .isInstanceOf(ScrmException.class)
+                .hasMessageContaining("审批节点");
+    }
+
+    @Test
+    @DisplayName("节点结构校验：START + APPROVE + END 通过")
+    void validateNodeStructure_acceptsCompleteFlow() throws Exception {
+        ScrmApprovalFlowService flowService = new ScrmApprovalFlowService(objectMapper, flowRepository);
+        String nodes = "[{\"nodeId\":\"s\",\"nodeType\":\"START\"},"
+                + "{\"nodeId\":\"n1\",\"nodeType\":\"APPROVE\"},"
+                + "{\"nodeId\":\"e\",\"nodeType\":\"END\"}]";
+
+        // 不抛异常即通过
+        flowService.validateNodeStructure(nodes);
+    }
 }

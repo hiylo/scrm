@@ -90,8 +90,12 @@ class ScrmAiAssistantServiceTest {
     void setUp() {
         ScrmAiAssistantConfigService configService = new ScrmAiAssistantConfigService(configRepository);
         ScrmAiAssistantIntentService intentService = new ScrmAiAssistantIntentService(intentRepository, objectMapper);
+        org.hiylo.scrm.service.finance.ScrmFinanceKnowledgeCitationService citationService =
+                new org.hiylo.scrm.service.finance.ScrmFinanceKnowledgeCitationService(
+                        documentRepository, org.mockito.Mockito.mock(org.hiylo.scrm.repository.ScrmKnowledgeArticleRepository.class));
         ScrmAiAssistantConversationService conversationService = new ScrmAiAssistantConversationService(
-                conversationRepository, configRepository, intentService, aiResponseGenerator, objectMapper);
+                conversationRepository, configRepository, intentService, aiResponseGenerator,
+                citationService, objectMapper);
         ScrmAiAssistantKnowledgeService knowledgeService = new ScrmAiAssistantKnowledgeService(
                 knowledgeBaseRepository, documentRepository, objectMapper);
         ScrmAiAssistantStatsService statsService = new ScrmAiAssistantStatsService(conversationRepository);

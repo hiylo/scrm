@@ -15,6 +15,8 @@ import org.hiylo.scrm.entity.ScrmCustomerEntity;
 import org.hiylo.scrm.entity.ScrmLeadScoreEntity;
 import org.hiylo.scrm.entity.ScrmLeadScoringModelEntity;
 import org.hiylo.scrm.exception.ScrmException;
+import org.hiylo.scrm.repository.ScrmConversationMessageRepository;
+import org.hiylo.scrm.repository.ScrmConversationRepository;
 import org.hiylo.scrm.repository.ScrmCustomerRepository;
 import org.hiylo.scrm.repository.ScrmLeadDimensionRepository;
 import org.hiylo.scrm.repository.ScrmLeadScoreRepository;
@@ -69,6 +71,16 @@ class ScrmLeadScoringServiceTest {
     @Mock
     private ScrmCustomerRepository customerRepository;
 
+    /** 财税高意向推送服务 Mock (calculateScore 接线, 避免单元测试触发真实推送) */
+    @Mock
+    private ScrmFinanceHotLeadPushService financeHotLeadPushService;
+
+    @Mock
+    private ScrmConversationRepository conversationRepository;
+
+    @Mock
+    private ScrmConversationMessageRepository messageRepository;
+
     /** 被测服务实例 */
     private ScrmLeadScoringService service;
 
@@ -80,7 +92,8 @@ class ScrmLeadScoringServiceTest {
                 new ScrmLeadDimensionService(dimensionRepository, objectMapper, modelService);
         ScrmLeadScoringCalculationService calculationService =
                 new ScrmLeadScoringCalculationService(modelRepository, scoreRepository, customerRepository,
-                        objectMapper, modelService);
+                        objectMapper, modelService, financeHotLeadPushService,
+                        new ScrmConversationSignalService(conversationRepository, messageRepository));
         ScrmLeadAssignmentService assignmentService =
                 new ScrmLeadAssignmentService(scoreRepository, modelService, calculationService);
         service = new ScrmLeadScoringService(modelService, dimensionService, calculationService, assignmentService);
