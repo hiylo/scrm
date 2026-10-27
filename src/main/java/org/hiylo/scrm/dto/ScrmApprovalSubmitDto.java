@@ -35,10 +35,10 @@ public class ScrmApprovalSubmitDto {
     @JsonSerialize(using = ToStringSerializer.class)
     private Long flowId;
 
-    /** 业务类型: CONTRACT/EXPENSE/LEAVE/REFUND/DISCOUNT/OTHER */
+    /** 业务类型: CONTRACT/EXPENSE/LEAVE/REFUND/DISCOUNT/RENEWAL/OTHER */
     @NotBlank(message = "业务类型不能为空")
-    @Pattern(regexp = "CONTRACT|EXPENSE|LEAVE|REFUND|DISCOUNT|OTHER",
-            message = "业务类型仅支持 CONTRACT/EXPENSE/LEAVE/REFUND/DISCOUNT/OTHER")
+    @Pattern(regexp = "CONTRACT|EXPENSE|LEAVE|REFUND|DISCOUNT|RENEWAL|OTHER",
+            message = "业务类型仅支持 CONTRACT/EXPENSE/LEAVE/REFUND/DISCOUNT/RENEWAL/OTHER")
     private String businessType;
 
     /** 业务 ID (可空) */

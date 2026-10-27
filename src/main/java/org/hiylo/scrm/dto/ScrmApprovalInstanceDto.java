@@ -47,9 +47,9 @@ public class ScrmApprovalInstanceDto {
     /** 流程类型 (查询返回) */
     private String flowType;
 
-    /** 业务类型: CONTRACT/EXPENSE/LEAVE/REFUND/DISCOUNT/OTHER */
-    @Pattern(regexp = "CONTRACT|EXPENSE|LEAVE|REFUND|DISCOUNT|OTHER",
-            message = "业务类型仅支持 CONTRACT/EXPENSE/LEAVE/REFUND/DISCOUNT/OTHER")
+    /** 业务类型: CONTRACT/EXPENSE/LEAVE/REFUND/DISCOUNT/RENEWAL/OTHER */
+    @Pattern(regexp = "CONTRACT|EXPENSE|LEAVE|REFUND|DISCOUNT|RENEWAL|OTHER",
+            message = "业务类型仅支持 CONTRACT/EXPENSE/LEAVE/REFUND/DISCOUNT/RENEWAL/OTHER")
     private String businessType;
 
     /** 业务 ID (可空) */

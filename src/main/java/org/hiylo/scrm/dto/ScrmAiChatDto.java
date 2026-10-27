@@ -43,4 +43,8 @@ public class ScrmAiChatDto {
     /** 使用的 AI 配置 ID (可空, 未指定则使用账号默认配置) */
     @JsonSerialize(using = ToStringSerializer.class)
     private Long configId;
+
+    /** 知识库 ID (可空, 指定后 AI 答复附知识库检索引用) */
+    @JsonSerialize(using = ToStringSerializer.class)
+    private Long knowledgeBaseId;
 }

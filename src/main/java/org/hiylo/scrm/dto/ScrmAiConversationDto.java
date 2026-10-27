@@ -88,6 +88,9 @@ public class ScrmAiConversationDto {
     /** 对话发生时间 */
     private LocalDateTime createdAt;
 
+    /** 知识库引用溯源 (JSON 数组, 查询返回: AI 答复来源的知识条目) */
+    private String knowledgeCitations;
+
     /** 创建时间 (查询返回) */
     private LocalDateTime createTime;
 

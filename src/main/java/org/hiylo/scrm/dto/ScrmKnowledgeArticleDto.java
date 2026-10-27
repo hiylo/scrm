@@ -135,6 +135,15 @@ public class ScrmKnowledgeArticleDto {
     /** 最后修改时间 (查询返回) */
     private LocalDateTime lastModifiedAt;
 
+    /** 最后人工复核日期 (可空, 复核动作写) */
+    private LocalDateTime lastReviewedAt;
+
+    /** 建议下次复核日期 (可空, 复核动作写) */
+    private LocalDateTime nextReviewAt;
+
+    /** 复核周期(天): 政策类信息建议 ≤180 天, 默认 180 */
+    private Integer reviewCycleDays;
+
     /** 作者 ID (可空) */
     @Size(max = 100, message = "作者 ID 长度不能超过 100")
     private String authorId;
