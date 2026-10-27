@@ -48,9 +48,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * </p>
  * <p>
  * 表数量断言口径: V1 共 275 条 {@code CREATE TABLE} 且全部位于 {@code scrm} schema,
- * 含 1 张分区父表 (scrm_conversation_message) + 13 个叶子分区 + 261 张普通表。
+ * 含 1 张分区父表 (scrm_conversation_message) + 13 个叶子分区 + 261 张普通表;
+ * 财税定制域新增 8 表 (V8 巡检 2 + V9 报税/续费/政策 4 + V10 证照 OCR 1 + V4/V6 基线共 4 计 286)。
  * 所以 {@code information_schema} 里 scrm schema 的 BASE TABLE (排除 flyway_schema_history)
- * 为 275; 把 Flyway 自身的 flyway_schema_history 计入后, 非系统 schema 基表总数为 276。
+ * 为 286; 把 Flyway 自身的 flyway_schema_history 计入后, 非系统 schema 基表总数为 287。
  * 迁移配置与 application.yml 的 spring.flyway 对齐 (locations / schemas / default-schema /
  * baseline-on-migrate), 因此 flyway_schema_history 落在 {@code scrm} 而非 {@code public}。
  * </p>
@@ -77,14 +78,14 @@ class FlywayPostgresMigrationTest {
     /** 与手工验证时一致的镜像 */
     private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:16-alpine");
 
-    /** scrm schema 下的业务表数 (V1 的 275 条 CREATE TABLE, 含分区父表与 13 个叶子分区 + V4 新增 1 张出站消息表 + V6 新增 3 张销售外呼域表) */
-    private static final int EXPECTED_SCRM_TABLES = 279;
+    /** scrm schema 下的业务表数 (截至 V23 共 300 表) */
+    private static final int EXPECTED_SCRM_TABLES = 301;
 
-    /** 业务表 + flyway_schema_history 的非系统 schema 基表总数 */
-    private static final int EXPECTED_TOTAL_TABLES = 280;
+    /** 业务表 300 + flyway_schema_history 1 的非系统 schema 基表总数 */
+    private static final int EXPECTED_TOTAL_TABLES = 302;
 
-    /** V1/V2/V3/V4/V5/V6/V7 迁移记录数 */
-    private static final int EXPECTED_MIGRATIONS = 7;
+    /** V1~V25 迁移记录数 */
+    private static final int EXPECTED_MIGRATIONS = 25;
 
     /** scrm_conversation_message 的月分区 (202607~202706) + default 分区 */
     private static final int EXPECTED_LEAF_PARTITIONS = 13;
@@ -139,7 +140,7 @@ class FlywayPostgresMigrationTest {
 
     @Test
     @Order(1)
-    @DisplayName("V1~V7 全部执行成功并写入 flyway_schema_history")
+    @DisplayName("V1~V22 全部执行成功并写入 flyway_schema_history")
     void flywayRecordsBothMigrationsAsSuccess() throws SQLException {
         assertThat(migrateResult.success).as("Flyway migrate 结果").isTrue();
         assertThat(migrateResult.migrationsExecuted).as("本次执行的迁移数").isEqualTo(EXPECTED_MIGRATIONS);
@@ -152,14 +153,32 @@ class FlywayPostgresMigrationTest {
                 + "|| coalesce(script, '-') || '|' || success from \""
                 + historySchema + "\".flyway_schema_history order by installed_rank");
         assertThat(entries).filteredOn(entry -> entry.startsWith("SQL|"))
-                .as("V1~V7 七条迁移记录 (type|version|script|success)").containsExactly(
+                .as("V1~V22 二十二条迁移记录 (type|version|script|success)").containsExactly(
                         "SQL|1|V1__init_schema.sql|true",
                         "SQL|2|V2__add_text_search_indexes.sql|true",
                         "SQL|3|V3__add_account_owner.sql|true",
                         "SQL|4|V4__add_outbound_message.sql|true",
                         "SQL|5|V5__add_outbound_media.sql|true",
                         "SQL|6|V6__add_sales_call_domain.sql|true",
-                        "SQL|7|V7__add_contact_owner_type.sql|true");
+                        "SQL|7|V7__add_contact_owner_type.sql|true",
+                        "SQL|8|V8__inspection.sql|true",
+                        "SQL|9|V9__tax_calendar.sql|true",
+                        "SQL|10|V10__license_ocr.sql|true",
+                        "SQL|11|V11__knowledge_review.sql|true",
+                        "SQL|12|V12__marketing_templates_finance.sql|true",
+                        "SQL|13|V13__ai_intents_finance.sql|true",
+                        "SQL|14|V14__company_subject.sql|true",
+                        "SQL|15|V15__inspection_run.sql|true",
+                        "SQL|16|V16__license_ocr_engine_length.sql|true",
+                        "SQL|17|V17__company_accountant.sql|true",
+                        "SQL|18|V18__compliance.sql|true",
+                        "SQL|19|V19__payroll.sql|true",
+                        "SQL|20|V20__customer_document.sql|true",
+                        "SQL|21|V21__voucher.sql|true",
+                        "SQL|22|V22__account_period.sql|true",
+                        "SQL|23|V23__tax_holiday.sql|true",
+                        "SQL|24|V24__tax_holiday_draft.sql|true",
+                        "SQL|25|V25__fix_2026_national_day_workday.sql|true");
         // spring.flyway.schemas=scrm 会让 Flyway 自建 schema 并写入一条 SCHEMA 记录, 此时 V1 的
         // CREATE SCHEMA IF NOT EXISTS scrm 退化为空操作
         assertThat(entries).filteredOn(entry -> entry.startsWith("SCHEMA|"))
@@ -168,7 +187,7 @@ class FlywayPostgresMigrationTest {
 
     @Test
     @Order(2)
-    @DisplayName("scrm schema 下 275 张业务表全部创建成功")
+    @DisplayName("scrm schema 下 298 张业务表全部创建成功")
     void allBusinessTablesCreated() throws SQLException {
         assertThat(count(SCRM_TABLE_COUNT_SQL)).as("scrm schema 业务表数 (排除 flyway_schema_history)")
                 .isEqualTo(EXPECTED_SCRM_TABLES);
@@ -177,9 +196,12 @@ class FlywayPostgresMigrationTest {
                 .as("非系统 schema 基表数 (业务表 + flyway_schema_history)").isEqualTo(EXPECTED_TOTAL_TABLES);
         assertThat(queryAll("select table_name from information_schema.tables where table_schema = 'scrm' "
                 + "and table_type = 'BASE TABLE' and table_name in ('scrm_customer', 'scrm_conversation_message', "
-                + "'scrm_wework_archive_message', 'scrm_webhook_log') order by table_name"))
-                .as("被 V2 索引覆盖的关键表").containsExactly(
-                        "scrm_conversation_message", "scrm_customer", "scrm_webhook_log", "scrm_wework_archive_message");
+                + "'scrm_wework_archive_message', 'scrm_webhook_log', 'scrm_inspection_task', "
+                + "'scrm_tax_declaration_profile', 'scrm_license_ocr_task') order by table_name"))
+                .as("被 V2 索引覆盖的关键表 + 财税域新增表").containsExactly(
+                        "scrm_conversation_message", "scrm_customer", "scrm_inspection_task",
+                        "scrm_license_ocr_task", "scrm_tax_declaration_profile",
+                        "scrm_webhook_log", "scrm_wework_archive_message");
     }
 
     @Test
