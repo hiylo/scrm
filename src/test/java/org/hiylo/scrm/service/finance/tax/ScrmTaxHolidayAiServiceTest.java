@@ -186,7 +186,7 @@ class ScrmTaxHolidayAiServiceTest {
         old.setId(1L);
         when(holidayRepository.findByHolidayYearAndIsActiveTrueOrderByStartDateAsc(2027))
                 .thenReturn(List.of(old));
-        when(workdayOverrideRepository.findAll()).thenReturn(List.of());
+        when(workdayOverrideRepository.existsByWorkDateAndIsActiveTrue(any())).thenReturn(false);
 
         var result = aiService.applyDraft(9001L, "admin");
 
@@ -314,16 +314,39 @@ class ScrmTaxHolidayAiServiceTest {
                 .thenReturn(List.of());
 
         // 三条补班日里只有 10/10 是新的
-        ScrmTaxWorkdayOverrideEntity existing1 = new ScrmTaxWorkdayOverrideEntity();
-        existing1.setWorkDate(java.time.LocalDate.parse("2026-02-14"));
-        ScrmTaxWorkdayOverrideEntity existing2 = new ScrmTaxWorkdayOverrideEntity();
-        existing2.setWorkDate(java.time.LocalDate.parse("2026-09-20"));
-        when(workdayOverrideRepository.findAll()).thenReturn(List.of(existing1, existing2));
+        java.time.LocalDate already1 = java.time.LocalDate.parse("2026-02-14");
+        java.time.LocalDate already2 = java.time.LocalDate.parse("2026-09-20");
+        when(workdayOverrideRepository.existsByWorkDateAndIsActiveTrue(any())).thenReturn(false);
+        when(workdayOverrideRepository.existsByWorkDateAndIsActiveTrue(already1)).thenReturn(true);
+        when(workdayOverrideRepository.existsByWorkDateAndIsActiveTrue(already2)).thenReturn(true);
 
         var result = aiService.applyDraft(9005L, "admin");
 
         // 口径修正前的 bug: 这里会返回 1（只数新增），让运维误以为补班日只写了 1 条
         assertThat(result.get("workdayCount")).isEqualTo(3);
         assertThat(result.get("workdayAdded")).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("判重只看生效中的补班日：停用记录占用唯一键但不应阻止写入")
+    void applyDraft_ignoresInactiveWorkday() {
+        ScrmTaxHolidayDraftEntity draft = new ScrmTaxHolidayDraftEntity();
+        draft.setId(9006L);
+        draft.setHolidayYear(2026);
+        draft.setDraftStatus(ScrmTaxHolidayDraftEntity.STATUS_PENDING);
+        draft.setHolidaysJson("[{\"name\":\"国庆节\",\"startDate\":\"2026-10-01\","
+                + "\"endDate\":\"2026-10-07\"}]");
+        draft.setWorkdaysJson("[{\"workDate\":\"2026-10-10\"}]");
+        when(draftRepository.findById(9006L)).thenReturn(Optional.of(draft));
+        when(holidayRepository.findByHolidayYearAndIsActiveTrueOrderByStartDateAsc(2026))
+                .thenReturn(List.of());
+        // 仓储方法带 isActive 条件, 停用记录不会被返回 -> 视为不存在, 应当写入
+        when(workdayOverrideRepository.existsByWorkDateAndIsActiveTrue(any())).thenReturn(false);
+
+        var result = aiService.applyDraft(9006L, "admin");
+
+        assertThat(result.get("workdayCount")).isEqualTo(1);
+        assertThat(result.get("workdayAdded")).isEqualTo(1);
+        verify(workdayOverrideRepository).save(any(ScrmTaxWorkdayOverrideEntity.class));
     }
 }

@@ -37,4 +37,21 @@ public interface ScrmTaxWorkdayOverrideRepository extends JpaRepository<ScrmTaxW
             + "WHERE w.isActive = true AND w.workDate BETWEEN :from AND :to "
             + "ORDER BY w.workDate ASC")
     List<ScrmTaxWorkdayOverrideEntity> findActiveBetween(@Param("from") LocalDate from, @Param("to") LocalDate to);
+
+    /**
+     * 判断某一天是否已存在<b>生效中</b>的调休上班日。
+     * <p>
+     * 供采纳草稿时逐条判重，避免全表加载后在内存里比对
+     * （补班日虽少，但会随年份线性增长，全表加载的写法不该留着）。
+     * </p>
+     * <p>
+     * 条件带上 {@code isActive = true}：{@code work_date} 上有唯一约束，
+     * 若某条记录被置为停用仍占用唯一键，只看日期会把停用记录误判为已存在而跳过写入，
+     * 导致该补班日实际不生效。
+     * </p>
+     *
+     * @param workDate 待判断日期
+     * @return 存在生效中的记录返回 true
+     */
+    boolean existsByWorkDateAndIsActiveTrue(LocalDate workDate);
 }

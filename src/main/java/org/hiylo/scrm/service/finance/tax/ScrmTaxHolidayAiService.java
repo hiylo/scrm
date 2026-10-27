@@ -460,8 +460,7 @@ public class ScrmTaxHolidayAiService {
             }
             workdayTotal++;
             // 唯一约束在 work_date 上，重复的跳过而不是让整批失败
-            boolean exists = workdayOverrideRepository.findAll().stream()
-                    .anyMatch(w -> date.equals(w.getWorkDate()));
+            boolean exists = workdayOverrideRepository.existsByWorkDateAndIsActiveTrue(date);
             if (exists) {
                 continue;
             }
