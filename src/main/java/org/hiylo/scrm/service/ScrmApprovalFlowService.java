@@ -89,12 +89,12 @@ public class ScrmApprovalFlowService {
 
     /** 合法的流程类型 */
     private static final List<String> VALID_FLOW_TYPES = List.of(
-            "CONTRACT", "EXPENSE", "LEAVE", "REFUND", "DISCOUNT",
+            "CONTRACT", "EXPENSE", "LEAVE", "REFUND", "DISCOUNT", "RENEWAL",
             "PRICE_CHANGE", "CUSTOMER_MERGE", "CONTENT", "PURCHASE", "OTHER", "CUSTOM");
 
     /** 合法的业务类型 (共享) */
     static final List<String> VALID_BUSINESS_TYPES = List.of(
-            "CONTRACT", "EXPENSE", "LEAVE", "REFUND", "DISCOUNT", "OTHER");
+            "CONTRACT", "EXPENSE", "LEAVE", "REFUND", "DISCOUNT", "RENEWAL", "OTHER");
 
     /** 合法的流程状态 */
     private static final List<String> VALID_FLOW_STATUSES = List.of(
@@ -560,6 +560,7 @@ public class ScrmApprovalFlowService {
             if (dto.getNodes() == null || dto.getNodes().isBlank()) {
                 throw ScrmException.badRequest("节点定义不能为空");
             }
+            validateNodeStructure(dto.getNodes());
         }
         if (dto.getStatus() != null && !VALID_FLOW_STATUSES.contains(dto.getStatus())) {
             throw ScrmException.badRequest(
@@ -633,6 +634,57 @@ public class ScrmApprovalFlowService {
      * @return 字符串, null 返回空串
      */
     String toStr(Object obj) {
-        return obj == null ? "" : obj.toString();
+        if (obj == null) {
+            return "";
+        }
+        // 节点定义里的 approverIds / ccUserIds 常写成 JSON 数组，
+        // 直接 toString() 会得到 "[a, b]" 带上方括号，后续按逗号切分后
+        // 首尾元素仍带括号，导致「操作人不在当前审批人列表中」的误判。
+        // 这里统一把集合规整成 "a,b"。
+        if (obj instanceof java.util.Collection<?> collection) {
+            return collection.stream()
+                    .filter(java.util.Objects::nonNull)
+                    .map(String::valueOf)
+                    .filter(v -> !v.isBlank())
+                    .collect(java.util.stream.Collectors.joining(","));
+        }
+        return obj.toString();
     }
+    /**
+     * 校验节点结构是否可正常流转。
+     * <p>
+     * 这是配置期就该拦住的问题：{@code initializeFlow} 把起始节点设为当前节点后
+     * 立刻 {@code moveToNextNode}，若找不到下一节点就直接 {@code completeInstance}。
+     * 因此只配一个审批节点、或没有 END 节点的流程，会表现为<b>提交瞬间自动通过</b>，
+     * 审批人根本没机会处理——现象像「驳回不了」，实际是流程配错。
+     * </p>
+     *
+     * @param nodesJson 节点定义 JSON
+     * @throws ScrmException 缺少审批节点 / 缺少结束节点
+     */
+    void validateNodeStructure(String nodesJson) throws ScrmException {
+        List<Map<String, Object>> nodes = parseJsonList(nodesJson, "nodes");
+        if (nodes.isEmpty()) {
+            throw ScrmException.badRequest("节点定义不能为空");
+        }
+        boolean hasApprove = false;
+        boolean hasEnd = false;
+        for (Map<String, Object> node : nodes) {
+            String type = toStr(node.get("nodeType")).toUpperCase();
+            // APPROVE 与 APPROVAL 两种写法历史上都出现过，视为同一类审批节点
+            if (NODE_APPROVE.equals(type) || "APPROVAL".equals(type)) {
+                hasApprove = true;
+            }
+            if (NODE_END.equals(type)) {
+                hasEnd = true;
+            }
+        }
+        if (!hasApprove) {
+            throw ScrmException.badRequest("流程至少需要一个审批节点(nodeType=APPROVE)，否则提交后无法进入审批");
+        }
+        if (!hasEnd) {
+            throw ScrmException.badRequest("流程必须包含结束节点(nodeType=END)，否则提交后会被判定为立即通过");
+        }
+    }
+
 }

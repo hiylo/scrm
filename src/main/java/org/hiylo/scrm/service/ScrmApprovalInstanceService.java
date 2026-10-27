@@ -58,6 +58,9 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ScrmApprovalInstanceService {
 
+    /** 事件发布器（审批进入终态后通知业务域，如续费回填） */
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
+
     // ==================== 实例状态 (共享) ====================
 
     /** 实例状态: PENDING 待提交 */
@@ -842,7 +845,34 @@ public class ScrmApprovalInstanceService {
                 "审批流程已完成", null, instance.getCurrentNodeId(), null, true);
         log.info("完成审批实例: id={}, status=APPROVED, durationHours={}",
                 instance.getId(), instance.getDurationHours());
+        // 通知业务域：审批通过。放在最后，确保实例状态与日志都已落库
+        publishDecided(instance, true, null);
         return instance;
+    }
+
+    /**
+     * 发布审批终态事件，供业务域（续费/合同等）回填自身状态。
+     * <p>
+     * 业务域未实现监听时无副作用；监听器内部异常不应影响审批主流程，
+     * 因此这里吞掉异常并只记日志——审批本身已经成功。
+     * </p>
+     *
+     * @param instance 审批实例
+     * @param approved 是否通过
+     * @param comment  审批意见
+     */
+    void publishDecided(ScrmApprovalInstanceEntity instance, boolean approved, String comment) {
+        if (instance == null || instance.getBusinessType() == null) {
+            return;
+        }
+        try {
+            eventPublisher.publishEvent(new org.hiylo.scrm.service.approval.ApprovalDecidedEvent(
+                    instance.getId(), instance.getBusinessType(), instance.getBusinessId(),
+                    approved, comment));
+        } catch (RuntimeException e) {
+            log.error("[审批-事件] 发布终态事件失败: instanceId={}, businessType={}",
+                    instance.getId(), instance.getBusinessType(), e);
+        }
     }
 
     /**
@@ -943,7 +973,8 @@ public class ScrmApprovalInstanceService {
             return new ArrayList<>();
         }
         return Arrays.stream(approverIds.split(","))
-                .map(String::trim)
+                // 兼容历史脏数据：曾用 List.toString() 落库，值形如 "[id1, id2]"
+                .map(s -> s.replace("[", "").replace("]", "").replace("\"", "").trim())
                 .filter(s -> !s.isEmpty())
                 .collect(Collectors.toList());
     }

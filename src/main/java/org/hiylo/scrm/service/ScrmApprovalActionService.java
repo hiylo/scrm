@@ -100,6 +100,8 @@ public class ScrmApprovalActionService {
                 actionDto.getOperatorRole(), ScrmApprovalInstanceService.OPERATOR_APPROVER, actionDto.getComment(),
                 actionDto.getActionData(), previousNodeId, null, false);
         log.info("驳回审批: instanceId={}, operatorId={}", instance.getId(), actionDto.getOperatorId());
+        // 通知业务域：审批被驳回（续费需要退回待处理并清掉被否的折扣）
+        instanceService.publishDecided(instance, false, actionDto.getComment());
         return instance;
     }
 
