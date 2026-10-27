@@ -111,6 +111,13 @@ public class ScrmKnowledgeReviewService {
             entity.setStatus(ScrmKnowledgeCategoryService.STATUS_PUBLISHED);
             entity.setReviewStatus(ScrmKnowledgeArticleService.REVIEW_APPROVED);
             entity.setPublishedAt(LocalDateTime.now());
+            // 模块③ 版本复核: 审核通过即业务人员核对确认, 记录最后人工复核日期并推算下次复核
+            LocalDateTime reviewedNow = LocalDateTime.now();
+            entity.setLastReviewedAt(reviewedNow);
+            int cycleDays = entity.getReviewCycleDays() != null && entity.getReviewCycleDays() > 0
+                    ? entity.getReviewCycleDays() : 180;
+            entity.setReviewCycleDays(cycleDays);
+            entity.setNextReviewAt(reviewedNow.plusDays(cycleDays));
         } else {
             entity.setStatus(ScrmKnowledgeArticleService.STATUS_REJECTED);
             entity.setReviewStatus(ScrmKnowledgeArticleService.REVIEW_REJECTED);

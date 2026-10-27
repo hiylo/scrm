@@ -128,6 +128,9 @@ public class ScrmAiAssistantConversationService {
     /** AI 回复生成器 (可插拔策略, 默认 DefaultAiResponseGenerator) */
     private final AiResponseGenerator aiResponseGenerator;
 
+    /** 模块③ 引用溯源服务 (AI 答复附知识条目 id/title + 免责行) */
+    private final org.hiylo.scrm.service.finance.ScrmFinanceKnowledgeCitationService financeKnowledgeCitationService;
+
     /** JSON 解析器 (序列化 recommendedReplies) */
     private final ObjectMapper objectMapper;
 
@@ -175,6 +178,22 @@ public class ScrmAiAssistantConversationService {
                 (String) intentResult.get("responseTemplate"), sentiment);
         // AI 生成回复 (通过可插拔 AiResponseGenerator 接口, 默认模拟实现)
         String aiResponse = aiResponseGenerator.generate(chatDto.getMessage(), config, detectedIntent, sentiment);
+        // 模块③ 引用溯源: 指定知识库时, AI 答复附知识条目来源与免责行
+        List<Map<String, Object>> citations = Collections.emptyList();
+        if (chatDto.getKnowledgeBaseId() != null) {
+            try {
+                List<Map<String, Object>> found =
+                        financeKnowledgeCitationService.buildCitations(chatDto.getKnowledgeBaseId(),
+                                chatDto.getMessage());
+                if (found != null && !found.isEmpty()) {
+                    citations = found;
+                    aiResponse = appendCitationsAndDisclaimer(aiResponse, citations);
+                }
+            } catch (Exception e) {
+                log.warn("知识库引用溯源失败, 忽略: knowledgeBaseId={}, err={}",
+                        chatDto.getKnowledgeBaseId(), e.getMessage());
+            }
+        }
         int responseTimeMs = (int) (System.currentTimeMillis() - startMs);
         // 持久化对话记录
         ScrmAiConversationEntity entity = new ScrmAiConversationEntity();
@@ -191,6 +210,9 @@ public class ScrmAiAssistantConversationService {
         entity.setConfigId(config != null ? config.getId() : null);
         entity.setFeedback(DEFAULT_FEEDBACK);
         entity.setCreatedAt(LocalDateTime.now());
+        if (!citations.isEmpty()) {
+            entity.setKnowledgeCitations(toJson(citations));
+        }
         entity = conversationRepository.save(entity);
         // 增量更新配置请求次数
         if (config != null) {
@@ -476,6 +498,46 @@ public class ScrmAiAssistantConversationService {
         } catch (NumberFormatException e) {
             return 0;
         }
+    }
+
+    /**
+     * AI 答复追加引用列表与免责行。
+     *
+     * @param aiResponse AI 原始答复
+     * @param citations  引用条目列表
+     * @return 带引用与免责行的答复文本
+     */
+    private String appendCitationsAndDisclaimer(String aiResponse, List<Map<String, Object>> citations) {
+        StringBuilder sb = new StringBuilder();
+        if (aiResponse != null && !aiResponse.isBlank()) {
+            sb.append(aiResponse);
+        } else {
+            sb.append("已为您查询相关知识条目。");
+        }
+        sb.append('\n');
+        sb.append('\n');
+        sb.append("参考条目:\n");
+        int shown = 0;
+        for (Map<String, Object> citation : citations) {
+            if (shown >= 5) {
+                break;
+            }
+            sb.append("- ");
+            Object code = citation.get("articleCode");
+            if (code != null) {
+                sb.append(code).append(' ');
+            }
+            sb.append(citation.get("title"));
+            Object reviewedAt = citation.get("lastReviewedAt");
+            if (reviewedAt != null) {
+                sb.append(" (最后复核 ").append(reviewedAt).append(')');
+            }
+            sb.append('\n');
+            shown++;
+        }
+        sb.append('\n');
+        sb.append(org.hiylo.scrm.service.finance.ScrmFinanceKnowledgeCitationService.DISCLAIMER);
+        return sb.toString();
     }
 
     /**

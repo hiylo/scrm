@@ -247,14 +247,23 @@ public class ScrmMessageTemplateCenterTemplateService {
 
     /**
      * 发布模板。
+     * <p>
+     * 人工审核闸门: 仅 {@code reviewStatus=APPROVED} 的模板可发布 (status → PUBLISHED)。
+     * DRAFT/PENDING_REVIEW/REJECTED 一律拒绝发布, 保证营销文案「未经审核不得分发」
+     * （财税广告合规敏感, 立项方案 §2 模块④）。REJECTED 模板需先重新提交审核。
+     * </p>
      *
      * @param id 模板 ID
      * @return 更新后的模板
-     * @throws ScrmException 模板不存在
+     * @throws ScrmException 模板不存在 / 未审核通过
      */
     @Transactional
     public ScrmMessageTemplateCenterEntity publishTemplate(Long id) throws ScrmException {
         ScrmMessageTemplateCenterEntity entity = findTemplateOrThrow(id);
+        if (!"APPROVED".equals(entity.getReviewStatus())) {
+            throw ScrmException.forbidden("模板未审核通过, 禁止发布 (人工审核闸门): id=" + id
+                    + ", reviewStatus=" + entity.getReviewStatus());
+        }
         entity.setStatus("PUBLISHED");
         entity = centerRepository.save(entity);
         log.info("发布消息模板: id={}", id);

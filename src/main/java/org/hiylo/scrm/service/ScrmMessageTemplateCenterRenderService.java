@@ -87,6 +87,12 @@ public class ScrmMessageTemplateCenterRenderService {
     public Map<String, Object> renderForChannel(Long templateId, String channel, Map<String, Object> variables)
             throws ScrmException {
         ScrmMessageTemplateCenterEntity template = templateService.findTemplateOrThrow(templateId);
+        // 人工审核闸门: 仅 reviewStatus=APPROVED 的模板可渲染分发 (财税营销合规红线,
+        // 立项方案 §2 模块④「未经审核不得进入可分发」; AI 生成 DRAFT 不得直接渲染使用)
+        if (!"APPROVED".equals(template.getReviewStatus())) {
+            throw ScrmException.forbidden("模板未审核通过, 禁止渲染分发 (人工审核闸门): templateId="
+                    + templateId + ", reviewStatus=" + template.getReviewStatus());
+        }
         // 确定渠道: 传入为空时取模板首个适用渠道
         String targetChannel = channel;
         if (targetChannel == null || targetChannel.isBlank()) {
