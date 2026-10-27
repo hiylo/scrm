@@ -58,6 +58,10 @@ public class DataScopeService {
     /** VIEWER 角色名 */
     public static final String ROLE_VIEWER = "VIEWER";
 
+    /** 可见全部数据的管理类角色（含主管/经理），这些角色不做数据过滤 */
+    private static final java.util.Set<String> MANAGEMENT_ROLES = java.util.Set.of(
+            "ADMIN", "SUPERADMIN", "MANAGER", "SUPERVISOR");
+
     /** 请求头：用户 ID */
     public static final String HEADER_USER_ID = "X-User-Id";
     /** 请求头：用户角色 */
@@ -92,11 +96,12 @@ public class DataScopeService {
             return null;
         }
 
-        // ADMIN/VIEWER 不在 Service 层过滤（VIEWER 由 isReadOnly 控制写操作）
-        if (isAdmin(role) || ROLE_VIEWER.equals(role)) {
+        // 管理类角色（ADMIN/SUPERADMIN/MANAGER/SUPERVISOR）不做数据过滤：
+        // 主管/经理需要查看全部会计的客户与业务数据。
+        // VIEWER 同样不过滤，写操作由 isReadOnly 拦截。
+        if (isManagement(role) || ROLE_VIEWER.equals(role)) {
             return null;
         }
-
         // OPERATOR 等其他角色: 仅可见当前用户归属的账号
         if (userId == null || userId.isBlank()) {
             log.warn("getAccessibleAccountIds: 下级用户 ID 为空, 返回空列表");
@@ -127,6 +132,28 @@ public class DataScopeService {
         }
         for (String item : role.split(",")) {
             if (ROLE_ADMIN.equals(item.trim().toUpperCase())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 判断角色串是否包含管理类角色（ADMIN / SUPERADMIN / MANAGER / SUPERVISOR）。
+     * <p>
+     * 管理类角色可见全部数据：主管/经理需要查看所有会计的客户与业务，
+     * 与「会计只看自己负责的主体」是互补的两层口径。
+     * </p>
+     *
+     * @param role 用户角色（逗号分隔）
+     * @return true=属于管理类角色
+     */
+    public boolean isManagement(String role) {
+        if (role == null || role.isBlank()) {
+            return false;
+        }
+        for (String item : role.split(",")) {
+            if (MANAGEMENT_ROLES.contains(item.trim().toUpperCase())) {
                 return true;
             }
         }

@@ -51,6 +51,9 @@ import java.util.Map;
  *   <li>根据 gradeThresholds 或默认阈值确定等级</li>
  *   <li>计算转化概率 (基于分数百分比与命中维度数)</li>
  *   <li>更新评分记录 (含趋势对比: UP/STABLE/DOWN)</li>
+ *   <li>评分记录落库后调用 {@link ScrmFinanceHotLeadPushService#pushIfHot}: 命中
+ *       A_PLUS/SUPER_HOT/HOT 且归属财税模型 (FIN_LEAD_SCORE_V1) 时经 NotificationCenter
+ *       推送销售（模块⑤ 高意向推送, 附对话摘要 + 意向理由）</li>
  * </ol>
  * 评分计算与转化预测均为模拟实现, 基于规则简单匹配, 不依赖外部 ML 服务。
  * </p>
@@ -137,6 +140,12 @@ public class ScrmLeadScoringCalculationService {
 
     /** 评分模型管理子域服务 (共享按主键查找) */
     private final ScrmLeadScoringModelService modelService;
+
+    /** 财税模块⑤ 高意向线索推送服务 (SUPER_HOT/HOT → NotificationCenter 推送销售, 仅财税模型) */
+    private final ScrmFinanceHotLeadPushService financeHotLeadPushService;
+
+    /** 会话意向信号服务 (为评分维度补 priceInquiry / companyInfoGiven / urgencyLevel / conversationDepth) */
+    private final ScrmConversationSignalService conversationSignalService;
 
     // ============================================================
     // 评分计算
@@ -246,6 +255,9 @@ public class ScrmLeadScoringCalculationService {
         score.setPreviousScore(round2(previousScore));
         applyTrend(score, previousScore, totalScore);
         score = scoreRepository.save(score);
+        // 高意向线索推送销售（模块⑤: grade=A_PLUS/SUPER_HOT/HOT 且归属财税模型 → NotificationCenter 推送）
+        // 推送失败由推送服务内部兜底, 不阻断评分主流程。
+        financeHotLeadPushService.pushIfHot(score);
         // 增量更新模型应用统计
         try {
             modelRepository.incrementAppliedCount(modelId, LocalDateTime.now());
@@ -479,6 +491,10 @@ public class ScrmLeadScoringCalculationService {
         context.put("totalOrders", 0);
         context.put("totalSpent", 0);
         context.put("engagementScore", 0);
+        // 会话意向信号: 财税评分模型的 4 个维度依赖这些键,
+        // 缺失时所有规则判定为 null、评分恒为 0 (档位恒 DEAD)。
+        // 提取失败时服务内部降级为全 0, 不影响评分主流程。
+        context.putAll(conversationSignalService.extractSignals(customer.getId()));
         return context;
     }
 

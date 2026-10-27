@@ -8,6 +8,7 @@
  */
 package org.hiylo.scrm.service;
 
+import org.hiylo.scrm.common.util.PhoneUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -101,11 +102,17 @@ public class ScrmCustomerService {
         if (dto == null) {
             throw ScrmException.badRequest("客户参数不能为空");
         }
-        if (dto.getPlatformType() == null || dto.getPlatformType().isBlank()) {
-            throw ScrmException.badRequest("平台类型不能为空");
+        // 平台账号与手机号至少填一项（两者并存不互斥：微信好友可留手机号，纯电话客户可无平台账号）
+        boolean hasPlatform = dto.getPlatformType() != null && !dto.getPlatformType().isBlank()
+                && dto.getPlatformCustomerUid() != null && !dto.getPlatformCustomerUid().isBlank();
+        boolean hasPhone = dto.getPhone() != null && !dto.getPhone().isBlank();
+        boolean platformPartial = (dto.getPlatformType() != null && !dto.getPlatformType().isBlank())
+                != (dto.getPlatformCustomerUid() != null && !dto.getPlatformCustomerUid().isBlank());
+        if (platformPartial) {
+            throw ScrmException.badRequest("平台类型与平台客户 UID 需成对填写");
         }
-        if (dto.getPlatformCustomerUid() == null || dto.getPlatformCustomerUid().isBlank()) {
-            throw ScrmException.badRequest("平台客户 UID 不能为空");
+        if (!hasPlatform && !hasPhone) {
+            throw ScrmException.badRequest("平台账号与手机号至少填写一项");
         }
         if (dto.getOwnerAccountId() == null) {
             throw ScrmException.badRequest("归属账号 ID 不能为空");
@@ -116,19 +123,26 @@ public class ScrmCustomerService {
                     "非法的生命周期值: " + dto.getLifecycle() + ", 仅支持 " + VALID_LIFECYCLES);
         }
 
-        // 唯一性校验
-        Optional<ScrmCustomerEntity> existed = customerRepository
-                .findByPlatformTypeAndPlatformCustomerUidAndOwnerAccountId(
-                        dto.getPlatformType(), dto.getPlatformCustomerUid(), dto.getOwnerAccountId());
-        if (existed.isPresent()) {
-            throw new ScrmException(ScrmExceptionConstants.CONFLICT,
-                    "客户已存在: platformType=" + dto.getPlatformType()
-                            + ", platformCustomerUid=" + dto.getPlatformCustomerUid()
-                            + ", ownerAccountId=" + dto.getOwnerAccountId());
+        // 唯一性校验（仅在填了平台账号时校验；纯手机号联系人按号码查重给出提示但不阻断）
+        if (hasPlatform) {
+            Optional<ScrmCustomerEntity> existed = customerRepository
+                    .findByPlatformTypeAndPlatformCustomerUidAndOwnerAccountId(
+                            dto.getPlatformType(), dto.getPlatformCustomerUid(), dto.getOwnerAccountId());
+            if (existed.isPresent()) {
+                throw new ScrmException(ScrmExceptionConstants.CONFLICT,
+                        "客户已存在: platformType=" + dto.getPlatformType()
+                                + ", platformCustomerUid=" + dto.getPlatformCustomerUid()
+                                + ", ownerAccountId=" + dto.getOwnerAccountId());
+            }
         }
         ScrmCustomerEntity entity = new ScrmCustomerEntity();
         entity.setPlatformType(dto.getPlatformType());
         entity.setPlatformCustomerUid(dto.getPlatformCustomerUid());
+        entity.setPhone(normalizePhone(dto.getPhone()));
+        entity.setCompanyId(dto.getCompanyId());
+        entity.setContactRole(dto.getContactRole());
+        entity.setSourceChannel(dto.getSourceChannel());
+        entity.setSourceChannelCodeId(dto.getSourceChannelCodeId());
         entity.setNickname(dto.getNickname());
         entity.setAvatarUrl(dto.getAvatarUrl());
         entity.setOwnerAccountId(dto.getOwnerAccountId());
@@ -169,6 +183,13 @@ public class ScrmCustomerService {
         if (dto.getLastInteractionAt() != null) entity.setLastInteractionAt(dto.getLastInteractionAt());
         if (dto.getNextFollowUpAt() != null) entity.setNextFollowUpAt(dto.getNextFollowUpAt());
         if (dto.getRemark() != null) entity.setRemark(dto.getRemark());
+        if (dto.getPhone() != null) entity.setPhone(normalizePhone(dto.getPhone()));
+        if (dto.getCompanyId() != null) entity.setCompanyId(dto.getCompanyId());
+        if (dto.getContactRole() != null) entity.setContactRole(dto.getContactRole());
+        if (dto.getSourceChannel() != null) entity.setSourceChannel(dto.getSourceChannel());
+        if (dto.getSourceChannelCodeId() != null) {
+            entity.setSourceChannelCodeId(dto.getSourceChannelCodeId());
+        }
         entity = customerRepository.save(entity);
         return toDto(entity);
     }
@@ -752,6 +773,11 @@ public class ScrmCustomerService {
         dto.setId(entity.getId());
         dto.setPlatformType(entity.getPlatformType());
         dto.setPlatformCustomerUid(entity.getPlatformCustomerUid());
+        dto.setPhone(entity.getPhone());
+        dto.setCompanyId(entity.getCompanyId());
+        dto.setContactRole(entity.getContactRole());
+        dto.setSourceChannel(entity.getSourceChannel());
+        dto.setSourceChannelCodeId(entity.getSourceChannelCodeId());
         dto.setNickname(entity.getNickname());
         dto.setAvatarUrl(entity.getAvatarUrl());
         dto.setOwnerAccountId(entity.getOwnerAccountId());
@@ -765,4 +791,18 @@ public class ScrmCustomerService {
         dto.setVersion(entity.getVersion());
         return dto;
     }
+
+    /**
+     * 手机号归一化（去除空格、横线、括号，保留可选的 +86 前缀）。
+     * <p>用于撞单检测与按号码检索：138 0013 8000 / 138-0013-8000 / +86 13800138000
+     * 统一为 13800138000 或 +8613800138000。无法识别时原样返回（仅 trim）。</p>
+     *
+     * @param raw 原始号码
+     * @return 归一化号码（空值返回 null）
+     */
+    private String normalizePhone(String raw) {
+        // 统一委托到 PhoneUtils：原实现不拒绝非法字符、不处理裸 86 前缀，会把脏号码写库
+        return PhoneUtils.normalize(raw);
+    }
 }
+

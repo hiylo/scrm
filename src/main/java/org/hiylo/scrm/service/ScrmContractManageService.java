@@ -166,6 +166,9 @@ public class ScrmContractManageService {
     /** 合同模板管理服务 (模板查询 / 渲染 / 使用次数) */
     private final ScrmContractTemplateService templateService;
 
+    /** 公司主体归属解析器（业务数据自动挂公司） */
+    private final CompanyResolver companyResolver;
+
     // ============================================================
     // 合同管理
     // ============================================================
@@ -219,6 +222,8 @@ public class ScrmContractManageService {
         entity.setTemplateId(template.getId());
         entity.setCustomerId(createDto.getCustomerId());
         entity.setCustomerName(customerName);
+        // 业务数据自动挂公司（联系人已归属公司时自动带上）
+        entity.setCompanyId(companyResolver.resolveByCustomerId(createDto.getCustomerId()));
         entity.setTitle(entity.getContractName());
         entity.setContent(content);
         entity.setVariables(createDto.getVariables());

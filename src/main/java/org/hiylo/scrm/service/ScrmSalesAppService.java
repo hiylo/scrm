@@ -8,6 +8,7 @@
  */
 package org.hiylo.scrm.service;
 
+import org.hiylo.scrm.common.util.PhoneUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hiylo.scrm.dto.ScrmCallReportDto;
@@ -1033,30 +1034,8 @@ public class ScrmSalesAppService {
      * @return 规范化号码，非法时返回 null
      */
     static String normalizePhone(String raw) {
-        if (raw == null) {
-            return null;
-        }
-        String value = raw.trim()
-                .replace(" ", "")
-                .replace("-", "")
-                .replace("(", "")
-                .replace(")", "")
-                .replace(".", "");
-        if (value.isEmpty()) {
-            return null;
-        }
-        while (value.startsWith("+")) {
-            value = value.substring(1);
-        }
-        if (value.startsWith("0086") && value.length() > 4) {
-            value = value.substring(4);
-        } else if (value.startsWith("86") && value.length() == 13) {
-            value = value.substring(2);
-        }
-        if (!value.matches("[0-9]{3,20}")) {
-            return null;
-        }
-        return value;
+        // 统一委托到 PhoneUtils，避免多处实现语义漂移
+        return PhoneUtils.normalize(raw);
     }
 
     /**
@@ -1185,3 +1164,4 @@ public class ScrmSalesAppService {
     public record PhoneMatch(String ownerType, Long ownerId, String nickname) {
     }
 }
+
