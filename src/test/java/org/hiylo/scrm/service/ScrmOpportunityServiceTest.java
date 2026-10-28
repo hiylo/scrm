@@ -256,4 +256,43 @@ class ScrmOpportunityServiceTest {
                 .hasMessageContaining("仍有 1 个进行中商机");
         verify(funnelRepository, never()).delete(any(ScrmFunnelEntity.class));
     }
+
+    @Test
+    @DisplayName("getForecast: 单行聚合结果按列解包，不再把整行当首列（回归 2026-10-28 线上 500）")
+    void getForecast_unpacksAggregateRow() {
+        // 原生多列聚合查询由 Hibernate 按「行列表」返回。曾经方法声明成裸
+        // Object[]，Spring Data 把整个结果集塞进一个数组，summary[0] 拿到的是
+        // 整行 Object[]，强转 Number 即抛 ClassCastException（线上 forecast 500）。
+        // 这里锁定：返回值是 List<Object[]> 且服务层取首行按列解包。
+        when(opportunityRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class),
+                any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(org.springframework.data.domain.Page.empty());
+
+        // 首行三列：总数 7 / 总额 12345.6 / 加权额 6789.0
+        when(opportunityRepository.forecastSummary(null))
+                .thenReturn(List.<Object[]>of(new Object[]{7L, 12345.6d, 6789.0d}));
+
+        java.util.Map<String, Object> result = service.getForecast(null,
+                org.springframework.data.domain.PageRequest.of(0, 10));
+
+        assertThat(result.get("totalCount")).isEqualTo(7L);
+        assertThat(result.get("totalAmount")).isEqualTo(12345.6d);
+        assertThat(result.get("weightedAmount")).isEqualTo(6789.0d);
+    }
+
+    @Test
+    @DisplayName("getForecast: 聚合无返回行时三项汇总回落为 0，不抛异常")
+    void getForecast_emptyAggregateFallsBackToZero() {
+        when(opportunityRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class),
+                any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(org.springframework.data.domain.Page.empty());
+        when(opportunityRepository.forecastSummary(null)).thenReturn(List.of());
+
+        java.util.Map<String, Object> result = service.getForecast(null,
+                org.springframework.data.domain.PageRequest.of(0, 10));
+
+        assertThat(result.get("totalCount")).isEqualTo(0L);
+        assertThat(result.get("totalAmount")).isEqualTo(0d);
+        assertThat(result.get("weightedAmount")).isEqualTo(0d);
+    }
 }

@@ -51,14 +51,21 @@ public interface ScrmOpportunityRepository extends JpaRepository<ScrmOpportunity
     /**
      * 按负责人统计 OPEN 状态商机的总金额与加权金额 (销售预测汇总用)。
      *
+     * <p>返回 **List&lt;Object[]&gt; 而不是裸 Object[]**：原生多列聚合查询由 Hibernate
+     * 按「行列表」返回，若方法声明成裸 {@code Object[]}，Spring Data 会把整个结果集
+     * 塞进一个 Object[]，于是 {@code summary[0]} 拿到的是整行 {@code Object[]} 而非
+     * 首列数值，强转 Number 即抛 ClassCastException（2026-10-28 线上 forecast 500
+     * 的根因）。改成 List 后由调用方取第一行。</p>
+     *
      * @param ownerUserId 负责人用户 ID (可空, 为空时统计全部)
-     * @return Object[]{totalCount, totalAmount, weightedAmount}
+     * @return 单行结果列表，元素为 Object[]{totalCount, totalAmount, weightedAmount}；
+     *         聚合查询恒返回一行，但列表形状更符合 JPA 语义
      */
     @Query(value = "SELECT COUNT(*), COALESCE(SUM(amount), 0), COALESCE(SUM(amount * probability / 100.0), 0) FROM "
                           + "scrm.scrm_opportunity WHERE status = 'OPEN' AND (:ownerUserId IS NULL OR owner_user_id ="
                           + ":ownerUserId)",
             nativeQuery = true)
-    Object[] forecastSummary(
+    List<Object[]> forecastSummary(
                              @Param("ownerUserId") String ownerUserId);
 
     /**

@@ -102,6 +102,7 @@ const appRoutes: Array<{ path?: string; index?: boolean; element: React.ReactEle
   { path: 'conversations', element: <Conversations /> },
   { path: 'campaigns', element: <Campaigns /> },
   { path: 'message-templates', element: <MessageTemplates /> },
+  { path: 'message-template-center', element: <MessageTemplateCenter /> },
   { path: 'risk-rules', element: <RiskRules /> },
   { path: 'risk-signals', element: <RiskSignals /> },
   { path: 'audit-logs', element: <AuditLogs /> },
