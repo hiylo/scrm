@@ -27,9 +27,14 @@ import java.util.Map;
 /**
  * 财税域「就绪状态」汇总服务。
  * <p>
- * <b>解决什么问题</b>：财税模块有 6 条依赖外部条件的链路（AI 通道、证照 OCR、
- * 工商 API、公告抓取、个推、企微官方通道），此前判断某条链路「能不能用」只能靠人
+ * <b>解决什么问题</b>：财税模块有 5 条依赖外部条件的链路（AI 通道、证照 OCR、
+ * 工商 API、公告抓取、企微官方通道），此前判断某条链路「能不能用」只能靠人
  * 逐个查环境变量和配置。出问题时也分不清是「没开」还是「开了但坏了」。
+ * <p>
+ * <b>为什么不列个推</b>：本项目没有移动客户端，{@code scrm_user_device} 无任何设备注册，
+ * 即便开启个推也没有推送目标。通知一律走 IN_APP 站内信（落库即送达，已验证）。
+ * 把它列进就绪表会误导成「配好个推就能用」，故不纳入统计；将来上线客户端再补。
+ * </p>
  * </p>
  * <p>
  * 本服务把各链路的开关、凭证、就绪判定汇总成一张表，供运维/交付一次看全：
@@ -54,7 +59,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ScrmFinanceReadinessService {
 
-    /** 环境变量读取器（AI / 个推等未走 @ConfigurationProperties 的开关） */
+    /** 环境变量读取器（AI 等未走 @ConfigurationProperties 的开关） */
     private final Environment environment;
 
     /** 证照 OCR 配置（外接 OCR 服务） */
@@ -143,13 +148,7 @@ public class ScrmFinanceReadinessService {
                 noticeReady ? null
                         : "至少开启一个公告源（scrm.inspection.notice.guangdong-enabled / zhejiang-enabled）"));
 
-        // ---------- ⑤ 个推（移动端消息） ----------
-        boolean getuiEnabled = environment.getProperty("scrm.push.getui.enabled", Boolean.class, false);
-        modules.add(module("push", "移动端推送（个推）", getuiEnabled,
-                getuiEnabled ? "个推已启用" : "未启用，落 NoOp（仅记录日志）",
-                getuiEnabled ? null : "设置 GETUI_ENABLED=true 并配置个推凭证（未启用时站内信仍正常落库）"));
-
-        // ---------- ⑥ 企微官方通道 ----------
+        // ---------- ⑤ 企微官方通道 ----------
         boolean weworkReal = weworkConfig.isRealApiEnabled() && !weworkConfig.isMockMode();
         modules.add(module("wework", "企业微信官方通道", weworkReal,
                 weworkReal ? "已切换真实 API" : "mock 模式（返回假数据）",

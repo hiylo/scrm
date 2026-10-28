@@ -72,7 +72,6 @@ class ScrmFinanceReadinessServiceTest {
         weworkConfig = new WeworkConfig();
         when(environment.getProperty("scrm.ai.enabled", Boolean.class, false)).thenReturn(false);
         when(environment.getProperty("scrm.ai.base-url", "")).thenReturn("http://localhost:14000");
-        when(environment.getProperty("scrm.push.getui.enabled", Boolean.class, false)).thenReturn(false);
         service = new ScrmFinanceReadinessService(environment, ocrApiConfig, visionProperties,
                 qixinApiConfig, inspectionProperties, weworkConfig);
     }
@@ -83,10 +82,12 @@ class ScrmFinanceReadinessServiceTest {
         Map<String, Object> result = service.readiness();
 
         assertThat(result.get("allReady")).isEqualTo(false);
-        assertThat(result.get("totalCount")).isEqualTo(6);
+        // 5 条外部依赖链路：AI / 证照 OCR / 工商 API / 公告抓取 / 企微通道
+        // 个推已移除——无移动客户端时没有推送目标，列出来只会误导
+        assertThat(result.get("totalCount")).isEqualTo(5);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> modules = (List<Map<String, Object>>) result.get("modules");
-        assertThat(modules).hasSize(6);
+        assertThat(modules).hasSize(5);
         // 未就绪项必须都能说清缺什么
         assertThat(modules).allSatisfy(m -> {
             if (!Boolean.TRUE.equals(m.get("ready"))) {
@@ -162,7 +163,6 @@ class ScrmFinanceReadinessServiceTest {
     @DisplayName("全部依赖就绪：allReady=true")
     void allReady_whenEverythingConfigured() {
         when(environment.getProperty("scrm.ai.enabled", Boolean.class, false)).thenReturn(true);
-        when(environment.getProperty("scrm.push.getui.enabled", Boolean.class, false)).thenReturn(true);
         visionProperties.setEnabled(true);
         qixinApiConfig.setEnabled(true);
         qixinApiConfig.setToken("t");
@@ -172,7 +172,7 @@ class ScrmFinanceReadinessServiceTest {
         Map<String, Object> result = service.readiness();
 
         assertThat(result.get("allReady")).isEqualTo(true);
-        assertThat(result.get("readyCount")).isEqualTo(6L);
+        assertThat(result.get("readyCount")).isEqualTo(5L);
     }
 
     @Test

@@ -29,7 +29,7 @@ import { getReadiness, type Readiness, type ReadinessModule } from '../api/finan
 /**
  * 财税域就绪看板。
  * <p>
- * 一眼看清六条外部依赖链路各自是「已就绪」「没开」还是「开了但缺凭证」。
+ * 一眼看清五条外部依赖链路各自是「已就绪」「没开」还是「开了但缺凭证」。
  * 仅展示开关与凭证是否齐备，<b>不回显任何凭证明文</b>。
  * </p>
  *
@@ -132,7 +132,7 @@ export default function ReadinessPage() {
           type="warning"
           showIcon
           message={`还有 ${total - ready} 条链路未就绪`}
-          description="未就绪不等于故障：多为外部凭证未提供（启信宝 Token、个推凭证、企微凭证）或功能按计划未启用。"
+          description="未就绪不等于故障：多为外部凭证未提供（启信宝 Token、企微凭证）或功能按计划未启用。站内信通知不依赖这些链路，始终可用。"
         />
       )}
 
