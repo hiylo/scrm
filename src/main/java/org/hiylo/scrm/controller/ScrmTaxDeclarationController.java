@@ -191,11 +191,15 @@ public class ScrmTaxDeclarationController {
     /**
      * 缴款完成（会计动作, FILED/OVERDUE → PAID）。
      *
+     * <p><b>paidAmount 必填</b>：进入 PAID 必须带实缴金额。缺失（null）与零（0）语义
+     * 不同——零申报 / 减免请显式传 {@code paidAmount=0}；完全不传会被拒绝，避免落出
+     * 「已缴款但金额为 null」的记录（对账按 sum(paid_amount) 统计时会静默漏掉）。</p>
+     *
      * @param id         记录 ID
-     * @param paidAmount 实缴税额（可空）
+     * @param paidAmount 实缴税额（必填，零税额传 0）
      * @param receiptNo  完税凭证号（可空）
      * @return 更新后的记录
-     * @throws ScrmException 记录不存在 / 状态不允许
+     * @throws ScrmException 记录不存在 / 状态不允许 / 未提供实缴税额
      */
     @RequirePermission(resource = "scrm_tax_record", action = "declare")
     @PostMapping("/records/{id}/paid")
@@ -209,12 +213,15 @@ public class ScrmTaxDeclarationController {
     /**
      * 补报完成（会计动作, OVERDUE → PAID 快捷）。
      *
+     * <p><b>paidAmount 必填</b>，理由同 {@link #markPaid}：补报直接进 PAID，
+     * 零税额须显式传 {@code paidAmount=0}。{@code taxAmount} 可空，传了则校验非负。</p>
+     *
      * @param id         记录 ID
      * @param taxAmount  申报税额（可空）
-     * @param paidAmount 实缴税额（可空）
+     * @param paidAmount 实缴税额（必填，零税额传 0）
      * @param receiptNo  完税凭证号（可空）
      * @return 更新后的记录
-     * @throws ScrmException 记录不存在 / 状态不允许
+     * @throws ScrmException 记录不存在 / 状态不允许 / 未提供实缴税额
      */
     @RequirePermission(resource = "scrm_tax_record", action = "declare")
     @PostMapping("/records/{id}/backfill")

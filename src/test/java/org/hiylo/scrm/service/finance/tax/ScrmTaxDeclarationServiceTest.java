@@ -264,6 +264,74 @@ class ScrmTaxDeclarationServiceTest {
     }
 
     @Test
+    @DisplayName("markBackFilledPaid: 完全不传金额 → BAD_REQUEST（不落 PAID 空金额）")
+    void markBackFilledPaid_rejectsMissingAmount() {
+        ScrmTaxDeclarationRecordEntity record = new ScrmTaxDeclarationRecordEntity();
+        record.setId(1L);
+        record.setDeclarationStatus("OVERDUE");
+        when(recordRepository.findById(1L)).thenReturn(Optional.of(record));
+
+        assertThatThrownBy(() -> service.markBackFilledPaid(1L, null, null, null))
+                .isInstanceOf(ScrmException.class)
+                .hasMessageContaining("实缴税额不能为空");
+        verify(recordRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("markBackFilledPaid: 显式传 0（零申报）→ 允许进 PAID")
+    void markBackFilledPaid_zeroAmountAllowed() throws Exception {
+        ScrmTaxDeclarationRecordEntity record = new ScrmTaxDeclarationRecordEntity();
+        record.setId(1L);
+        record.setProfileId(9L);
+        record.setCustomerId(100L);
+        record.setTaxType("VAT");
+        record.setDueDate(LocalDate.of(2026, 10, 15));
+        record.setPeriodStart(LocalDate.of(2026, 9, 1));
+        record.setPeriodEnd(LocalDate.of(2026, 9, 30));
+        record.setDeclarationStatus("OVERDUE");
+        record.setOverdueDays(6);
+        when(recordRepository.findById(1L)).thenReturn(Optional.of(record));
+        when(recordRepository.save(any(ScrmTaxDeclarationRecordEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(calendarEventRepository.findAll()).thenReturn(java.util.List.of());
+
+        ScrmTaxDeclarationRecordEntity result = service.markBackFilledPaid(
+                1L, BigDecimal.ZERO, BigDecimal.ZERO, "RCPT-ZERO");
+
+        assertThat(result.getDeclarationStatus()).isEqualTo("PAID");
+        assertThat(result.getTaxAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(result.getPaidAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    @DisplayName("markPaid: 不传实缴税额 → BAD_REQUEST（空金额不许进 PAID）")
+    void markPaid_rejectsMissingAmount() {
+        ScrmTaxDeclarationRecordEntity record = new ScrmTaxDeclarationRecordEntity();
+        record.setId(1L);
+        record.setDeclarationStatus("FILED");
+        when(recordRepository.findById(1L)).thenReturn(Optional.of(record));
+
+        assertThatThrownBy(() -> service.markPaid(1L, null, null))
+                .isInstanceOf(ScrmException.class)
+                .hasMessageContaining("实缴税额不能为空");
+        verify(recordRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("markPaid: 负数实缴税额 → BAD_REQUEST")
+    void markPaid_rejectsNegativeAmount() {
+        ScrmTaxDeclarationRecordEntity record = new ScrmTaxDeclarationRecordEntity();
+        record.setId(1L);
+        record.setDeclarationStatus("FILED");
+        when(recordRepository.findById(1L)).thenReturn(Optional.of(record));
+
+        assertThatThrownBy(() -> service.markPaid(1L, new BigDecimal("-1.00"), null))
+                .isInstanceOf(ScrmException.class)
+                .hasMessageContaining("不能为负数");
+        verify(recordRepository, never()).save(any());
+    }
+
+    @Test
     @DisplayName("advanceStates: 截止日已过且 PENDING → OVERDUE; OVERDUE 持续 ≥5 天 → 升级建工单")
     void advanceStates_overdueAndEscalation() {
         // 档案: 小规模 VAT 季报, 起 2026-01-01

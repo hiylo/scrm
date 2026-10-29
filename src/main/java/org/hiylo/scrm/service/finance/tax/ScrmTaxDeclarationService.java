@@ -506,11 +506,14 @@ public class ScrmTaxDeclarationService {
             throw ScrmException.conflict("仅 FILED / OVERDUE 状态可缴款完成: id=" + id
                     + ", status=" + status);
         }
+        // 进入 PAID 必须有实缴金额，否则记录会成为「已缴款但金额为 null」，
+        // 对账按 sum(paid_amount) 统计时被静默漏掉，且没有任何报错。
+        // 零申报/减免是合法场景，但必须**显式传 0**——用「参数缺失」与「值为 0」
+        // 区分「没填」和「确实为零」，不能靠 null 混为一谈。
+        requirePaidAmount(id, paidAmount);
         record.setDeclarationStatus(STATUS_PAID);
         record.setPaidAt(LocalDateTime.now());
-        if (paidAmount != null) {
-            record.setPaidAmount(paidAmount);
-        }
+        record.setPaidAmount(paidAmount);
         if (receiptNo != null) {
             record.setTaxReceiptNo(receiptNo);
         }
@@ -540,6 +543,11 @@ public class ScrmTaxDeclarationService {
             throw ScrmException.conflict("仅 OVERDUE 状态可补报: id=" + id
                     + ", status=" + record.getDeclarationStatus());
         }
+        // 同 markPaid：补报直接进 PAID，也必须带实缴金额。零税额显式传 0。
+        requirePaidAmount(id, paidAmount);
+        if (taxAmount != null) {
+            requireNonNegative(id, "taxAmount", taxAmount);
+        }
         record.setDeclarationStatus(STATUS_PAID);
         record.setFiledAt(LocalDateTime.now());
         record.setFiledBy(operator());
@@ -547,9 +555,7 @@ public class ScrmTaxDeclarationService {
         if (taxAmount != null) {
             record.setTaxAmount(taxAmount);
         }
-        if (paidAmount != null) {
-            record.setPaidAmount(paidAmount);
-        }
+        record.setPaidAmount(paidAmount);
         if (receiptNo != null) {
             record.setTaxReceiptNo(receiptNo);
         }
@@ -1268,6 +1274,42 @@ public class ScrmTaxDeclarationService {
         }
         return profileRepository.findById(id)
                 .orElseThrow(() -> ScrmException.notFound("税种申报档案不存在: id=" + id));
+    }
+
+    /**
+     * 校验实缴税额必须显式提供。
+     *
+     * <p>进入 PAID 状态必须带金额：<b>缺失</b>（null）与<b>零</b>（0）语义不同。
+     * 零申报 / 减免是合法业务，但调用方必须显式传 {@code paidAmount=0}；完全不传
+     * 则拒绝，避免落出「已缴款但金额为 null」的记录——这类记录在对账按
+     * {@code sum(paid_amount)} 统计时会被静默漏掉，且不会有任何报错。</p>
+     *
+     * @param id         记录 ID（仅用于错误信息定位）
+     * @param paidAmount 实缴税额
+     * @throws ScrmException 未提供或为负数
+     */
+    private void requirePaidAmount(Long id, java.math.BigDecimal paidAmount) throws ScrmException {
+        if (paidAmount == null) {
+            throw ScrmException.badRequest(
+                    "实缴税额不能为空: id=" + id
+                            + "。零申报/减免请显式传 paidAmount=0（不传与传 0 语义不同）");
+        }
+        requireNonNegative(id, "paidAmount", paidAmount);
+    }
+
+    /**
+     * 校验金额字段非负。
+     *
+     * @param id     记录 ID（仅用于错误信息定位）
+     * @param field  字段名
+     * @param amount 金额
+     * @throws ScrmException 金额为负数
+     */
+    private void requireNonNegative(Long id, String field, java.math.BigDecimal amount)
+            throws ScrmException {
+        if (amount.signum() < 0) {
+            throw ScrmException.badRequest(field + " 不能为负数: id=" + id + ", value=" + amount);
+        }
     }
 
     /**
