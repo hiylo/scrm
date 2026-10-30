@@ -96,19 +96,82 @@ describe('MassSends', () => {
     await waitFor(() => expect(post).toHaveBeenCalledWith('/scrm/mass-send', expect.objectContaining({ taskName: '618 关怀' })));
   });
 
-  it('发布任务: 点击发布调用 publish', async () => {
-    get.mockImplementation((url: string) => {
-      if (url.startsWith('/scrm/mass-send?')) return Promise.resolve(page([task('1')]));
-      return Promise.resolve(page([]));
+    it('发布任务: 点击发布调用 publish', async () => {
+      get.mockImplementation((url: string) => {
+        if (url.startsWith('/scrm/mass-send?')) return Promise.resolve(page([task('1')]));
+        return Promise.resolve(page([]));
+      });
+      post.mockResolvedValue(task('1', { status: 'RUNNING' }));
+
+      renderPage();
+      await waitFor(() => expect(screen.getByText('任务1')).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: cn('发布') }));
+
+      await waitFor(() => expect(post).toHaveBeenCalledWith('/scrm/mass-send/1/publish'));
     });
-    post.mockResolvedValue(task('1', { status: 'RUNNING' }));
 
-    renderPage();
-    await waitFor(() => expect(screen.getByText('任务1')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: cn('发布') }));
+    it('暂停任务: RUNNING 行显示暂停按钮并调用 pause', async () => {
+      get.mockImplementation((url: string) => {
+        if (url.startsWith('/scrm/mass-send?')) return Promise.resolve(page([task('1', { status: 'RUNNING' })]));
+        return Promise.resolve(page([]));
+      });
+      post.mockResolvedValue(task('1', { status: 'PAUSED' }));
 
-    await waitFor(() => expect(post).toHaveBeenCalledWith('/scrm/mass-send/1/publish'));
-  });
+      renderPage();
+      await waitFor(() => expect(screen.getByText('任务1')).toBeInTheDocument());
+      // 与服务端状态机对齐：仅 RUNNING 显示暂停
+      fireEvent.click(screen.getByRole('button', { name: cn('暂停') }));
+
+      await waitFor(() => expect(post).toHaveBeenCalledWith('/scrm/mass-send/1/pause'));
+    });
+
+    it('恢复任务: PAUSED 行显示恢复按钮并调用 resume', async () => {
+      get.mockImplementation((url: string) => {
+        if (url.startsWith('/scrm/mass-send?')) return Promise.resolve(page([task('1', { status: 'PAUSED' })]));
+        return Promise.resolve(page([]));
+      });
+      post.mockResolvedValue(task('1', { status: 'RUNNING' }));
+
+      renderPage();
+      await waitFor(() => expect(screen.getByText('任务1')).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: cn('恢复') }));
+
+      await waitFor(() => expect(post).toHaveBeenCalledWith('/scrm/mass-send/1/resume'));
+    });
+
+    it('取消任务: RUNNING 行显示取消按钮并调用 cancel', async () => {
+      get.mockImplementation((url: string) => {
+        if (url.startsWith('/scrm/mass-send?')) return Promise.resolve(page([task('1', { status: 'RUNNING' })]));
+        return Promise.resolve(page([]));
+      });
+      post.mockResolvedValue(task('1', { status: 'COMPLETED' }));
+
+      renderPage();
+      await waitFor(() => expect(screen.getByText('任务1')).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: cn('取消') }));
+
+      await waitFor(() => expect(post).toHaveBeenCalledWith('/scrm/mass-send/1/cancel'));
+    });
+
+    it('状态门控: COMPLETED/FAILED 行不显示暂停/恢复/取消，DRAFT 行只显示发布', async () => {
+      get.mockImplementation((url: string) => {
+        if (url.startsWith('/scrm/mass-send?')) {
+          return Promise.resolve(page([task('1', { status: 'COMPLETED' }), task('2', { status: 'FAILED' }), task('3', { status: 'DRAFT' })]));
+        }
+        return Promise.resolve(page([]));
+      });
+
+      renderPage();
+      await waitFor(() => expect(screen.getByText('任务1')).toBeInTheDocument());
+
+      // 终态（COMPLETED/FAILED）不得出现暂停/恢复/取消
+      expect(screen.queryByRole('button', { name: cn('暂停') })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: cn('恢复') })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: cn('取消') })).not.toBeInTheDocument();
+      // DRAFT 行只允许发布（发布/编辑），不出现取消（取消按钮有意排除 DRAFT：草稿用编辑或删除路径）
+      expect(screen.getByRole('button', { name: cn('发布') })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: cn('取消') })).not.toBeInTheDocument();
+    });
 
   it('查看目标明细: 打开抽屉加载报告与明细', async () => {
     get.mockImplementation((url: string) => {
