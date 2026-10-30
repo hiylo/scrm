@@ -231,14 +231,6 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    group: '系统配置',
-    items: [
-      { key: '/data-dictionaries', icon: '📖', label: '数据字典', permission: 'scrm_data_dictionary:read', roles: ['admin'] },
-      { key: '/data-transfers', icon: '🔄', label: '导入导出', permission: 'scrm_data_transfer:read', roles: ['admin'] },
-      { key: '/customer-journeys', icon: '🧭', label: '客户旅程', permission: 'scrm_customer_journey:read', roles: ['admin', 'manager'] },
-    ],
-  },
-  {
     group: '运营协同',
     items: [
       { key: '/marketing-calendar', icon: '📅', label: '营销日历', permission: 'scrm_marketing_calendar:read', roles: ['admin', 'manager'] },
@@ -273,13 +265,6 @@ const navGroups: NavGroup[] = [
       { key: '/task-scheduler', icon: '⏰', label: '任务调度', permission: 'scrm_task_scheduler:read', roles: ['admin'] },
       { key: '/open-api-apps', icon: '🔐', label: 'OpenAPI', permission: 'scrm_open_api:read', roles: ['admin'] },
       { key: '/message-template-center', icon: '🗂️', label: '模板中心', permission: 'scrm_message_template_center:read', roles: ['admin', 'manager', 'sales'] },
-    ],
-  },
-  {
-    group: '风控管理',
-    items: [
-      { key: '/risk-rules', icon: '🚨', label: '风险规则', permission: 'scrm_risk_rule:read', roles: ['admin', 'manager'] },
-      { key: '/risk-signals', icon: '⚠️', label: '风控信号', permission: 'scrm_risk_signal:read', roles: ['admin', 'manager'] },
     ],
   },
   {

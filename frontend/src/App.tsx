@@ -145,6 +145,23 @@ const appRoutes: Array<{ path?: string; index?: boolean; element: React.ReactEle
   { path: 'notifications', element: <Notifications /> },
   { path: 'webhooks', element: <Webhooks /> },
   { path: 'dashboard', element: <Dashboard /> },
+  { path: 'marketing-calendar', element: <MarketingCalendar /> },
+  { path: 'approvals', element: <Approvals /> },
+  { path: 'reports', element: <Reports /> },
+  { path: 'customer-care', element: <CustomerCare /> },
+  { path: 'visits', element: <Visits /> },
+  { path: 'follow-ups', element: <FollowUps /> },
+  { path: 'work-orders', element: <WorkOrders /> },
+  { path: 'interaction-calendar', element: <InteractionCalendars /> },
+  { path: 'competitors', element: <Competitors /> },
+  { path: 'budgets', element: <Budgets /> },
+  { path: 'data-dictionaries', element: <DataDictionaries /> },
+  { path: 'data-transfers', element: <DataTransfers /> },
+  { path: 'customer-journeys', element: <CustomerJourneys /> },
+  { path: 'journey-canvas', element: <JourneyCanvas /> },
+  { path: 'segments', element: <Segments /> },
+  { path: 'task-scheduler', element: <TaskScheduler /> },
+  { path: 'open-api-apps', element: <OpenApiApps /> },
 ];
 
 /** 主路由组件 */
