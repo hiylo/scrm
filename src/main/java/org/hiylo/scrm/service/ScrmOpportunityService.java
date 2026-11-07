@@ -758,13 +758,19 @@ public class ScrmOpportunityService {
         Pageable sorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
                 Sort.by(Sort.Direction.DESC, "amount"));
         Page<ScrmOpportunityDto> page = opportunityRepository.findAll(spec, sorted).map(this::toOpportunityDto);
-        // 汇总统计 (native query)
-        Object[] summary = opportunityRepository.forecastSummary(ownerId);
+        // 汇总统计 (native query)：聚合查询恒返回一行，取首行后按列解包。
+        // 不能直接把返回值当对象数组用——那拿到的是「行列表」，summary[0] 会是
+        // 整行 Object[] 而不是首列数值（2026-10-28 forecast 500 的根因）。
+        List<Object[]> rows = opportunityRepository.forecastSummary(ownerId);
+        Object[] summary = rows == null || rows.isEmpty() ? null : rows.get(0);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("ownerId", ownerId);
-        result.put("totalCount", summary != null && summary[0] != null ? ((Number) summary[0]).longValue() : 0L);
-        result.put("totalAmount", summary != null && summary[1] != null ? ((Number) summary[1]).doubleValue() : 0d);
-        result.put("weightedAmount", summary != null && summary[2] != null ? ((Number) summary[2]).doubleValue() : 0d);
+        result.put("totalCount", summary != null && summary.length > 0 && summary[0] != null
+                ? ((Number) summary[0]).longValue() : 0L);
+        result.put("totalAmount", summary != null && summary.length > 1 && summary[1] != null
+                ? ((Number) summary[1]).doubleValue() : 0d);
+        result.put("weightedAmount", summary != null && summary.length > 2 && summary[2] != null
+                ? ((Number) summary[2]).doubleValue() : 0d);
         result.put("items", page);
         return result;
     }
