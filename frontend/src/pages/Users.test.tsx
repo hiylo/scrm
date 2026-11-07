@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : Users.test.tsx
  * Description : 用户管理页面的加载 / 列表 / 创建 / 启用禁用 / 重置密码测试

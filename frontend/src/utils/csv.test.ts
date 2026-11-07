@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : csv.test.ts
  * Description : CSV 解析纯函数测试 (单行切分 / 引号转义 / BOM / 表头映射 / 文件读取)

@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : Conversations.test.tsx
  * Description : 会话管理页面的加载 / 列表渲染 / 选中会话 / 发送消息 / 空数据与报错降级 / utils 接线测试

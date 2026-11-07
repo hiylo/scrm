@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : MarketingCalendar.test.tsx
  * Description : 营销日历页面的事件加载 / 新建事件 / 状态流转 / 假日测试

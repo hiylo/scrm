@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : CustomerJourneys.test.tsx
  * Description : 客户旅程页面的加载 / 新建旅程 / 启动 / 步骤测试

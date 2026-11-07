@@ -1,5 +1,5 @@
 <!--
-Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
 Project : scrm
 File : CONTRIBUTING.md
 Date : 2026/09/20 00:00:00
@@ -57,7 +57,7 @@ Contact : hiylo@live.com
 
 ```java
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : {文件名}.java
  * Date : yyyy/MM/dd HH:mm:ss

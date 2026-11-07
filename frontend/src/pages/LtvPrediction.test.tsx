@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : LtvPrediction.test.tsx
  * Description : LTV 预测页面的模型加载 / 新建模型 / 发布 / 同期群 / 预测明细测试

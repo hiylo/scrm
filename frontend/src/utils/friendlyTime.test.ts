@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : friendlyTime.test.ts
  * Description : formatFriendlyTime 纯函数直测 (从 Conversations 页面内联实现提取后的行为固化)

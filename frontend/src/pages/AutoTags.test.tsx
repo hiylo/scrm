@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : AutoTags.test.tsx
  * Description : 自动打标规则页面的加载 / 创建 / 启停 / 手动评估测试

@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : OpenApiApps.test.tsx
  * Description : OpenAPI 管理页面的应用加载 / 新建应用 / 暂停 / 密钥测试

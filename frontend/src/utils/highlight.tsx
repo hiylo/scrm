@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : highlight.tsx
  * Description : 搜索结果关键词高亮渲染 (从 pages/Conversations.tsx 原样提取, 行为未做任何修改)

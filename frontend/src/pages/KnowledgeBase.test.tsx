@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : KnowledgeBase.test.tsx
  * Description : 知识库页面的分类树加载 / 文章列表 / 新建文章 / 发布测试

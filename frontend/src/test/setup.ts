@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : setup.ts
  * Description : 测试全局初始化: jest-dom 匹配器、antd 所需的浏览器 API 垫片、用例间清理

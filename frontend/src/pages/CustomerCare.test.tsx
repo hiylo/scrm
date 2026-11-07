@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : CustomerCare.test.tsx
  * Description : 客户关怀页面的规则加载 / 新建规则 / 任务执行 / 记录测试
