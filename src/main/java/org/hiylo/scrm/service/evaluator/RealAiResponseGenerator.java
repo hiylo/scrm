@@ -9,10 +9,12 @@
 package org.hiylo.scrm.service.evaluator;
 
 import lombok.extern.slf4j.Slf4j;
+import org.hiylo.scrm.config.AiProviderRegistry;
 import org.hiylo.scrm.entity.ScrmAiAssistantConfigEntity;
 import org.hiylo.scrm.feign.AiChatClient;
 import org.hiylo.scrm.feign.dto.AiChatRequest;
 import org.hiylo.scrm.feign.dto.AiChatResponse;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
@@ -73,8 +75,11 @@ public class RealAiResponseGenerator implements AiResponseGenerator {
     /** 默认生成最大 token 数 */
     private final int maxTokens;
 
+    /** AI Provider 运行时路由（配置了默认文本 provider 时，优先按 Provider 动态调用） */
+    private final AiProviderRegistry providerRegistry;
+
     /**
-     * 构造真实 AI 回复生成器。
+     * 构造真实 AI 回复生成器（老构造器：环境变量静态配置路径；供单元测试手动 new）。
      *
      * @param aiChatClient      AI 对话客户端
      * @param fallbackGenerator 占位生成器 (降级回退)
@@ -87,11 +92,32 @@ public class RealAiResponseGenerator implements AiResponseGenerator {
                                    @Value("${scrm.ai.model:gpt-4o-mini}") String model,
                                    @Value("${scrm.ai.temperature:0.7}") double temperature,
                                    @Value("${scrm.ai.max-tokens:500}") int maxTokens) {
+        this(aiChatClient, fallbackGenerator, model, temperature, maxTokens, null);
+    }
+
+    /**
+     * 构造真实 AI 回复生成器（Provider 路由路径，Spring 注入首选）。
+     *
+     * @param aiChatClient      AI 对话客户端
+     * @param fallbackGenerator 占位生成器 (降级回退)
+     * @param model             默认模型名称
+     * @param temperature       默认采样温度
+     * @param maxTokens         默认生成最大 token 数
+     * @param providerRegistry  AI Provider 运行时路由（可为 null，null 时走老配置路径）
+     */
+    @Autowired
+    public RealAiResponseGenerator(AiChatClient aiChatClient,
+                                   DefaultAiResponseGenerator fallbackGenerator,
+                                   @Value("${scrm.ai.model:gpt-4o-mini}") String model,
+                                   @Value("${scrm.ai.temperature:0.7}") double temperature,
+                                   @Value("${scrm.ai.max-tokens:500}") int maxTokens,
+                                   AiProviderRegistry providerRegistry) {
         this.aiChatClient = aiChatClient;
         this.fallbackGenerator = fallbackGenerator;
         this.model = model;
         this.temperature = temperature;
         this.maxTokens = maxTokens;
+        this.providerRegistry = providerRegistry;
     }
 
     /**
@@ -108,7 +134,7 @@ public class RealAiResponseGenerator implements AiResponseGenerator {
                            String detectedIntent, String sentiment) {
         try {
             AiChatRequest request = buildRequest(message, config, detectedIntent, sentiment);
-            AiChatResponse response = aiChatClient.chatCompletion(request);
+            AiChatResponse response = chatWithBestProvider(request, config);
             String content = response == null ? null : response.getFirstContent();
             if (content == null || content.isBlank()
                     || AiChatClient.FALLBACK_CONTENT.equals(content)) {
@@ -122,6 +148,36 @@ public class RealAiResponseGenerator implements AiResponseGenerator {
             log.warn("调用真实 AI 服务异常, 回退占位生成器: err={}", e.getMessage());
             return fallbackGenerator.generate(message, config, detectedIntent, sentiment);
         }
+    }
+
+    /**
+     * 选择最优通道发起对话补全：
+     * <ol>
+     *   <li>配置了 {@code AiProviderRegistry} 且存在默认文本 provider →
+     *       从 Provider 动态构建客户端并调用（模型接入点由系统管理配置）</li>
+     *   <li>否则回退环境变量静态配置的 {@link AiChatClient}</li>
+     * </ol>
+     *
+     * @param request 对话请求（模型/温度/maxTokens 已按配置实体回退）
+     * @param config  AI 配置实体（可空）
+     * @return AI 响应（异常/未启用时含降级内容）
+     */
+    private AiChatResponse chatWithBestProvider(AiChatRequest request,
+                                                ScrmAiAssistantConfigEntity config) {
+        if (providerRegistry != null) {
+            var providerOpt = providerRegistry.resolveTextProvider();
+            if (providerOpt.isPresent()) {
+                var provider = providerOpt.get();
+                AiChatClient providerClient = AiChatClient.fromProvider(provider);
+                // Provider 优先级高于 config/model 字段：以 Provider 默认模型为准，
+                // 但 config 显式指定模型时仍尊重业务配置
+                if (request.getModel() == null || request.getModel().isBlank()) {
+                    request.setModel(providerClient.getDefaultModel());
+                }
+                return providerClient.chatCompletion(request);
+            }
+        }
+        return aiChatClient.chatCompletion(request);
     }
 
     /**

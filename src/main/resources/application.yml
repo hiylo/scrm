@@ -163,18 +163,11 @@ scrm:
       token-refresh-advance-seconds: ${GETUI_TOKEN_REFRESH_ADVANCE_SECONDS:300}
 
   # ==================================================================
-  # 财税定制域配置（模块①②③④⑤, 详见文件末尾 finance: 总清单）
+  # 财税定制域配置（模块①③④⑤, 详见文件末尾 finance: 总清单）
   # 绑定这些前缀的 @ConfigurationProperties 类在 org.hiylo.scrm.config / feign 下,
   # 本处仅做「finance.* → scrm.*」别名, 保证配置只有一个书写来源（finance 段）,
   # 不覆盖上方任何既有 scrm.* 配置项。
   # ==================================================================
-  # 模块② 证照 OCR（OcrApiConfig）
-  ocr:
-    enabled: ${finance.ocr.enabled}
-    base-url: ${finance.ocr.base-url}
-    token: ${finance.ocr.token}
-    connect-timeout-seconds: ${finance.ocr.connect-timeout-seconds}
-    read-timeout-seconds: ${finance.ocr.read-timeout-seconds}
   # 模块① 工商税务巡检（ScrmInspectionProperties / QixinApiConfig）
   inspection:
     business-cron: ${finance.inspection.business-cron}
@@ -329,28 +322,14 @@ sentry:
 #      ${finance.<域>.<项>} 引用本段, 因此改本段即可生效, 不存在两处维护。
 #   2) 不覆盖任何既有配置: 上方 scrm.* 原有项（security/storage/ai/rate-limit/
 #      wework/workflow/push 等）保持原样, 本段只服务财税新增域。
-#   3) 所有敏感值（API key / OCR 令牌）一律 ${ENV:占位} 形式, 默认空 +
+#   3) 所有敏感值（API key / 访问令牌）一律 ${ENV:占位} 形式, 默认空 +
 #      fail-closed, 不落库、不入日志、不入提交（全局安全红线）。
 #   4) 开关类默认值统一为「关闭」: 未部署外部服务时不发起任何请求。
-#   5) 对应关系: 模块①=inspection, ②=ocr, ③=knowledge, ④=marketing-batch,
+#   5) 对应关系: 模块①=inspection, ③=knowledge, ④=marketing-batch,
 #      ⑤=lead-push, 报税/续费/政策=tax-calendar/renewal/policy-push。
+#      （证照 OCR 已迁移到 AI Provider 体系, 配置见系统管理「AI Providers」）
 # ----------------------------------------------------------------------
 finance:
-  # ========== 模块② 证照 OCR（D04, 详见 docs/tasks/D04-config.md）==========
-  # 对接 wx-console ocr-service（T07 契约）, 内部服务经内网访问, 不公网暴露。
-  ocr:
-    # 总开关: 默认 false（ocr-service 未部署前不发请求, fail-closed）
-    enabled: ${SCRM_OCR_ENABLED:false}
-    # 服务地址, 含 /api/ocr 前缀; 同机试点改为 http://127.0.0.1:8097/api/ocr
-    base-url: ${SCRM_OCR_BASE_URL:http://192.168.1.180:8097/api/ocr}
-    # 内部令牌（请求头 X-OCR-Token）: 与 ocr-service 端 OCR_TOKEN 一致,
-    # 生产用 openssl rand -hex 32 生成后经环境变量注入, 禁止写默认值
-    token: ${SCRM_OCR_TOKEN:}
-    # 连接超时（秒）
-    connect-timeout-seconds: ${SCRM_OCR_CONNECT_TIMEOUT_SECONDS:10}
-    # 读取超时（秒）: VL 180s 上限 + 排队余量
-    read-timeout-seconds: ${SCRM_OCR_READ_TIMEOUT_SECONDS:200}
-
   # ========== 模块① 工商税务巡检（D05, 详见 docs/tasks/T02、T03）==========
   inspection:
     # 工商 API 巡检 cron（默认每天 02:30, 错峰）

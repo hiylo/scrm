@@ -8,7 +8,6 @@
  */
 package org.hiylo.scrm.config;
 
-import org.hiylo.scrm.feign.OcrApiConfig;
 import org.hiylo.scrm.feign.QixinApiConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -34,10 +33,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ActiveProfiles("test")
 @DisplayName("财税定制域配置绑定（finance 段 → scrm 别名 → ConfigurationProperties）")
 class FinanceConfigBindingTest {
-
-    /** 证照 OCR 配置 */
-    @Autowired
-    private OcrApiConfig ocrApiConfig;
 
     /** 启信宝工商 API 配置 */
     @Autowired
@@ -70,16 +65,6 @@ class FinanceConfigBindingTest {
     /** 营销批量生成配置 */
     @Autowired
     private ScrmMarketingBatchProperties marketingBatchProperties;
-
-    @Test
-    @DisplayName("模块② 证照 OCR: fail-closed 默认 + 地址/超时按 finance.ocr 绑定")
-    void ocrConfigBindsFromFinanceSection() {
-        assertThat(ocrApiConfig.isEnabled()).as("默认关闭（未部署 ocr-service 不发请求）").isFalse();
-        assertThat(ocrApiConfig.getToken()).as("令牌默认空").isEmpty();
-        assertThat(ocrApiConfig.getBaseUrl()).isEqualTo("http://192.168.1.180:8097/api/ocr");
-        assertThat(ocrApiConfig.getConnectTimeoutSeconds()).isEqualTo(10);
-        assertThat(ocrApiConfig.getReadTimeoutSeconds()).isEqualTo(200);
-    }
 
     @Test
     @DisplayName("模块① 巡检: 启信宝默认关闭、cron/接收人按 finance.inspection 绑定")

@@ -49,8 +49,9 @@ import java.util.UUID;
  * 承载「证照上传 → OCR 识别 → 结果落库 → 低置信度字段人工复核」全链路:
  * </p>
  * <ul>
- *   <li><b>上传识别</b>: multipart 证照经 {@link OcrRecognizeClient} 调 OCR 服务
- *       {@code POST /api/ocr/recognize}, 原图先入对象存储（影像域, 契约 §7.4）</li>
+ *   <li><b>上传识别</b>: multipart 证照经 {@link OcrRecognizer}（由
+ *       {@code OcrRecognizerRouter} 按能力路由到 AI Provider 多模态 / 本地视觉）
+ *       识别, 原图先入对象存储（影像域, 契约 §7.4）</li>
  *   <li><b>结果落库</b>: fields/verification/lines/全文与复核标记落
  *       {@code scrm_license_ocr_task}, 敏感字段（身份证号/银行账号等）随 JSON 列
  *       整列 AES-GCM 加密（{@code EncryptedStringConverter}）, 日志全程脱敏</li>
@@ -99,8 +100,8 @@ public class ScrmLicenseOcrService {
     /** 对象存储配置 */
     private final org.hiylo.scrm.storage.StorageProperties storageProperties;
 
-    /** OCR 识别客户端 */
-    private final OcrRecognizer ocrRecognizeClient;
+    /** 证照识别入口（OcrRecognizerRouter 按能力路由到多模态 Provider / 本地视觉） */
+    private final OcrRecognizer ocrRecognizer;
 
     /** 证照 OCR 任务数据访问层 */
     private final ScrmLicenseOcrTaskRepository taskRepository;
@@ -158,7 +159,7 @@ public class ScrmLicenseOcrService {
             // 2) 调 OCR 识别
             String requestId = "license-" + entity.getId() + "-"
                     + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
-            OcrRecognizeResponse response = ocrRecognizeClient.recognize(
+            OcrRecognizeResponse response = ocrRecognizer.recognize(
                     file, dto.getLicenseType(), requestId);
             // 3) 结果落库 + 复核标记
             applyRecognizeResult(entity, response);

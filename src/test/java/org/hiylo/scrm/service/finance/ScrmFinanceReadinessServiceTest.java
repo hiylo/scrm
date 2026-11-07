@@ -8,8 +8,8 @@
  */
 package org.hiylo.scrm.service.finance;
 
+import org.hiylo.scrm.config.AiProviderRegistry;
 import org.hiylo.scrm.config.ScrmInspectionProperties;
-import org.hiylo.scrm.feign.OcrApiConfig;
 import org.hiylo.scrm.feign.QixinApiConfig;
 import org.hiylo.scrm.integration.wework.config.WeworkConfig;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,6 +24,7 @@ import org.springframework.core.env.Environment;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
@@ -51,7 +52,9 @@ class ScrmFinanceReadinessServiceTest {
     @Mock
     private Environment environment;
 
-    private OcrApiConfig ocrApiConfig;
+    /** AI Provider 运行时路由 mock（默认无 image provider, OCR 走本地视觉判定） */
+    @Mock
+    private AiProviderRegistry providerRegistry;
 
     private org.hiylo.scrm.config.VisionModelProperties visionProperties;
 
@@ -65,14 +68,13 @@ class ScrmFinanceReadinessServiceTest {
 
     @BeforeEach
     void setUp() {
-        ocrApiConfig = new OcrApiConfig();
         visionProperties = new org.hiylo.scrm.config.VisionModelProperties();
         qixinApiConfig = new QixinApiConfig();
         inspectionProperties = new ScrmInspectionProperties();
         weworkConfig = new WeworkConfig();
         when(environment.getProperty("scrm.ai.enabled", Boolean.class, false)).thenReturn(false);
         when(environment.getProperty("scrm.ai.base-url", "")).thenReturn("http://localhost:14000");
-        service = new ScrmFinanceReadinessService(environment, ocrApiConfig, visionProperties,
+        service = new ScrmFinanceReadinessService(environment, providerRegistry, visionProperties,
                 qixinApiConfig, inspectionProperties, weworkConfig);
     }
 
@@ -163,6 +165,8 @@ class ScrmFinanceReadinessServiceTest {
     @DisplayName("全部依赖就绪：allReady=true")
     void allReady_whenEverythingConfigured() {
         when(environment.getProperty("scrm.ai.enabled", Boolean.class, false)).thenReturn(true);
+        when(providerRegistry.resolveImageProvider())
+                .thenReturn(Optional.of(provider("http://192.168.1.150:3425", "group/sensenova-pool")));
         visionProperties.setEnabled(true);
         qixinApiConfig.setEnabled(true);
         qixinApiConfig.setToken("t");
@@ -176,15 +180,70 @@ class ScrmFinanceReadinessServiceTest {
     }
 
     @Test
+    @DisplayName("证照 OCR：AI Provider 多模态就绪 → 判定就绪（不走本地视觉）")
+    void ocrReady_whenProviderImageConfigured() {
+        when(providerRegistry.resolveImageProvider())
+                .thenReturn(Optional.of(provider("http://192.168.1.150:3425", "group/sensenova-pool")));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> modules = (List<Map<String, Object>>) service.readiness().get("modules");
+        Map<String, Object> ocr = modules.stream()
+                .filter(m -> "licenseOcr".equals(m.get("key")))
+                .findFirst().orElseThrow();
+
+        assertThat(ocr.get("ready")).isEqualTo(true);
+        assertThat(String.valueOf(ocr.get("detail"))).contains("group/sensenova-pool");
+    }
+
+    @Test
+    @DisplayName("证照 OCR：本地视觉启用 → 就绪（Provider 无 image 时兜底）")
+    void ocrReady_whenLocalVisionEnabled() {
+        visionProperties.setEnabled(true);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> modules = (List<Map<String, Object>>) service.readiness().get("modules");
+        Map<String, Object> ocr = modules.stream()
+                .filter(m -> "licenseOcr".equals(m.get("key")))
+                .findFirst().orElseThrow();
+
+        assertThat(ocr.get("ready")).isEqualTo(true);
+        assertThat(String.valueOf(ocr.get("detail"))).contains("视觉通道");
+    }
+
+    @Test
+    @DisplayName("证照 OCR：Provider 与本地视觉都无 → 不就绪且提示系统管理配置")
+    void ocrNotReady_whenNoChannel() {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> modules = (List<Map<String, Object>>) service.readiness().get("modules");
+        Map<String, Object> ocr = modules.stream()
+                .filter(m -> "licenseOcr".equals(m.get("key")))
+                .findFirst().orElseThrow();
+
+        assertThat(ocr.get("ready")).isEqualTo(false);
+        assertThat(String.valueOf(ocr.get("blocker"))).contains("AI Providers");
+    }
+
+    @Test
     @DisplayName("安全：汇总结果不含 token 明文")
     void doesNotLeakToken() {
         qixinApiConfig.setEnabled(true);
         qixinApiConfig.setToken("super-secret-qixin-token");
-        ocrApiConfig.setToken("super-secret-ocr-token");
 
         String dump = service.readiness().toString();
 
         assertThat(dump).doesNotContain("super-secret-qixin-token");
-        assertThat(dump).doesNotContain("super-secret-ocr-token");
+    }
+
+    /** 构造一个启用中的多模态 provider 实体 */
+    private org.hiylo.scrm.entity.ScrmAiProviderEntity provider(String baseUrl, String model) {
+        org.hiylo.scrm.entity.ScrmAiProviderEntity p =
+                new org.hiylo.scrm.entity.ScrmAiProviderEntity();
+        p.setProviderName("测试网关");
+        p.setApiBaseUrl(baseUrl);
+        p.setDefaultModel(model);
+        p.setCapability("text,image");
+        p.setEnabled(true);
+        p.setDefaultImage(true);
+        return p;
     }
 }

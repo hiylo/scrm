@@ -13,7 +13,7 @@ import org.hiylo.scrm.dto.ScrmLicenseOcrTaskDto;
 import org.hiylo.scrm.entity.ScrmLicenseOcrTaskEntity;
 import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.feign.OcrApiException;
-import org.hiylo.scrm.feign.OcrRecognizeClient;
+import org.hiylo.scrm.feign.OcrRecognizer;
 import org.hiylo.scrm.feign.dto.ocr.OcrField;
 import org.hiylo.scrm.feign.dto.ocr.OcrRecognizeResponse;
 import org.hiylo.scrm.feign.dto.ocr.OcrVerification;
@@ -68,9 +68,9 @@ class ScrmLicenseOcrServiceTest {
     @Mock
     private ObjectStorage objectStorage;
 
-    /** OCR 识别客户端 mock */
+    /** 证照识别入口 mock（接口, 由 OcrRecognizerRouter 按能力路由） */
     @Mock
-    private OcrRecognizeClient ocrRecognizeClient;
+    private OcrRecognizer ocrRecognizer;
 
     /** 任务数据访问层 mock */
     @Mock
@@ -100,7 +100,7 @@ class ScrmLicenseOcrServiceTest {
         storageProperties.setBucket("scrm-assets");
         objectMapper = new ObjectMapper();
         service = new ScrmLicenseOcrService(
-                objectStorage, storageProperties, ocrRecognizeClient, taskRepository,
+                objectStorage, storageProperties, ocrRecognizer, taskRepository,
                 new CompanyResolver(customerRepository, companyRepository), objectMapper,
                 financeDataScope);
         when(taskRepository.save(any(ScrmLicenseOcrTaskEntity.class)))
@@ -175,7 +175,7 @@ class ScrmLicenseOcrServiceTest {
     @Test
     @DisplayName("uploadAndRecognize_成功: 全部必填 ok → SUCCEEDED + 无需复核")
     void uploadAndRecognize_success() throws Exception {
-        when(ocrRecognizeClient.recognize(any(MultipartFile.class), anyString(), anyString()))
+        when(ocrRecognizer.recognize(any(MultipartFile.class), anyString(), anyString()))
                 .thenReturn(okResponse());
         MultipartFile file = new MockMultipartFile("file", "license.jpg",
                 "image/jpeg", new byte[]{1, 2, 3});
@@ -194,7 +194,7 @@ class ScrmLicenseOcrServiceTest {
     @Test
     @DisplayName("uploadAndRecognize_低置信: 必填 status!=ok 或 verification.ok=false → PARTIAL + REQUIRED")
     void uploadAndRecognize_lowConfidence() throws Exception {
-        when(ocrRecognizeClient.recognize(any(MultipartFile.class), anyString(), anyString()))
+        when(ocrRecognizer.recognize(any(MultipartFile.class), anyString(), anyString()))
                 .thenReturn(lowConfidenceResponse());
         MultipartFile file = new MockMultipartFile("file", "license.jpg",
                 "image/jpeg", new byte[]{1, 2, 3});
@@ -211,8 +211,8 @@ class ScrmLicenseOcrServiceTest {
     @Test
     @DisplayName("uploadAndRecognize_调用异常: 落 FAILED + REQUIRED, 不抛业务异常")
     void uploadAndRecognize_ocrException() throws Exception {
-        doThrow(new OcrApiException("OCR 服务未启用 (scrm.ocr.enabled=false)", false))
-                .when(ocrRecognizeClient)
+        doThrow(new OcrApiException("证照识别未启用（请先在系统管理配置 AI Provider 多模态能力）", false))
+                .when(ocrRecognizer)
                 .recognize(any(MultipartFile.class), anyString(), anyString());
         MultipartFile file = new MockMultipartFile("file", "license.jpg",
                 "image/jpeg", new byte[]{1, 2, 3});
@@ -223,7 +223,7 @@ class ScrmLicenseOcrServiceTest {
 
         assertThat(entity.getTaskStatus()).isEqualTo("FAILED");
         assertThat(entity.getReviewStatus()).isEqualTo("REQUIRED");
-        assertThat(entity.getErrorMessage()).contains("OCR 服务未启用");
+        assertThat(entity.getErrorMessage()).contains("证照识别未启用");
         assertThat(entity.getOverallOk()).isNull();
     }
 

@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.hiylo.scrm.config.VisionModelProperties;
+import org.hiylo.scrm.entity.ScrmAiProviderEntity;
 import org.hiylo.scrm.feign.OcrApiException;
 import org.hiylo.scrm.feign.OcrRecognizer;
 import org.hiylo.scrm.feign.dto.ocr.OcrField;
@@ -125,8 +126,46 @@ public class LocalVisionOcrClient implements OcrRecognizer {
     /** JSON 解析器 */
     private final ObjectMapper objectMapper;
 
-    /** HTTP 客户端 */
+    /** HTTP 客户端（环境变量路径的 RestClient，与老构造器同一实例） */
     private final RestClient restClient;
+
+    /**
+     * 视觉调用目标端点参数（两种来源：环境变量 properties 或 AI Provider 实体）。
+     */
+    private static final class VisionEndpoint {
+        /** 基础地址 */
+        final String baseUrl;
+        /** 对话补全路径 */
+        final String chatPath;
+        /** 模型名 */
+        final String model;
+        /** 是否关闭思考（推理型模型必须关闭，否则 reasoning 吃光 token） */
+        final boolean enableThinking;
+        /** 温度 */
+        final double temperature;
+        /** 最大 token 数 */
+        final int maxTokens;
+        /** API 密钥（可空） */
+        final String apiKey;
+        /** 引擎标识（响应中展示，如 local-vision:<model>） */
+        final String engine;
+        /** 设备标识 */
+        final String device;
+
+        VisionEndpoint(String baseUrl, String chatPath, String model,
+                       boolean enableThinking, double temperature, int maxTokens,
+                       String apiKey, String engine, String device) {
+            this.baseUrl = baseUrl;
+            this.chatPath = chatPath;
+            this.model = model;
+            this.enableThinking = enableThinking;
+            this.temperature = temperature;
+            this.maxTokens = maxTokens;
+            this.apiKey = apiKey;
+            this.engine = engine;
+            this.device = device;
+        }
+    }
 
     /**
      * 构造本地视觉识别客户端。
@@ -156,7 +195,7 @@ public class LocalVisionOcrClient implements OcrRecognizer {
     }
 
     /**
-     * 识别证照图片（视觉模型 + 确定性校验）。
+     * 识别证照图片（环境变量配置路径：scrm.vision.*）。
      *
      * @param file      证照图片
      * @param type      识别类型
@@ -177,39 +216,139 @@ public class LocalVisionOcrClient implements OcrRecognizer {
             throw new OcrApiException("文件超过 " + properties.getMaxFileSizeMb() + "MB 上限", false);
         }
         String normalizedType = normalizeType(type);
-        String reqId = (requestId == null || requestId.isBlank())
-                ? "vision-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12)
-                : requestId;
-
-        long start = System.currentTimeMillis();
+        String reqId = (reqId0(requestId, "vision"));
+        VisionEndpoint endpoint = new VisionEndpoint(
+                properties.getBaseUrl(), properties.getChatPath(), properties.getModel(),
+                properties.isEnableThinking(), properties.getTemperature(), properties.getMaxTokens(),
+                properties.getApiKey(), "local-vision:" + properties.getModel(), "local");
         try {
             modelManager.ensureAvailable();
         } catch (VisionModelException e) {
             throw new OcrApiException("视觉模型不可用: " + e.getMessage(), false);
         }
+        return doRecognize(file, normalizedType, reqId, endpoint);
+    }
 
+    /**
+     * 识别证照图片（AI Provider 路由路径：系统管理配置的多模态 provider）。
+     * <p>
+     * Provider 体系下证照 OCR 由 {@link OcrRecognizerRouter} 按能力（image）
+     * 路由到默认多模态 provider（如 Magpie 网关 group/sensenova-pool），
+     * 不再依赖环境变量 scrm.vision.*。图片经内网网关识别，不占本机 GPU。
+     * </p>
+     *
+     * @param file      证照图片
+     * @param type      识别类型
+     * @param requestId 链路标识（可空）
+     * @param provider  多模态 AI Provider 实体
+     * @return 统一识别响应
+     * @throws OcrApiException 参数非法 / 调用失败
+     */
+    public OcrRecognizeResponse recognizeWithProvider(MultipartFile file, String type,
+                                                      String requestId,
+                                                      ScrmAiProviderEntity provider)
+            throws OcrApiException {
+        if (file == null || file.isEmpty()) {
+            throw new OcrApiException("识别文件不能为空", false);
+        }
+        String normalizedType = normalizeType(type);
+        String reqId = reqId0(requestId, "provider");
+        int maxMb = properties.getMaxFileSizeMb();
+        if (file.getSize() > (long) maxMb * 1024 * 1024) {
+            throw new OcrApiException("文件超过 " + maxMb + "MB 上限", false);
+        }
+        String model = provider.getDefaultModel() == null || provider.getDefaultModel().isBlank()
+                ? properties.getModel() : provider.getDefaultModel().trim();
+        // 证照抽取用视觉专用参数（低温度降幻觉 + 大 max_tokens 防 reasoning 吃光正文），
+        // 不沿用 provider 的通用对话参数（温度 0.7 过高、maxTokens 500 对 9 字段 JSON 太小）
+        double temperature = properties.getTemperature();
+        int maxTokens = properties.getMaxTokens();
+        boolean enableThinking = false; // 证照抽取一律关思考，避免 reasoning 吃光 max_tokens
+        VisionEndpoint endpoint = new VisionEndpoint(
+                trimSlash(provider.getApiBaseUrl()),
+                provider.getChatPath() == null || provider.getChatPath().isBlank()
+                        ? "/v1/chat/completions" : provider.getChatPath().trim(),
+                model, enableThinking, temperature, maxTokens,
+                provider.getApiKey(), "local-vision:" + model, "local");
+        return doRecognize(file, normalizedType, reqId, endpoint);
+    }
+
+    /**
+     * 生成链路标识。
+     *
+     * @param requestId 调用方传入的标识（可空）
+     * @param prefix    缺省标识前缀
+     * @return 非空标识
+     */
+    private static String reqId0(String requestId, String prefix) {
+        return (requestId == null || requestId.isBlank())
+                ? prefix + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12)
+                : requestId;
+    }
+
+    /**
+     * 去除 URL 尾部斜杠。
+     *
+     * @param url 原始地址
+     * @return 规范化地址
+     */
+    private static String trimSlash(String url) {
+        if (url == null) {
+            return "";
+        }
+        String s = url.trim();
+        while (s.endsWith("/")) {
+            s = s.substring(0, s.length() - 1);
+        }
+        return s;
+    }
+
+    /**
+     * 核心识别流程（调用视觉模型 + 字段解析 + 确定性校验）。
+     *
+     * @param file       图片文件
+     * @param type       规范化识别类型
+     * @param requestId  链路标识
+     * @param endpoint   目标端点参数
+     * @return 统一识别响应
+     * @throws OcrApiException 调用失败
+     */
+    private OcrRecognizeResponse doRecognize(MultipartFile file, String type, String requestId,
+                                             VisionEndpoint endpoint) throws OcrApiException {
+        long start = System.currentTimeMillis();
         String rawContent;
         try {
-            rawContent = callVision(file, normalizedType);
+            rawContent = callVision(file, type, endpoint);
+            // 网关偶发返回空正文（reasoning 吃光 max_tokens / 抖动）：重试一次，
+            // 避免直接把「字段全空 + 强制人工复核」的劣质结果落库
+            Map<String, String> firstPass = parseFields(rawContent, type);
+            if (firstPass.isEmpty() || firstPass.values().stream().allMatch(String::isBlank)) {
+                log.warn("[视觉OCR] 首轮结果字段全空(正文={}字符), 重试一次: type={}",
+                        rawContent == null ? 0 : rawContent.length(), type);
+                long retryStart = System.currentTimeMillis();
+                rawContent = callVision(file, type, endpoint);
+                log.warn("[视觉OCR] 重试完成: 耗时={}ms", System.currentTimeMillis() - retryStart);
+            }
         } catch (Exception e) {
-            log.warn("[本地视觉OCR] 调用失败: type={}, err={}", normalizedType, e.getMessage());
+            log.warn("[视觉OCR] 调用失败: type={}, err={}", type, e.getMessage());
             throw new OcrApiException("视觉模型调用失败: " + e.getMessage(), false);
         }
         long elapsed = System.currentTimeMillis() - start;
-
-        Map<String, String> values = parseFields(rawContent, normalizedType);
-        return buildResponse(reqId, normalizedType, values, rawContent, elapsed);
+        Map<String, String> values = parseFields(rawContent, type);
+        return buildResponse(requestId, type, values, rawContent, elapsed, endpoint);
     }
 
     /**
      * 调用视觉模型（OpenAI 兼容视觉格式）。
      *
-     * @param file 图片
-     * @param type 识别类型
+     * @param file     图片
+     * @param type     识别类型
+     * @param endpoint 目标端点参数
      * @return 模型返回的正文
      * @throws Exception 读取文件或请求失败
      */
-    private String callVision(MultipartFile file, String type) throws Exception {
+    private String callVision(MultipartFile file, String type, VisionEndpoint endpoint)
+            throws Exception {
         byte[] bytes = file.getBytes();
         String mime = detectMime(file.getOriginalFilename(), file.getContentType());
         String dataUrl = "data:" + mime + ";base64," + Base64.getEncoder().encodeToString(bytes);
@@ -220,18 +359,19 @@ public class LocalVisionOcrClient implements OcrRecognizer {
         Map<String, Object> message = Map.of("role", "user",
                 "content", List.of(textPart, imagePart));
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", properties.getModel());
+        body.put("model", endpoint.model);
         body.put("messages", List.of(message));
-        body.put("temperature", properties.getTemperature());
-        body.put("max_tokens", properties.getMaxTokens());
+        body.put("temperature", endpoint.temperature);
+        body.put("max_tokens", endpoint.maxTokens);
         // 推理型模型（sensenova / deepseek 等）必须显式关闭思考，否则 reasoning 吃光 max_tokens、
         // 正文返回空。llama-server 靠启动参数 --reasoning off，网关靠这个请求字段。
-        if (!properties.isEnableThinking()) {
+        if (!endpoint.enableThinking) {
             body.put("enable_thinking", false);
         }
 
-        String raw = restClient.post()
-                .uri(properties.getChatPath())
+        RestClient client = buildRestClient(endpoint);
+        String raw = client.post()
+                .uri(endpoint.chatPath)
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.APPLICATION_JSON)
                 .body(body)
@@ -240,6 +380,26 @@ public class LocalVisionOcrClient implements OcrRecognizer {
         JsonNode root = objectMapper.readTree(raw == null ? "{}" : raw);
         JsonNode content = root.path("choices").path(0).path("message").path("content");
         return content.isMissingNode() || content.isNull() ? "" : content.asText();
+    }
+
+    /**
+     * 按目标端点构建 RestClient（每次调用新建，端点参数来自 provider 动态配置）。
+     *
+     * @param endpoint 端点参数
+     * @return RestClient
+     */
+    private RestClient buildRestClient(VisionEndpoint endpoint) {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(Math.max(1, properties.getConnectTimeoutSeconds())));
+        factory.setReadTimeout(Duration.ofSeconds(Math.max(1, properties.getReadTimeoutSeconds())));
+        RestClient.Builder builder = RestClient.builder()
+                .baseUrl(endpoint.baseUrl)
+                .requestFactory(factory)
+                .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE);
+        if (endpoint.apiKey != null && !endpoint.apiKey.isBlank()) {
+            builder = builder.defaultHeader("Authorization", "Bearer " + endpoint.apiKey);
+        }
+        return builder.build();
     }
 
     /**
@@ -283,7 +443,7 @@ public class LocalVisionOcrClient implements OcrRecognizer {
         int start = json.indexOf('{');
         int end = json.lastIndexOf('}');
         if (start < 0 || end <= start) {
-            log.warn("[本地视觉OCR] 模型输出无 JSON 对象, head={}", truncate(raw, 120));
+            log.warn("[视觉OCR] 模型输出无 JSON 对象, head={}", truncate(raw, 120));
             return result;
         }
         try {
@@ -296,7 +456,7 @@ public class LocalVisionOcrClient implements OcrRecognizer {
                 }
             });
         } catch (Exception e) {
-            log.warn("[本地视觉OCR] JSON 解析失败: err={}, head={}", e.getMessage(), truncate(json, 120));
+            log.warn("[视觉OCR] JSON 解析失败: err={}, head={}", e.getMessage(), truncate(json, 120));
         }
         return result;
     }
@@ -309,17 +469,19 @@ public class LocalVisionOcrClient implements OcrRecognizer {
      * @param values    识别值
      * @param raw       模型原始输出
      * @param elapsedMs 耗时
+     * @param endpoint  目标端点参数（engine/device 取自于此）
      * @return 统一响应
      */
     private OcrRecognizeResponse buildResponse(String requestId, String type,
                                                Map<String, String> values,
-                                               String raw, long elapsedMs) {
+                                               String raw, long elapsedMs,
+                                               VisionEndpoint endpoint) {
         OcrRecognizeResponse response = new OcrRecognizeResponse();
         response.setRequestId(requestId);
         response.setOk(true);
         response.setMode("vl");
-        response.setEngine("local-vision:" + properties.getModel());
-        response.setDevice("local");
+        response.setEngine(endpoint.engine);
+        response.setDevice(endpoint.device);
         response.setElapsedMs(elapsedMs);
         response.setType(type);
         response.setText(raw);
@@ -370,7 +532,7 @@ public class LocalVisionOcrClient implements OcrRecognizer {
             response.setWarnings(new ArrayList<>(List.of(
                     "存在校验不通过的字段，已转人工复核（共 " + allProblems.size() + " 项）")));
         }
-        log.info("[本地视觉OCR] 完成: type={}, docType={}, 字段={}, 问题={}, 耗时={}ms",
+        log.info("[视觉OCR] 完成: type={}, docType={}, 字段={}, 问题={}, 耗时={}ms",
                 type, response.getDocType(), values.size(), allProblems.size(), elapsedMs);
         return response;
     }

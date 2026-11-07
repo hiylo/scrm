@@ -39,6 +39,7 @@ import dayjs from 'dayjs';
 import { apiClient } from '../api/client';
 import { useRole } from '../hooks/useRole';
 import { usePlatforms } from '../hooks/usePlatforms';
+import AiProvidersPanel from './AiProvidersPanel';
 
 /** 平台配置实体 */
 interface PlatformConfig {
@@ -107,9 +108,12 @@ const notificationTypes = [
 /** 通知偏好 Tab 的 key */
 const NOTIFICATION_TAB_KEY = 'notifications';
 
+/** AI Provider Tab 的 key */
+const AI_PROVIDERS_TAB_KEY = 'ai-providers';
+
 /**
  * 系统设置页面
- * 平台连接配置与系统参数管理
+ * 平台连接配置、AI Provider 与系统参数管理
  */
 export default function Settings() {
   const { message, modal } = App.useApp();
@@ -616,6 +620,16 @@ export default function Settings() {
               </div>
             ),
           })),
+          // AI Provider Tab (模型接入点统一管理: 文本/多模态按能力路由)
+          {
+            key: AI_PROVIDERS_TAB_KEY,
+            label: 'AI Providers',
+            children: (
+              <div style={{ maxWidth: 1000 }}>
+                <AiProvidersPanel />
+              </div>
+            ),
+          },
           // 通知偏好 Tab (独立于平台配置, 数据持久化于 localStorage)
           {
             key: NOTIFICATION_TAB_KEY,

@@ -35,7 +35,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "scrm.vision")
 public class VisionModelProperties {
 
-    /** 是否启用本地视觉识别（与 scrm.ocr.enabled 二选一或同时启用由路由决定） */
+    /** 是否启用本地视觉识别（与 AI Provider 多模态通道互为兜底，由路由决定优先级） */
     private boolean enabled = false;
 
     /** 是否由 scrm 托管模型进程（true=Java 用 ProcessBuilder 拉起; false=连外部服务） */

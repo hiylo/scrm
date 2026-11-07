@@ -14,12 +14,14 @@ import org.springframework.web.multipart.MultipartFile;
 /**
  * 证照识别统一入口（实现可替换）。
  * <p>
- * 由两类实现提供能力, 由 {@link OcrRecognizerRouter} 按配置路由:
+ * 由 {@link OcrRecognizerRouter} 按能力路由:
  * <ul>
- *   <li>{@link OcrRecognizeClient} —— 外接 OCR 服务（Python/FastAPI 或独立进程）</li>
+ *   <li>AI Provider 多模态（首选，系统管理内配置的 vision 能力 provider）</li>
  *   <li>{@link org.hiylo.scrm.feign.vision.LocalVisionOcrClient} —— 本地视觉大模型（llama-server, 数据不出内网）</li>
  * </ul>
- * 两者返回同一 {@link OcrRecognizeResponse} 契约, 证照域（任务/字段落库/低置信度复核）
+ * 外接 OCR 服务（wx-console ocr-service / RapidOCR）已于 2026-11-08 移除——
+ * 多模态语义化抽取 + 确定性字段校验优于纯文字识别。各实现返回统一
+ * {@link OcrRecognizeResponse} 契约, 证照域（任务/字段落库/低置信度复核）
  * 无需感知底层是哪一种。
  * </p>
  *

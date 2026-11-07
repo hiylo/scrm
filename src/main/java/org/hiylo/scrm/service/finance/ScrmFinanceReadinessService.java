@@ -10,8 +10,8 @@ package org.hiylo.scrm.service.finance;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.hiylo.scrm.config.AiProviderRegistry;
 import org.hiylo.scrm.config.ScrmInspectionProperties;
-import org.hiylo.scrm.feign.OcrApiConfig;
 import org.hiylo.scrm.feign.QixinApiConfig;
 import org.hiylo.scrm.integration.wework.config.WeworkConfig;
 import org.springframework.core.env.Environment;
@@ -62,10 +62,10 @@ public class ScrmFinanceReadinessService {
     /** 环境变量读取器（AI 等未走 @ConfigurationProperties 的开关） */
     private final Environment environment;
 
-    /** 证照 OCR 配置（外接 OCR 服务） */
-    private final OcrApiConfig ocrApiConfig;
+    /** AI Provider 运行时路由（证照 OCR 多模态能力来源） */
+    private final AiProviderRegistry providerRegistry;
 
-    /** 视觉模型配置（本地 llama-server 或 OpenAI 兼容视觉网关） */
+    /** 视觉模型配置（本地 llama-server，数据不出内网） */
     private final org.hiylo.scrm.config.VisionModelProperties visionProperties;
 
     /** 启信宝（工商 API）配置 */
@@ -96,23 +96,22 @@ public class ScrmFinanceReadinessService {
                         : "设置 SCRM_AI_ENABLED=true 并配置 SCRM_AI_BASE_URL（NAS LiteLLM 或 ai-server）"));
 
         // ---------- ② 证照 OCR ----------
-        // 识别实际经 OcrRecognizerRouter 路由: 视觉通道启用时优先, 否则走外接 OCR 服务。
-        // 就绪判定必须按「同一优先级」来, 否则会出现「视觉已启用但状态显示未就绪」的误导。
-        if (visionProperties.isEnabled()) {
-            modules.add(module("licenseOcr", "证照 OCR 识别", true,
-                    "视觉通道: " + visionProperties.getModel() + " @ " + visionProperties.getBaseUrl(),
-                    null));
+        // 识别经 OcrRecognizerRouter 路由: AI Provider 多模态优先, 本地视觉兜底。
+        // 外接 OCR 服务已移除（2026-11-08）——多模态语义化抽取优于纯文字识别。
+        var imageProvider = providerRegistry.resolveImageProvider();
+        boolean providerVisionReady = imageProvider.isPresent();
+        boolean localVisionReady = visionProperties.isEnabled();
+        if (providerVisionReady || localVisionReady) {
+            String detail = providerVisionReady
+                    ? "AI Provider 多模态: " + imageProvider.get().getDefaultModel()
+                    + " @ " + imageProvider.get().getApiBaseUrl()
+                    : "视觉通道: " + visionProperties.getModel() + " @ " + visionProperties.getBaseUrl();
+            modules.add(module("licenseOcr", "证照 OCR 识别", true, detail, null));
         } else {
-            boolean ocrEnabled = ocrApiConfig.isEnabled();
-            boolean ocrConfigured = ocrApiConfig.getBaseUrl() != null
-                    && !ocrApiConfig.getBaseUrl().isBlank();
-            modules.add(module("licenseOcr", "证照 OCR 识别", ocrEnabled && ocrConfigured,
-                    ocrConfigured
-                            ? "外接 OCR 服务地址: " + ocrApiConfig.getBaseUrl()
-                            : "未配置 scrm.ocr.base-url",
-                    ocrEnabled && ocrConfigured ? null
-                            : "开启视觉通道（SCRM_VISION_ENABLED=true）或部署 OCR 服务并设 "
-                                    + "SCRM_OCR_ENABLED=true / SCRM_OCR_BASE_URL"));
+            modules.add(module("licenseOcr", "证照 OCR 识别", false,
+                    "未配置任何视觉通道",
+                    "在系统管理「AI Providers」配置具备 image 能力的 Provider 并设为默认多模态，"
+                            + "或开启本地视觉（SCRM_VISION_ENABLED=true）"));
         }
 
         // ---------- ③ 工商巡检（启信宝） ----------

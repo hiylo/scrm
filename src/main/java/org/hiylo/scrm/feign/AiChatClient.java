@@ -9,6 +9,7 @@
 package org.hiylo.scrm.feign;
 
 import lombok.extern.slf4j.Slf4j;
+import org.hiylo.scrm.entity.ScrmAiProviderEntity;
 import org.hiylo.scrm.feign.dto.AiChatRequest;
 import org.hiylo.scrm.feign.dto.AiChatResponse;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,6 +26,11 @@ import java.util.Collections;
  * 以 {@link RestClient} 直连 AI 服务, 提供对话补全能力。AI 服务为可选组件,
  * 地址由 {@code scrm.ai.base-url} 配置, 关闭 ({@code scrm.ai.enabled=false})
  * 或服务不可达时不抛异常, 而是返回带降级提示的响应, 由上层替换为客户友好文案。
+ * </p>
+ * <p>
+ * <b>Provider 路由</b>：见 {@link #fromProvider(ScrmAiProviderEntity)}——
+ * 系统管理内配置的 AI Provider 可直接构建客户端，文本任务按能力路由到
+ * 默认文本 provider，实现模型接入点的动态管理（无需重启）。
  * </p>
  *
  * @author Hsi Chu
@@ -63,6 +69,12 @@ public class AiChatClient {
 
     /** 默认模型名 (由 scrm.ai.model 配置); 调用方未显式指定时注入到请求体 */
     private final String model;
+
+    /** Provider 路由感知的温度（来自 {@link #fromProvider} 构建的 provider 配置） */
+    private double providerTemperature = 0.7;
+
+    /** Provider 路由感知的最大 token 数（来自 {@link #fromProvider} 构建的 provider 配置） */
+    private int providerMaxTokens = 500;
 
     /** 建立连接超时 (毫秒), 由 scrm.ai.connect-timeout-ms 配置 */
     private static final int DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
@@ -110,12 +122,49 @@ public class AiChatClient {
 
     /**
      * 当前客户端使用的默认模型名。
-     * <p>包内可见，仅供测试断言「{@code scrm.ai.model} 是否真的生效」。</p>
      *
      * @return 生效的模型名
      */
-    String getDefaultModel() {
+    public String getDefaultModel() {
         return model;
+    }
+
+    /**
+     * 按 AI Provider 注册表条目构建对话客户端。
+     * <p>
+     * Provider 体系下，模型接入点在系统管理内动态配置（base-url / api-key /
+     * chat-path / model / temperature / maxTokens 全部取自 Provider），文本任务
+     * 路由到默认文本 provider，证照 OCR 路由到默认多模态 provider。该静态工厂
+     * 让调用方免于感知 RestClient 细节，直接拿 Provider 实体构建可用的客户端。
+     * 原 {@link #AiChatClient(String, boolean, String, String, String, boolean, int, int)}
+     * 构造器保留不动（老配置路径与测试仍在使用）。</p>
+     *
+     * @param provider Provider 实体
+     * @return 以 Provider 配置构建的 AI 对话客户端
+     */
+    public static AiChatClient fromProvider(ScrmAiProviderEntity provider) {
+        String baseUrl = provider.getApiBaseUrl() == null ? "" : provider.getApiBaseUrl().trim();
+        while (baseUrl.endsWith("/")) {
+            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+        }
+        String chatPath = provider.getChatPath() == null || provider.getChatPath().isBlank()
+                ? DEFAULT_CHAT_COMPLETIONS_PATH : provider.getChatPath().trim();
+        String apiKey = provider.getApiKey() == null ? "" : provider.getApiKey();
+        String model = (provider.getDefaultModel() == null || provider.getDefaultModel().isBlank())
+                ? DEFAULT_MODEL : provider.getDefaultModel().trim();
+        // 走 Provider 时按 provider 配置注入能力状态：
+        //   基础地址有效 + 具备 text 能力 → 视为已启用（无鉴权 provider 如本地
+        //   llama-server 允许 api-key 为空）；模型名空 → 回退默认模型名
+        boolean effectiveEnabled = !baseUrl.isEmpty()
+                && provider.getCapability() != null
+                && provider.getCapability().toLowerCase().contains("text");
+        double temp = provider.getTemperature() == null ? 0.7 : provider.getTemperature();
+        int maxTokens = provider.getMaxTokens() == null ? 500 : provider.getMaxTokens();
+        AiChatClient client = new AiChatClient(baseUrl, effectiveEnabled, chatPath, apiKey,
+                model, false, DEFAULT_CONNECT_TIMEOUT_MS, DEFAULT_READ_TIMEOUT_MS);
+        client.providerTemperature = temp;
+        client.providerMaxTokens = maxTokens;
+        return client;
     }
 
     /**
