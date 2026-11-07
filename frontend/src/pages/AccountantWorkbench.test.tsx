@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : AccountantWorkbench.test.tsx
  * Description : 会计工作台的角色分流测试（会计不展示分派总览，也不请求他人工作量）

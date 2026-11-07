@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm-finance
  * File : ScrmLedgerService.java
  * Date : 2026/10/25 22:10:00

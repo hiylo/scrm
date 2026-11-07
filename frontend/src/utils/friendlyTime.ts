@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : friendlyTime.ts
  * Description : 会话列表用的"友好时间"格式化 (从 pages/Conversations.tsx 原样提取, 行为未做任何修改)

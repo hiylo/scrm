@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : Segments.test.tsx
  * Description : 客户分群页面的加载 / 新建分群 / 计算 / 成员测试

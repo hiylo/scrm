@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : vitest.config.ts
  * Description : 单元测试配置 (Vitest + jsdom), 与 vite.config.ts 独立, 不影响 dev/build 配置

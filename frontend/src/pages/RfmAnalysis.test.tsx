@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : RfmAnalysis.test.tsx
  * Description : RFM 客户价值分析页面的配置加载 / 新建配置 / 计算 / 明细测试

@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : JourneyCanvas.test.tsx
  * Description : 客户旅程画布编辑器的加载 / 步骤保存 / 调用契约测试

@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : Contracts.test.tsx
  * Description : 合同管理页面的加载 / 新建 / 状态流转 / 回款抽屉测试

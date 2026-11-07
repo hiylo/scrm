@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm-finance
  * File : FinanceDataScopeTest.java
  * Description : 财税数据范围的角色映射与 fail-closed 行为测试

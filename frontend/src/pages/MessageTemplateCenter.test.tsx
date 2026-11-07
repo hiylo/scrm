@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : MessageTemplateCenter.test.tsx
  * Description : 消息模板中心页面的模板/分组加载 / 新建 / 发布 / 分组管理测试

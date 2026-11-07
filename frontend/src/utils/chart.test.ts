@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : chart.test.ts
  * Description : recordToPieData 纯函数单测 (空值 / 翻译兜底 / 键序稳定 / 异常值)

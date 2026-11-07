@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : AiAssistant.test.tsx
  * Description : AI 助手页面的客户加载 / 对话发送 / 空态与报错降级测试

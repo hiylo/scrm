@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : Competitors.test.tsx
  * Description : 竞品监测页面的加载 / 新建竞品 / 监控启停 / 产品抽屉测试

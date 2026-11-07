@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : QuickReplies.test.tsx
  * Description : 快捷回复页面的分类加载 / 回复列表加载 / 新建回复测试

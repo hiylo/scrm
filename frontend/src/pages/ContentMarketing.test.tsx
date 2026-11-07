@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : ContentMarketing.test.tsx
  * Description : 内容营销页面的加载 / 新建 / 提交审核 / 审核测试

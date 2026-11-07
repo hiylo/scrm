@@ -1,5 +1,5 @@
 /*
- * Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+ * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : ScrmRenewalApprovalFlowTest.java
  * Description : 续费审批自动接线测试（自动发起 / 通过回填 / 驳回回退 / 回调容错）

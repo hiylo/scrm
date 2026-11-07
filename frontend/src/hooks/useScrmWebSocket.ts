@@ -1,4 +1,4 @@
-// Copyright(c) 2016 - Present, Clouds Studio Holding Limited. All rights reserved.
+// Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
 import { useEffect, useRef, useCallback, useState } from 'react';
 
 /** WebSocket 通知类型 */
