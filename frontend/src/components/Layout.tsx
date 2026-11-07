@@ -135,7 +135,7 @@ const navGroups: NavGroup[] = [
   {
     group: '财税业务',
     items: [
-      { key: '/workbench', icon: '🧑‍💼', label: '会计工作台', permission: 'scrm_company:read', roles: ['admin', 'manager', 'sales', 'viewer', 'accountant'] },
+      { key: '/workbench', icon: '💼', label: '会计工作台', permission: 'scrm_company:read', roles: ['admin', 'manager', 'sales', 'viewer', 'accountant'] },
       { key: '/compliance', icon: '📋', label: '合规到期', permission: 'scrm_annual_report:read', roles: ['admin', 'manager', 'sales', 'viewer', 'accountant'] },
       { key: '/payroll', icon: '🧾', label: '社保个税', permission: 'scrm_employee:read', roles: ['admin', 'manager', 'sales', 'viewer', 'accountant'] },
       { key: '/documents', icon: '🗄️', label: '资料归档', permission: 'scrm_customer_document:read', roles: ['admin', 'manager', 'sales', 'viewer', 'accountant'] },
