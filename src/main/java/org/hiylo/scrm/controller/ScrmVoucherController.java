@@ -11,12 +11,14 @@ package org.hiylo.scrm.controller;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hiylo.scrm.common.OperationResponse;
+import org.hiylo.scrm.dto.ScrmAiVoucherSuggestionDto;
 import org.hiylo.scrm.dto.ScrmVoucherSaveDto;
 import org.hiylo.scrm.entity.ScrmAccountSubjectEntity;
 import org.hiylo.scrm.entity.ScrmVoucherEntity;
 import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.rbac.annotation.RequirePermission;
 import org.hiylo.scrm.entity.ScrmAccountPeriodEntity;
+import org.hiylo.scrm.service.finance.voucher.ScrmAiVoucherAssistService;
 import org.hiylo.scrm.service.finance.voucher.ScrmFinancialReportService;
 import org.hiylo.scrm.service.finance.voucher.ScrmLedgerService;
 import org.hiylo.scrm.service.finance.voucher.ScrmPeriodCloseService;
@@ -34,6 +36,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -66,6 +69,9 @@ public class ScrmVoucherController {
 
     /** 账簿服务 */
     private final ScrmLedgerService ledgerService;
+
+    /** AI 智能凭证助手（票据识别 → 凭证草稿建议） */
+    private final ScrmAiVoucherAssistService aiVoucherAssistService;
 
     /** 财税数据范围（会计越权校验：所有 companyId 入参都要过白名单） */
     private final org.hiylo.scrm.service.finance.FinanceDataScope financeDataScope;
@@ -462,6 +468,28 @@ public class ScrmVoucherController {
         assertCompanyAccessible(companyId);
         return OperationResponse.build(
                 voucherService.periodSummary(companyId, periodYear, periodMonth));
+    }
+
+    /**
+     * AI 智能凭证：上传票据图片（发票/银行回单），返回识别出的凭证草稿建议。
+     * <p>
+     * 建议含票据字段 + 借贷分录（科目已按企业科目表过滤、借贷已校验平衡），
+     * 由会计人工确认后调 {@link #createVoucher(Long, ScrmVoucherSaveDto)} 落草稿，
+     * 绝不自动入账。
+     * </p>
+     *
+     * @param companyId 公司主体 ID
+     * @param file      票据图片
+     * @return 凭证草稿建议
+     * @throws ScrmException 文件非法 / 未配置多模态 Provider / 识别失败
+     */
+    @RequirePermission(resource = "scrm_voucher", action = "create")
+    @PostMapping("/ai/recognize-entry")
+    public OperationResponse<ScrmAiVoucherSuggestionDto> aiRecognizeEntry(
+            @RequestParam Long companyId, @RequestParam("file") MultipartFile file)
+            throws ScrmException {
+        assertCompanyAccessible(companyId);
+        return OperationResponse.build(aiVoucherAssistService.recognizeEntry(companyId, file));
     }
 
     /**

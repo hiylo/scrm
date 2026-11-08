@@ -1377,6 +1377,28 @@ export interface Voucher {
   voidedAt?: string;
 }
 
+/** AI 智能凭证建议的分录行 */
+export interface AiVoucherSuggestionEntry {
+  subjectCode: string;
+  subjectName: string;
+  direction: 'DEBIT' | 'CREDIT';
+  amount: number;
+  summary?: string;
+}
+
+/** AI 智能凭证：票据识别建议（含票据字段 + 已过滤/已平衡的分录） */
+export interface AiVoucherSuggestion {
+  valid: boolean;
+  billType?: string;
+  billNo?: string;
+  billDate?: string;
+  counterparty?: string;
+  amount?: number;
+  summary?: string;
+  warnings?: string[];
+  entries?: AiVoucherSuggestionEntry[];
+}
+
 /** 凭证分录 */
 export interface VoucherEntry {
   id?: string;
@@ -1438,6 +1460,16 @@ export const initSubjects = (companyId: string) =>
 /** 查询科目 */
 export const listSubjects = (companyId: string) =>
   apiClient.get<AccountSubject[]>('/scrm/vouchers/subjects', { params: { companyId } });
+
+/** AI 智能凭证：上传票据图片识别 → 凭证草稿建议（科目已按企业科目表过滤、借贷已校验平衡） */
+export const aiRecognizeVoucher = (companyId: string, file: File) => {
+  const form = new FormData();
+  form.append('file', file);
+  return apiClient.post<AiVoucherSuggestion>('/scrm/vouchers/ai/recognize-entry', form, {
+    params: { companyId },
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
 
 /** 新增科目 */
 export const createSubject = (payload: Partial<AccountSubject>) =>

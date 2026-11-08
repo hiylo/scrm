@@ -29,9 +29,11 @@ import {
   Tag,
   Tooltip,
   Typography,
+  Upload,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
+  CameraOutlined,
   CheckCircleOutlined,
   DeleteOutlined,
   PlusOutlined,
@@ -42,6 +44,7 @@ import {
 } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import {
+  aiRecognizeVoucher,
   createVoucher,
   deleteVoucher,
   getTrialBalance,
@@ -55,6 +58,7 @@ import {
   updateVoucher,
   voidVoucher,
   type AccountSubject,
+  type AiVoucherSuggestion,
   type TrialBalance,
   type TrialBalanceRow,
   type Voucher,
@@ -146,6 +150,8 @@ export default function Voucher() {
   const [editingStatus, setEditingStatus] = useState<string>('DRAFT');
   const [entries, setEntries] = useState<VoucherEntry[]>([]);
   const [saving, setSaving] = useState(false);
+  const [aiRecognizing, setAiRecognizing] = useState(false);
+  const [aiWarnings, setAiWarnings] = useState<string[]>([]);
   const [editorForm] = Form.useForm<{
     voucherWord: string;
     voucherDate: Dayjs;
@@ -371,6 +377,54 @@ export default function Voucher() {
         ? prev
         : prev.filter((_, i) => i !== index).map((e, i) => ({ ...e, lineNo: i + 1 })),
     );
+  };
+
+  /** AI 智能凭证：上传票据图片 → 识别 → 回填分录草稿 */
+  const handleAiRecognize = async (file: File) => {
+    if (!companyId) {
+      message.warning('请先选择企业');
+      return;
+    }
+    setAiRecognizing(true);
+    setAiWarnings([]);
+    try {
+      const suggestion: AiVoucherSuggestion = await aiRecognizeVoucher(companyId, file);
+      if (!suggestion.valid) {
+        setAiWarnings(suggestion.warnings || ['AI 未能生成有效凭证草稿，请手工录入']);
+        message.warning(suggestion.warnings?.[0] || '识别结果不完整，请核对后手工录入');
+        return;
+      }
+      const mapped: VoucherEntry[] = (suggestion.entries || []).map((e, index) => ({
+        lineNo: index + 1,
+        subjectCode: e.subjectCode,
+        subjectName: e.subjectName,
+        summary: e.summary || suggestion.summary || '',
+        debitAmount: e.direction === 'DEBIT' ? Number(e.amount) || 0 : 0,
+        creditAmount: e.direction === 'CREDIT' ? Number(e.amount) || 0 : 0,
+      }));
+      if (mapped.length < 2) {
+        setAiWarnings(suggestion.warnings || ['识别结果分录不足，请核对']);
+        message.warning('识别结果分录不足，请核对后手工补齐');
+        return;
+      }
+      setEntries(mapped);
+      editorForm.setFieldsValue({
+        voucherDate: suggestion.billDate ? dayjs(suggestion.billDate) : period.endOf('month'),
+        remark: suggestion.billNo ? `AI 识别票据 ${suggestion.billType || ''} ${suggestion.billNo}` : undefined,
+      } as never);
+      if (suggestion.amount !== undefined) {
+        message.success(
+          `识别成功：${suggestion.billType || '票据'} 金额 ${money(Number(suggestion.amount))}，分录已回填，请核对后保存`,
+        );
+      } else {
+        message.success('识别成功，分录已回填，请核对后保存');
+      }
+      setAiWarnings(suggestion.warnings || []);
+    } catch {
+      // 已统一提示
+    } finally {
+      setAiRecognizing(false);
+    }
   };
 
   /** 保存凭证 */
@@ -960,6 +1014,23 @@ export default function Voucher() {
         ]}
       >
         <Form form={editorForm} layout="inline" style={{ marginBottom: 16 }}>
+          <Form.Item label="AI 识别" style={{ marginBottom: 0 }}>
+            <Upload
+              accept="image/png,image/jpeg,image/webp"
+              maxCount={1}
+              showUploadList={false}
+              beforeUpload={() => false}
+              onChange={({ file: f }) => {
+                if (f.originFileObj) {
+                  void handleAiRecognize(f.originFileObj);
+                }
+              }}
+            >
+              <Button icon={<CameraOutlined />} loading={aiRecognizing} disabled={!!editingId}>
+                {aiRecognizing ? '识别中…' : '扫票据识别'}
+              </Button>
+            </Upload>
+          </Form.Item>
           <Form.Item name="voucherWord" label="凭证字">
             <Select
               style={{ width: 90 }}
@@ -976,6 +1047,22 @@ export default function Voucher() {
             <Input placeholder="整张凭证的说明" maxLength={500} />
           </Form.Item>
         </Form>
+
+        {aiWarnings.length > 0 && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message="AI 识别提示（请人工核对）"
+            description={
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {aiWarnings.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+            }
+          />
+        )}
 
         <Alert
           type={Math.abs(balanceDiff) < 0.001 && totalDebit > 0 ? 'success' : 'warning'}
