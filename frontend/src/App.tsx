@@ -99,6 +99,8 @@ const Segments = lazy(() => import('./pages/Segments'));
 const TaskScheduler = lazy(() => import('./pages/TaskScheduler'));
 const OpenApiApps = lazy(() => import('./pages/OpenApiApps'));
 const MessageTemplateCenter = lazy(() => import('./pages/MessageTemplateCenter'));
+const FixedAssets = lazy(() => import('./pages/FixedAssets'));
+const TaxRiskProfile = lazy(() => import('./pages/TaxRiskProfile'));
 
 /** 页面加载占位符 */
 const PageLoading = () => (
@@ -204,6 +206,8 @@ const appRoutes: Array<{ path?: string; index?: boolean; element: React.ReactEle
   { path: 'segments', element: <Segments /> },
   { path: 'task-scheduler', element: <TaskScheduler /> },
   { path: 'open-api-apps', element: <OpenApiApps /> },
+  { path: 'fixed-assets', element: <FixedAssets /> },
+  { path: 'tax-risk-profile', element: <TaxRiskProfile /> },
 ];
 
 /** 主路由组件 */
