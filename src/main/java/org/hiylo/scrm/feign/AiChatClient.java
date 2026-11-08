@@ -130,6 +130,24 @@ public class AiChatClient {
     }
 
     /**
+     * 当前客户端使用 Provider 配置的温度（来自 {@link #fromProvider}；老配置路径返回默认 0.7）。
+     *
+     * @return 生效的采样温度
+     */
+    public double getTemperature() {
+        return providerTemperature;
+    }
+
+    /**
+     * 当前客户端使用 Provider 配置的最大 token 数（来自 {@link #fromProvider}；老配置路径返回默认 500）。
+     *
+     * @return 生效的最大 token 数
+     */
+    public int getMaxTokens() {
+        return providerMaxTokens;
+    }
+
+    /**
      * 按 AI Provider 注册表条目构建对话客户端。
      * <p>
      * Provider 体系下，模型接入点在系统管理内动态配置（base-url / api-key /

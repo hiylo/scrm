@@ -12,6 +12,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.hiylo.scrm.config.AiProviderRegistry;
 import org.hiylo.scrm.config.ScrmMarketingBatchProperties;
 import org.hiylo.scrm.dto.ScrmMarketingBatchGenerateDto;
 import org.hiylo.scrm.dto.ScrmMarketingVariantDto;
@@ -21,6 +22,7 @@ import org.hiylo.scrm.feign.AiChatClient;
 import org.hiylo.scrm.feign.dto.AiChatRequest;
 import org.hiylo.scrm.feign.dto.AiChatResponse;
 import org.hiylo.scrm.service.ScrmMessageTemplateCenterService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
@@ -100,6 +102,13 @@ public class ScrmMarketingBatchGenerationService {
 
     /** 批量生成配置 */
     private final ScrmMarketingBatchProperties properties;
+
+    /**
+     * AI Provider 运行时路由（后台配置的模型接入点；可为 null——null 或未配置
+     * 默认文本 provider 时，回退到 {@link #aiChatClient} 的老环境变量路径）。
+     */
+    @Autowired(required = false)
+    private AiProviderRegistry providerRegistry;
 
     /** 合规校验器 (程序化拦截) */
     private final MarketingComplianceValidator complianceValidator;
@@ -326,7 +335,7 @@ public class ScrmMarketingBatchGenerationService {
                             new AiChatRequest.AiChatMessage(ROLE_USER, userPrompt)
                     ))
                     .build();
-            AiChatResponse response = aiChatClient.chatCompletion(request);
+            AiChatResponse response = chatWithBestProvider(request);
             String content = response == null ? null : response.getFirstContent();
             if (content == null || content.isBlank() || AiChatClient.FALLBACK_CONTENT.equals(content)) {
                 log.warn("营销批量生成触发降级: templateCode={}, model={}", template.getTemplateCode(), request.getModel());
@@ -337,6 +346,33 @@ public class ScrmMarketingBatchGenerationService {
             log.warn("批量生成调用 AI 异常: templateCode={}, err={}", template.getTemplateCode(), e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * 选择最优通道发起对话补全（Provider 优先、老环境变量路径兜底）。
+     * <p>
+     * 配置了 {@link AiProviderRegistry} 且存在默认文本 provider 时，从 Provider
+     * 动态构建客户端并按 Provider 的模型/温度/maxTokens 发起调用——模型接入点
+     * 由系统管理后台配置，变更即时生效，无需重启。
+     * </p>
+     *
+     * @param request 对话请求（构建时已使用模板/全局配置默认值，Provider 路由会覆盖）
+     * @return AI 响应（异常/未启用时含降级内容）
+     */
+    private AiChatResponse chatWithBestProvider(AiChatRequest request) {
+        if (providerRegistry != null) {
+            var providerOpt = providerRegistry.resolveTextProvider();
+            if (providerOpt.isPresent()) {
+                AiChatClient providerClient = AiChatClient.fromProvider(providerOpt.get());
+                if (request.getModel() == null || request.getModel().isBlank()) {
+                    request.setModel(providerClient.getDefaultModel());
+                }
+                request.setTemperature(providerClient.getTemperature());
+                request.setMaxTokens(providerClient.getMaxTokens());
+                return providerClient.chatCompletion(request);
+            }
+        }
+        return aiChatClient.chatCompletion(request);
     }
 
     /**

@@ -12,12 +12,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.hiylo.scrm.config.AiProviderRegistry;
 import org.hiylo.scrm.entity.ScrmTaxHolidayDraftEntity;
 import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.feign.AiChatClient;
 import org.hiylo.scrm.feign.dto.AiChatRequest;
 import org.hiylo.scrm.feign.dto.AiChatResponse;
 import org.hiylo.scrm.repository.ScrmTaxHolidayDraftRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -62,6 +64,13 @@ public class ScrmTaxHolidayExtractService {
 
     /** 草稿数据访问层 */
     private final ScrmTaxHolidayDraftRepository draftRepository;
+
+    /**
+     * AI Provider 运行时路由（后台配置的模型接入点；可为 null——null 或未配置
+     * 默认文本 provider 时，回退到 {@link #aiChatClient} 的老环境变量路径）。
+     */
+    @Autowired(required = false)
+    private AiProviderRegistry providerRegistry;
 
     /**
      * 从公告原文中抽取假期与调休安排，落草稿。
@@ -147,7 +156,7 @@ public class ScrmTaxHolidayExtractService {
      */
     private AiChatResponse callAiWithRetry(AiChatRequest request) throws ScrmException {
         for (int attempt = 1; attempt <= AI_MAX_ATTEMPTS; attempt++) {
-            AiChatResponse response = aiChatClient.chatCompletion(request);
+            AiChatResponse response = chatWithBestProvider(request);
             String content = response == null ? null : response.getFirstContent();
             boolean ok = content != null && !content.isBlank()
                     && !AiChatClient.FALLBACK_CONTENT.equals(content);
@@ -172,6 +181,33 @@ public class ScrmTaxHolidayExtractService {
         }
         // 不会走到这里：循环内要么返回、要么抛异常
         throw ScrmException.badRequest("AI 服务不可用");
+    }
+
+    /**
+     * 选择最优通道发起对话补全（Provider 优先、老环境变量路径兜底）。
+     * <p>
+     * 配置了 {@link AiProviderRegistry} 且存在默认文本 provider 时，从 Provider
+     * 动态构建客户端并按 Provider 的模型/温度/maxTokens 发起调用——模型接入点
+     * 由系统管理后台配置，变更即时生效，无需重启。
+     * </p>
+     *
+     * @param request 对话请求（构建时已使用抽取场景默认参数，Provider 路由会覆盖）
+     * @return AI 响应（异常/未启用时含降级内容）
+     */
+    private AiChatResponse chatWithBestProvider(AiChatRequest request) {
+        if (providerRegistry != null) {
+            var providerOpt = providerRegistry.resolveTextProvider();
+            if (providerOpt.isPresent()) {
+                AiChatClient providerClient = AiChatClient.fromProvider(providerOpt.get());
+                if (request.getModel() == null || request.getModel().isBlank()) {
+                    request.setModel(providerClient.getDefaultModel());
+                }
+                request.setTemperature(providerClient.getTemperature());
+                request.setMaxTokens(providerClient.getMaxTokens());
+                return providerClient.chatCompletion(request);
+            }
+        }
+        return aiChatClient.chatCompletion(request);
     }
 
     /**

@@ -80,4 +80,15 @@ class AiChatClientProviderTest {
 
         assertThat(client.getDefaultModel()).isNotBlank();
     }
+
+    @Test
+    @DisplayName("Provider 的温度与 maxTokens 映射到客户端（后台配置覆盖环境变量默认）")
+    void fromProvider_mapsTemperatureAndMaxTokens() {
+        ScrmAiProviderEntity p = provider("http://192.168.1.150:3425", "group/sensenova-pool",
+                "text,image", "sk-test");
+        AiChatClient client = AiChatClient.fromProvider(p);
+
+        assertThat(client.getTemperature()).isEqualTo(0.3);
+        assertThat(client.getMaxTokens()).isEqualTo(800);
+    }
 }

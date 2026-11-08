@@ -9,14 +9,17 @@
 package org.hiylo.scrm.service;
 
 import org.hiylo.scrm.dto.ScrmConversationDto;
+import org.hiylo.scrm.entity.ScrmAiProviderEntity;
 import org.hiylo.scrm.entity.ScrmConversationEntity;
 import org.hiylo.scrm.entity.ScrmConversationMessageEntity;
 import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.feign.AiChatClient;
 import org.hiylo.scrm.feign.dto.AiChatRequest;
 import org.hiylo.scrm.feign.dto.AiChatResponse;
+import org.hiylo.scrm.config.AiProviderRegistry;
 
 import org.hiylo.scrm.repository.ScrmAccountRepository;
+import org.hiylo.scrm.repository.ScrmAiProviderRepository;
 import org.hiylo.scrm.repository.ScrmConversationMessageRepository;
 import org.hiylo.scrm.repository.ScrmConversationRepository;
 import org.hiylo.scrm.repository.ScrmCustomerRepository;
@@ -46,6 +49,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -559,6 +563,62 @@ private ScrmConversationMessageEntity buildMessage(Long id, String direction, St
                 ArgumentCaptor.forClass(ScrmConversationEntity.class);
         verify(repository, times(1)).save(captor.capture());
         assertThat(captor.getValue().getLastMessageSummary()).isEqualTo("客户咨询产品问题");
+    }
+
+    @Test
+    @DisplayName("summarizeConversation: 配置默认文本 Provider 时走 Provider 路由（模型/温度以 Provider 为准）")
+    void summarizeConversation_providerRouting() throws ScrmException {
+        ScrmConversationEntity entity = buildEntity(10L);
+        when(repository.findById(10L)).thenReturn(Optional.of(entity));
+        ScrmConversationMessageEntity msg1 = buildMessage(1L, "IN", "你好", LocalDateTime.now().minusMinutes(2));
+        Page<ScrmConversationMessageEntity> msgPage = new PageImpl<>(List.of(msg1));
+        when(messageRepository.findByConversationIdOrderBySentAtDesc(eq(10L), any(Pageable.class)))
+                .thenReturn(msgPage);
+        when(repository.save(any(ScrmConversationEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // 配置默认文本 Provider（后台管理保存后 -> registry.reload()）
+        ScrmAiProviderEntity provider = new ScrmAiProviderEntity();
+        provider.setId(100L);
+        provider.setProviderName("后台网关");
+        provider.setApiBaseUrl("http://192.168.1.150:3425");
+        provider.setChatPath("/v1/chat/completions");
+        provider.setDefaultModel("group/sensenova-pool");
+        provider.setCapability("text,image");
+        provider.setTemperature(0.3);
+        provider.setMaxTokens(800);
+        provider.setEnabled(true);
+        provider.setDefaultText(true);
+        ScrmAiProviderRepository providerRepo = mock(ScrmAiProviderRepository.class);
+        when(providerRepo.findByEnabledTrueOrderByPriorityAsc())
+                .thenReturn(Collections.singletonList(provider));
+        AiProviderRegistry registry = new AiProviderRegistry(providerRepo);
+        ReflectionTestUtils.setField(service, "providerRegistry", registry);
+
+        ConversationSummaryVo result = service.summarizeConversation(10L);
+
+        // Provider 可达时才真正返回模型名；断言走了 Provider 客户端（未走老 aiChatClient）
+        assertThat(result.getMessageCount()).isEqualTo(1);
+        verify(aiChatClient, never()).chatCompletion(any(AiChatRequest.class));
+    }
+
+    @Test
+    @DisplayName("summarizeConversation: 未配置 Provider 时回退老环境变量路径")
+    void summarizeConversation_noProviderFallsBack() throws ScrmException {
+        ScrmConversationEntity entity = buildEntity(10L);
+        when(repository.findById(10L)).thenReturn(Optional.of(entity));
+        ScrmConversationMessageEntity msg1 = buildMessage(1L, "IN", "你好", LocalDateTime.now());
+        Page<ScrmConversationMessageEntity> msgPage = new PageImpl<>(List.of(msg1));
+        when(messageRepository.findByConversationIdOrderBySentAtDesc(eq(10L), any(Pageable.class)))
+                .thenReturn(msgPage);
+        when(aiChatClient.chatCompletion(any(AiChatRequest.class)))
+                .thenReturn(buildAiResponse("老路径总结", "gpt-4o-mini"));
+        when(repository.save(any(ScrmConversationEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ConversationSummaryVo result = service.summarizeConversation(10L);
+
+        assertThat(result.getMessageCount()).isEqualTo(1);
+        // 无 provider 时必然走老 aiChatClient
+        verify(aiChatClient, times(1)).chatCompletion(any(AiChatRequest.class));
     }
 
     @Test

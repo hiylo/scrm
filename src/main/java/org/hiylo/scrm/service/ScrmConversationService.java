@@ -25,6 +25,8 @@ import org.hiylo.scrm.repository.ScrmConversationMessageRepository;
 import org.hiylo.scrm.repository.ScrmConversationRepository;
 import org.hiylo.scrm.repository.ScrmCustomerRepository;
 import org.hiylo.scrm.vo.ConversationSummaryVo;
+import org.hiylo.scrm.config.AiProviderRegistry;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -82,6 +84,13 @@ public class ScrmConversationService {
     /** 生成最大 token 数，默认 500 */
     @Value("${scrm.ai.max-tokens:500}")
     private Integer aiMaxTokens;
+
+    /**
+     * AI Provider 运行时路由（后台配置的模型接入点；可为 null——null 或未配置
+     * 默认文本 provider 时，回退到 {@link #aiChatClient} 的老环境变量路径）。
+     */
+    @Autowired(required = false)
+    private AiProviderRegistry providerRegistry;
 
     /** AI 总结时查询的最近消息条数 */
     private static final int SUMMARY_MESSAGE_LIMIT = 50;
@@ -414,7 +423,7 @@ public class ScrmConversationService {
         String usedModel = aiModel;
         try {
             AiChatRequest request = buildSummaryRequest(SUMMARY_SYSTEM_PROMPT, conversationText);
-            AiChatResponse response = aiChatClient.chatCompletion(request);
+            AiChatResponse response = chatWithBestProvider(request);
             String content = response == null ? null : response.getFirstContent();
             if (response != null && response.getModel() != null) {
                 usedModel = response.getModel();
@@ -567,6 +576,35 @@ public class ScrmConversationService {
             return false;
         }
         return direction.startsWith("IN");
+    }
+
+    /**
+     * 选择最优通道发起对话补全：
+     * <ol>
+     *   <li>配置了 {@link AiProviderRegistry} 且存在默认文本 provider →
+     *       从 Provider 构建客户端并按 Provider 的模型/温度/maxTokens 发起调用
+     *       （模型接入点由系统管理后台配置，变更无需重启）</li>
+     *   <li>否则回退环境变量静态配置的 {@link #aiChatClient}</li>
+     * </ol>
+     *
+     * @param request 对话请求（构建时已使用环境变量默认值，Provider 路由会覆盖）
+     * @return AI 响应（异常/未启用时含降级内容）
+     */
+    private AiChatResponse chatWithBestProvider(AiChatRequest request) {
+        if (providerRegistry != null) {
+            var providerOpt = providerRegistry.resolveTextProvider();
+            if (providerOpt.isPresent()) {
+                AiChatClient providerClient = AiChatClient.fromProvider(providerOpt.get());
+                // Provider 配置优先：模型名 / 温度 / maxTokens 全部以 Provider 为准
+                if (request.getModel() == null || request.getModel().isBlank()) {
+                    request.setModel(providerClient.getDefaultModel());
+                }
+                request.setTemperature(providerClient.getTemperature());
+                request.setMaxTokens(providerClient.getMaxTokens());
+                return providerClient.chatCompletion(request);
+            }
+        }
+        return aiChatClient.chatCompletion(request);
     }
 
     /**

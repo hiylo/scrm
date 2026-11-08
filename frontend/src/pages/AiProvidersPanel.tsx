@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   App,
+  AutoComplete,
   Badge,
   Button,
   Col,
@@ -37,6 +38,13 @@ import {
   StarOutlined,
 } from '@ant-design/icons';
 import { apiClient } from '../api/client';
+
+/** 模型选项：从 provider 拉取清单生成（可手输，网关模型时常变化） */
+const toModelOptions = (models: AiModelInfo[] | undefined) =>
+  (models || []).map(m => ({
+    value: m.name,
+    label: `${m.name}${m.image ? '（多模态）' : m.text ? '（文本）' : ''}`,
+  }));
 
 /** 模型能力信息（从 provider /v1/models 拉取） */
 interface AiModelInfo {
@@ -504,8 +512,17 @@ export default function AiProvidersPanel() {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="defaultModel" label="默认模型">
-                <Input placeholder="如 group/sensenova-pool；留空则由 /v1/models 推荐" />
+              <Form.Item name="defaultModel" label="默认模型"
+                extra={`可从右侧「拉取模型」获取候选；共 ${(editing?.models || []).length} 个可用`}>
+                <AutoComplete
+                  options={toModelOptions(editing?.models)}
+                  placeholder={editing?.models?.length
+                    ? '选择或输入模型名'
+                    : '如 group/sensenova-pool；可点表格中「模型」拉取候选'}
+                  filterOption={(input, option) =>
+                    ((option?.value as string) || '').toLowerCase()
+                      .includes(input.toLowerCase())}
+                />
               </Form.Item>
             </Col>
           </Row>
