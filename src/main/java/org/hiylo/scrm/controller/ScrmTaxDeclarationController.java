@@ -16,6 +16,7 @@ import org.hiylo.scrm.common.OperationResponse;
 import org.hiylo.scrm.dto.ScrmTaxDeclarationProfileDto;
 import org.hiylo.scrm.dto.ScrmTaxDeclarationRecordDto;
 import org.hiylo.scrm.dto.ScrmTaxDeclarationSheetDto;
+import org.hiylo.scrm.dto.ScrmTaxRiskProfileDto;
 import org.hiylo.scrm.entity.ScrmTaxDeclarationProfileEntity;
 import org.hiylo.scrm.entity.ScrmTaxDeclarationRecordEntity;
 import org.hiylo.scrm.exception.ScrmException;
@@ -23,6 +24,7 @@ import org.hiylo.scrm.rbac.annotation.RequirePermission;
 import org.hiylo.scrm.service.finance.FinanceDataScope;
 import org.hiylo.scrm.service.finance.tax.ScrmTaxDeclarationService;
 import org.hiylo.scrm.service.finance.tax.ScrmTaxDeclarationSheetService;
+import org.hiylo.scrm.service.finance.tax.ScrmTaxRiskProfileService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -74,6 +76,9 @@ public class ScrmTaxDeclarationController {
 
     /** 财税数据范围（会计越权校验：companyId 入参必须过白名单） */
     private final FinanceDataScope financeDataScope;
+
+    /** 税负风险画像服务（只读聚合, 不改任何数据） */
+    private final ScrmTaxRiskProfileService riskProfileService;
 
     // ============================================================
     // 申报档案管理
@@ -431,6 +436,28 @@ public class ScrmTaxDeclarationController {
         log.info("[报税日历-申报表] 导出 CSV: companyId={}, taxType={}, period={}-{}",
                 companyId, taxType, periodYear, periodMonth);
         return new ResponseEntity<>(body, headers, org.springframework.http.HttpStatus.OK);
+    }
+
+    /**
+     * 税负风险画像（只读）。
+     * <p>
+     * 按主体 + 年度聚合申报数据，给出税负率与风险等级，供会计在客户档案页
+     * 一眼看到风险信号。纯读操作：不写任何表，不触发申报状态机变更，因此
+     * 动作权限统一为 {@code read}。与申报表端点一样以 {@code companyId} 为
+     * 入参，必须逐个过数据范围校验，防止会计改 ID 拉到别家画像。
+     * </p>
+     *
+     * @param companyId 公司主体 ID
+     * @param year      统计年度
+     * @return 税负风险画像
+     * @throws ScrmException 参数非法 / 无权访问该主体
+     */
+    @RequirePermission(resource = "scrm_tax_record", action = "read")
+    @GetMapping("/companies/{companyId}/risk-profile")
+    public OperationResponse<ScrmTaxRiskProfileDto> riskProfile(
+            @PathVariable Long companyId, @RequestParam int year) throws ScrmException {
+        assertCompanyAccessible(companyId);
+        return OperationResponse.build(riskProfileService.buildProfile(companyId, year));
     }
 
     /**
