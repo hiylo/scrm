@@ -11,7 +11,9 @@ package org.hiylo.scrm.controller;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hiylo.scrm.dto.ScrmCustomerDto;
+import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.rbac.annotation.RequirePermission;
+import org.hiylo.scrm.service.DataScopeService;
 import org.hiylo.scrm.service.ScrmCustomerService;
 import org.hiylo.scrm.service.ScrmDashboardService;
 import org.hiylo.scrm.vo.AccountOverviewVo;
@@ -35,6 +37,11 @@ import java.util.List;
  * 提供账号 / 任务 / 客户 / 会话 / 风控 / 综合 6 个看板聚合接口,
  * 供前端看板页面拉取概览数据。权限由 gateway-server 统一鉴权, {@code @RequirePermission} 作为端点权限元数据声明。
  * </p>
+ * <p>
+ * <b>角色收口</b>: 看板聚合的是全量经营数据, 菜单只对 admin/manager 开放; 因此每个读端点
+ * 额外调用 {@link #assertManagementRole()} 把同一口径下沉到接口层, 非管理角色
+ * (含会计 OPERATOR) 直接 403, 避免拼 URL 绕过菜单。
+ * </p>
  *
  * @author Hsi Chu
  */
@@ -50,6 +57,9 @@ public class ScrmDashboardController {
     /** 客户服务 (用于跟进提醒查询) */
     private final ScrmCustomerService customerService;
 
+    /** 数据范围服务 (判读当前用户是否管理类角色) */
+    private final DataScopeService dataScopeService;
+
     /**
      * 账号概览。
      *
@@ -57,7 +67,8 @@ public class ScrmDashboardController {
      */
     @RequirePermission(resource = "scrm_dashboard", action = "read")
     @GetMapping("/accounts")
-    public OperationResponse<AccountOverviewVo> accountOverview() {
+    public OperationResponse<AccountOverviewVo> accountOverview() throws ScrmException {
+        assertManagementRole();
         return OperationResponse.build(dashboardService.getAccountOverview());
     }
 
@@ -68,7 +79,8 @@ public class ScrmDashboardController {
      */
     @RequirePermission(resource = "scrm_dashboard", action = "read")
     @GetMapping("/campaigns")
-    public OperationResponse<CampaignOverviewVo> campaignOverview() {
+    public OperationResponse<CampaignOverviewVo> campaignOverview() throws ScrmException {
+        assertManagementRole();
         return OperationResponse.build(dashboardService.getCampaignOverview());
     }
 
@@ -79,7 +91,8 @@ public class ScrmDashboardController {
      */
     @RequirePermission(resource = "scrm_dashboard", action = "read")
     @GetMapping("/customers")
-    public OperationResponse<CustomerOverviewVo> customerOverview() {
+    public OperationResponse<CustomerOverviewVo> customerOverview() throws ScrmException {
+        assertManagementRole();
         return OperationResponse.build(dashboardService.getCustomerOverview());
     }
 
@@ -90,7 +103,8 @@ public class ScrmDashboardController {
      */
     @RequirePermission(resource = "scrm_dashboard", action = "read")
     @GetMapping("/conversations")
-    public OperationResponse<ConversationOverviewVo> conversationOverview() {
+    public OperationResponse<ConversationOverviewVo> conversationOverview() throws ScrmException {
+        assertManagementRole();
         return OperationResponse.build(dashboardService.getConversationOverview());
     }
 
@@ -101,7 +115,8 @@ public class ScrmDashboardController {
      */
     @RequirePermission(resource = "scrm_dashboard", action = "read")
     @GetMapping("/risk")
-    public OperationResponse<RiskOverviewVo> riskOverview() {
+    public OperationResponse<RiskOverviewVo> riskOverview() throws ScrmException {
+        assertManagementRole();
         return OperationResponse.build(dashboardService.getRiskOverview());
     }
 
@@ -112,7 +127,8 @@ public class ScrmDashboardController {
      */
     @RequirePermission(resource = "scrm_dashboard", action = "read")
     @GetMapping("/overview")
-    public OperationResponse<DashboardOverviewVo> overview() {
+    public OperationResponse<DashboardOverviewVo> overview() throws ScrmException {
+        assertManagementRole();
         return OperationResponse.build(dashboardService.getOverview());
     }
 
@@ -130,7 +146,8 @@ public class ScrmDashboardController {
     @GetMapping("/trend")
     public OperationResponse<DashboardTrendVo> trend(
             @RequestParam(defaultValue = "customers") String metric,
-            @RequestParam(defaultValue = "7") int days) {
+            @RequestParam(defaultValue = "7") int days) throws ScrmException {
+        assertManagementRole();
         return OperationResponse.build(dashboardService.getTrend(metric, days));
     }
 
@@ -147,9 +164,26 @@ public class ScrmDashboardController {
     @RequirePermission(resource = "scrm_dashboard", action = "read")
     @GetMapping("/follow-ups")
     public OperationResponse<List<ScrmCustomerDto>> followUpReminders(
-            @RequestParam(defaultValue = "10") int limit) {
+            @RequestParam(defaultValue = "10") int limit) throws ScrmException {
+        assertManagementRole();
         // 限制最大查询条数, 防止一次性返回过多数据
         int safeLimit = Math.min(Math.max(limit, 1), 50);
         return OperationResponse.build(customerService.getFollowUpReminders(safeLimit));
+    }
+
+    /**
+     * 校验当前用户是否管理类角色。
+     * <p>
+     * 数据看板聚合账号 / 任务 / 客户 / 会话 / 风控全部经营维度，
+     * 菜单只对 admin/manager 开放；这里把同一口径下沉到接口层，
+     * 避免会计等非管理角色直接拼 URL 绕过菜单读到全量经营数据。
+     * </p>
+     *
+     * @throws ScrmException 非管理角色
+     */
+    private void assertManagementRole() throws ScrmException {
+        if (!dataScopeService.isManagement(dataScopeService.getCurrentRole())) {
+            throw ScrmException.forbidden("无权访问数据看板: 需要管理角色");
+        }
     }
 }

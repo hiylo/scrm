@@ -13,9 +13,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import org.hiylo.scrm.dto.ScrmPlatformConfigDto;
+import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.rbac.annotation.RateLimit;
 import org.hiylo.scrm.rbac.annotation.RequirePermission;
 import org.hiylo.scrm.config.WeworkConfigProvider;
+import org.hiylo.scrm.service.DataScopeService;
 import org.hiylo.scrm.service.ScrmPlatformConfigService;
 import org.hiylo.scrm.common.OperationResponse;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -51,16 +53,22 @@ public class ScrmPlatformConfigController {
     /** 企微配置动态提供者（保存/删除企微配置后刷新 WeworkConfig Bean） */
     private final WeworkConfigProvider weworkConfigProvider;
 
+    /** 数据隔离服务（读取当前用户角色，用于管理员口径校验） */
+    private final DataScopeService dataScopeService;
+
     /**
      * 获取平台配置
      *
      * @param platformType 平台类型
      * @return 平台配置详情，不存在返回 data=null
+     * @throws ScrmException 非系统管理员
      */
     @RequirePermission(resource = "scrm_platform_config", action = "read")
     @RateLimit(capacity = 20, refillTokens = 20, refillPeriodSeconds = 60)
     @GetMapping("/{platformType}")
-    public OperationResponse<ScrmPlatformConfigDto> get(@PathVariable String platformType) {
+    public OperationResponse<ScrmPlatformConfigDto> get(@PathVariable String platformType)
+            throws ScrmException {
+        assertAdminRole();
         return OperationResponse.build(platformConfigService.getConfig(platformType));
     }
 
@@ -68,11 +76,13 @@ public class ScrmPlatformConfigController {
      * 获取账号下所有平台配置
      *
      * @return 平台配置列表
+     * @throws ScrmException 非系统管理员
      */
     @RequirePermission(resource = "scrm_platform_config", action = "read")
     @RateLimit(capacity = 20, refillTokens = 20, refillPeriodSeconds = 60)
     @GetMapping({"", "/list"})
-    public OperationResponse<List<ScrmPlatformConfigDto>> list() {
+    public OperationResponse<List<ScrmPlatformConfigDto>> list() throws ScrmException {
+        assertAdminRole();
         return OperationResponse.build(platformConfigService.listConfigs());
     }
 
@@ -131,5 +141,22 @@ public class ScrmPlatformConfigController {
             weworkConfigProvider.refreshConfig();
         }
         return OperationResponse.build(null);
+    }
+
+    /**
+     * 校验当前用户是否为系统管理员（ADMIN）。
+     * <p>
+     * {@code RequirePermissionAspect} 对 {@code read} 动作直接放行，
+     * 而平台配置含企微 secret / 各平台 accessToken 等敏感凭据，
+     * 前端菜单该页仅对 admin 开放。这里把同一口径下沉到接口层，
+     * 避免非管理员直接拼 URL 绕过菜单读取凭据。
+     * </p>
+     *
+     * @throws ScrmException 非 ADMIN 角色，抛出 403
+     */
+    private void assertAdminRole() throws ScrmException {
+        if (!dataScopeService.isAdmin(dataScopeService.getCurrentRole())) {
+            throw ScrmException.forbidden("无权访问平台配置: 需要系统管理员角色");
+        }
     }
 }

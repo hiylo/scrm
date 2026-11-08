@@ -207,7 +207,7 @@ public class ScrmUserManagementService {
         String role = dataScopeService != null ? dataScopeService.getCurrentRole() : null;
         if (role == null || !dataScopeService.isAdmin(role)) {
             log.warn("用户管理越权访问被拒绝: role={}", role);
-            throw new ScrmException(ScrmExceptionConstants.FORBIDDEN, "仅系统管理员可管理用户");
+            throw ScrmException.forbidden("仅系统管理员可管理用户");
         }
     }
 
