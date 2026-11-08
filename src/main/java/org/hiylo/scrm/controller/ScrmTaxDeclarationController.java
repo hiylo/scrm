@@ -15,15 +15,21 @@ import lombok.extern.slf4j.Slf4j;
 import org.hiylo.scrm.common.OperationResponse;
 import org.hiylo.scrm.dto.ScrmTaxDeclarationProfileDto;
 import org.hiylo.scrm.dto.ScrmTaxDeclarationRecordDto;
+import org.hiylo.scrm.dto.ScrmTaxDeclarationSheetDto;
 import org.hiylo.scrm.entity.ScrmTaxDeclarationProfileEntity;
 import org.hiylo.scrm.entity.ScrmTaxDeclarationRecordEntity;
 import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.rbac.annotation.RequirePermission;
+import org.hiylo.scrm.service.finance.FinanceDataScope;
 import org.hiylo.scrm.service.finance.tax.ScrmTaxDeclarationService;
+import org.hiylo.scrm.service.finance.tax.ScrmTaxDeclarationSheetService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -35,6 +41,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -60,6 +68,12 @@ public class ScrmTaxDeclarationController {
 
     /** 报税日历核心服务 */
     private final ScrmTaxDeclarationService taxDeclarationService;
+
+    /** 申报表生成 + CSV 导出服务（内部闭环, 不依赖电子税局） */
+    private final ScrmTaxDeclarationSheetService sheetService;
+
+    /** 财税数据范围（会计越权校验：companyId 入参必须过白名单） */
+    private final FinanceDataScope financeDataScope;
 
     // ============================================================
     // 申报档案管理
@@ -347,5 +361,92 @@ public class ScrmTaxDeclarationController {
     public OperationResponse<ScrmTaxDeclarationRecordEntity> getRecord(@PathVariable Long id)
             throws ScrmException {
         return OperationResponse.build(taxDeclarationService.getRecord(id));
+    }
+
+    // ============================================================
+    // 申报表生成 + 导出（P0④）
+    // ============================================================
+
+    /**
+     * 生成申报表（按主体 + 税种 + 所属期聚合出表样）。
+     * <p>
+     * 纯内部闭环：数据只取自本系统申报档案 + 申报记录，不调用电子税局，
+     * 因此税局接口不可用时仍能出表。该所属期无申报记录时不报错——返回行项目
+     * 全 0、状态 {@code NOT_DECLARED} 的空表，前端据此提示会计补录。
+     * </p>
+     *
+     * @param companyId   公司主体 ID
+     * @param taxType     税种（VAT / IIT / CIT / SOCIAL_SECURITY）
+     * @param periodYear  所属期年份
+     * @param periodMonth 所属期月份（1-12）
+     * @return 申报表（表头 + 行项目 + 合计行）
+     * @throws ScrmException 参数非法 / 无权访问该主体
+     */
+    @RequirePermission(resource = "scrm_tax_record", action = "read")
+    @GetMapping("/companies/{companyId}/sheet")
+    public OperationResponse<ScrmTaxDeclarationSheetDto> buildSheet(
+            @PathVariable Long companyId,
+            @RequestParam String taxType,
+            @RequestParam Integer periodYear,
+            @RequestParam Integer periodMonth) throws ScrmException {
+        assertCompanyAccessible(companyId);
+        return OperationResponse.build(
+                sheetService.buildSheet(companyId, taxType, periodYear, periodMonth));
+    }
+
+    /**
+     * 导出申报表 CSV（Excel 可直接打开, 含 UTF-8 BOM 不乱码）。
+     * <p>
+     * 返回附件而非 JSON：会计要把申报表存进客户档案 / 发给客户，
+     * 浏览器直接下载比前端再拼 Blob 更可靠。内容为 {@code toCsv} 的原始结果
+     * （首字符即 BOM），文件名 RFC 5987 编码为 {@code 申报表_YYYYMM.csv}。
+     * </p>
+     *
+     * @param companyId   公司主体 ID
+     * @param taxType     税种
+     * @param periodYear  所属期年份
+     * @param periodMonth 所属期月份（1-12）
+     * @return CSV 附件响应
+     * @throws ScrmException 参数非法 / 无权访问该主体
+     */
+    @RequirePermission(resource = "scrm_tax_record", action = "read")
+    @GetMapping("/companies/{companyId}/sheet/export")
+    public ResponseEntity<byte[]> exportSheetCsv(
+            @PathVariable Long companyId,
+            @RequestParam String taxType,
+            @RequestParam Integer periodYear,
+            @RequestParam Integer periodMonth) throws ScrmException {
+        assertCompanyAccessible(companyId);
+        String csv = sheetService.toCsv(
+                sheetService.buildSheet(companyId, taxType, periodYear, periodMonth));
+        byte[] body = csv.getBytes(StandardCharsets.UTF_8);
+        String fileName = String.format("申报表_%04d%02d.csv", periodYear, periodMonth);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.parseMediaType("text/csv; charset=UTF-8"));
+        // 同时给出 ASCII filename 与 RFC 5987 filename*, 兼容中文文件名
+        String encoded = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
+        headers.add("Content-Disposition",
+                "attachment; filename=\"" + fileName + "\"; filename*=UTF-8''" + encoded);
+        headers.setContentLength(body.length);
+        log.info("[报税日历-申报表] 导出 CSV: companyId={}, taxType={}, period={}-{}",
+                companyId, taxType, periodYear, periodMonth);
+        return new ResponseEntity<>(body, headers, org.springframework.http.HttpStatus.OK);
+    }
+
+    /**
+     * 校验当前用户是否有权访问指定主体。
+     * <p>
+     * 申报表端点以 {@code companyId} 为入参，若不校验归属，会计改一个 ID 就能
+     * 拉到别家的申报表（含纳税人识别号）。这是这些端点的<b>唯一</b>防线，
+     * 必须逐个调用，不能只依赖前端隐藏入口。
+     * </p>
+     *
+     * @param companyId 公司主体 ID
+     * @throws ScrmException 无权访问
+     */
+    private void assertCompanyAccessible(Long companyId) throws ScrmException {
+        if (!financeDataScope.canAccessCompany(companyId)) {
+            throw ScrmException.forbidden("无权访问该主体: " + companyId);
+        }
     }
 }
