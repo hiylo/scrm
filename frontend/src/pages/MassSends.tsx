@@ -32,6 +32,9 @@ import {
   SearchOutlined,
   SendOutlined,
   EyeOutlined,
+  PauseOutlined,
+  PlayCircleOutlined,
+  StopOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
@@ -94,13 +97,14 @@ interface Page<T> {
 }
 
 /** 任务状态映射 */
-const statusConfig: Record<string, { color: string; label: string }> = {
-  DRAFT: { color: 'default', label: '草稿' },
-  RUNNING: { color: 'processing', label: '发送中' },
-  COMPLETED: { color: 'green', label: '已完成' },
-  FAILED: { color: 'red', label: '失败' },
-  CANCELLED: { color: 'orange', label: '已取消' },
-};
+  const statusConfig: Record<string, { color: string; label: string }> = {
+    DRAFT: { color: 'default', label: '草稿' },
+    PENDING: { color: 'default', label: '待发送' },
+    RUNNING: { color: 'processing', label: '发送中' },
+    PAUSED: { color: 'warning', label: '已暂停' },
+    COMPLETED: { color: 'green', label: '已完成' },
+    FAILED: { color: 'red', label: '失败' },
+  };
 
 /** 目标类型映射 */
 const targetTypeConfig: Record<string, { label: string }> = {
@@ -208,15 +212,48 @@ export default function MassSends() {
     }
   };
 
-  const handlePublish = async (record: ScrmMassSend) => {
-    try {
-      await apiClient.post(`/scrm/mass-send/${record.id}/publish`);
-      message.success('任务已发布');
-      loadList();
-    } catch {
-      // 拦截器已弹出错误
-    }
-  };
+    const handlePublish = async (record: ScrmMassSend) => {
+      try {
+        await apiClient.post(`/scrm/mass-send/${record.id}/publish`);
+        message.success('任务已发布');
+        loadList();
+      } catch {
+        // 拦截器已弹出错误
+      }
+    };
+
+    /** 暂停任务（仅 RUNNING 可暂停，服务端状态机校验）。 */
+    const handlePause = async (record: ScrmMassSend) => {
+      try {
+        await apiClient.post(`/scrm/mass-send/${record.id}/pause`);
+        message.success('任务已暂停');
+        loadList();
+      } catch {
+        // 拦截器已弹出错误
+      }
+    };
+
+    /** 恢复任务（仅 PAUSED 可恢复，服务端状态机校验）。 */
+    const handleResume = async (record: ScrmMassSend) => {
+      try {
+        await apiClient.post(`/scrm/mass-send/${record.id}/resume`);
+        message.success('任务已恢复发送');
+        loadList();
+      } catch {
+        // 拦截器已弹出错误
+      }
+    };
+
+    /** 取消任务（非终态可取消 → COMPLETED，未发送明细由服务端标记失败）。 */
+    const handleCancel = async (record: ScrmMassSend) => {
+      try {
+        await apiClient.post(`/scrm/mass-send/${record.id}/cancel`);
+        message.success('任务已取消，未发送目标已标记失败');
+        loadList();
+      } catch {
+        // 拦截器已弹出错误
+      }
+    };
 
   /** 打开目标明细抽屉: 并行加载报告与明细 */
   const openTargets = async (record: ScrmMassSend) => {
@@ -255,48 +292,65 @@ export default function MassSends() {
     }
   };
 
-  const columns: ColumnsType<ScrmMassSend> = useMemo(() => [
-    { title: '任务名称', dataIndex: 'taskName', render: (v: string) => <span style={{ fontWeight: 600 }}>{v}</span> },
-    { title: '平台', dataIndex: 'platformType', width: 100, render: (v?: string) => (v === 'wework' ? '企业微信' : v === 'wechat_personal' ? '个人微信' : v || '-') },
-    { title: '目标类型', dataIndex: 'targetType', width: 100, render: (v: string) => targetTypeConfig[v]?.label || v || '-' },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 90,
-      render: (v: string) => { const c = statusConfig[v] || { color: 'default', label: v }; return <Tag color={c.color}>{c.label}</Tag>; },
-    },
-    {
-      title: '发送进度',
-      key: 'progress',
-      width: 150,
-      render: (_, r) => (r.totalCount ? `已发 ${r.sentCount ?? 0}/${r.totalCount} (${Math.round(((r.sentCount ?? 0) / r.totalCount) * 100)}%)` : '-'),
-    },
-    { title: '创建时间', dataIndex: 'createTime', width: 140, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-') },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 160,
-      fixed: 'right',
-      render: (_, r) => (
-        <Space size={4}>
-          {r.status === 'DRAFT' && (
-            <Button type="link" size="small" icon={<SendOutlined />} onClick={() => handlePublish(r)}>
-              发布
+    const columns: ColumnsType<ScrmMassSend> = useMemo(() => [
+      { title: '任务名称', dataIndex: 'taskName', render: (v: string) => <span style={{ fontWeight: 600 }}>{v}</span> },
+      { title: '平台', dataIndex: 'platformType', width: 100, render: (v?: string) => (v === 'wework' ? '企业微信' : v === 'wechat_personal' ? '个人微信' : v || '-') },
+      { title: '目标类型', dataIndex: 'targetType', width: 100, render: (v: string) => targetTypeConfig[v]?.label || v || '-' },
+      {
+        title: '状态',
+        dataIndex: 'status',
+        width: 90,
+        render: (v: string) => { const c = statusConfig[v] || { color: 'default', label: v }; return <Tag color={c.color}>{c.label}</Tag>; },
+      },
+      {
+        title: '发送进度',
+        key: 'progress',
+        width: 150,
+        render: (_, r) => (r.totalCount ? `已发 ${r.sentCount ?? 0}/${r.totalCount} (${Math.round(((r.sentCount ?? 0) / r.totalCount) * 100)}%)` : '-'),
+      },
+      { title: '创建时间', dataIndex: 'createTime', width: 140, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-') },
+      {
+        title: '操作',
+        key: 'actions',
+        width: 220,
+        fixed: 'right',
+        render: (_, r) => (
+          <Space size={4}>
+            {r.status === 'DRAFT' && (
+              <Button type="link" size="small" icon={<SendOutlined />} onClick={() => handlePublish(r)}>
+                发布
+              </Button>
+            )}
+            {/* 与服务端状态机对齐：RUNNING 可暂停、PAUSED 可恢复、DRAFT 可编辑 */}
+            {r.status === 'RUNNING' && (
+              <Button type="link" size="small" icon={<PauseOutlined />} onClick={() => handlePause(r)}>
+                暂停
+              </Button>
+            )}
+            {r.status === 'PAUSED' && (
+              <Button type="link" size="small" icon={<PlayCircleOutlined />} onClick={() => handleResume(r)}>
+                恢复
+              </Button>
+            )}
+            {/* 取消按服务端语义：DRAFT/PENDING/RUNNING/PAUSED 均可取消（终态幂等），终态 COMPLETED/FAILED 不显示 */}
+            {!['COMPLETED', 'FAILED'].includes(r.status) && r.status !== 'DRAFT' && (
+              <Button type="link" size="small" danger icon={<StopOutlined />} onClick={() => handleCancel(r)}>
+                取消
+              </Button>
+            )}
+            <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => openTargets(r)}>
+              明细
             </Button>
-          )}
-          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => openTargets(r)}>
-            明细
-          </Button>
-          {r.status === 'DRAFT' && (
-            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEdit(r)}>
-              编辑
-            </Button>
-          )}
-        </Space>
-      ),
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], []);
+            {r.status === 'DRAFT' && (
+              <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEdit(r)}>
+                编辑
+              </Button>
+            )}
+          </Space>
+        ),
+      },
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    ], []);
 
   return (
     <div className="mass-sends-page">

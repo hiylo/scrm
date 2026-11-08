@@ -10,7 +10,7 @@
 |---|---|
 | AI 对话助手用占位生成器（`DefaultAiResponseGenerator`），未接 `AiChatClient` | ✅ **P0-1 已完成**（真实 LLM 冒烟通过） |
 | `AiChatClient` 路径写死 ai-server 专有端点（真实环境 404）+ 无鉴权头 | ✅ P0-1 顺带修复（`SCRM_AI_CHAT_PATH` / `SCRM_AI_API_KEY` 可配置） |
-| `AiChatRequest.maxTokens` 序列化为 camelCase（LiteLLM 拒绝 500） | ✅ P0-1 顺带修复（`@JsonProperty("max_tokens")`） |
+| `AiChatRequest.maxTokens` 序列化为 camelCase（模型网关拒绝 500） | ✅ P0-1 顺带修复（`@JsonProperty("max_tokens")`） |
 | 企微通道 mock（`WEWORK_MOCK_MODE=true`），会话存档解密 JNI 未接 | P0-2 |
 | 无企微侧边栏 / H5 应用（SCRM 主入口） | P0-3 |
 | 渠道活码/欢迎语/自动打标有后端无前端（拉新闭环） | ✅ **P1-1 已完成**（前端 3 页 + 扫码记录分页端点补齐） |
@@ -29,14 +29,14 @@
   - 后端：`RealAiResponseGenerator implements AiResponseGenerator`（`@Component @Primary`），
     复用既有 `AiChatClient`；systemPrompt 取 `ScrmAiAssistantConfigEntity.systemPrompt`；
     模型/温度/maxTokens 实体配置优先、全局 `scrm.ai.*` 兜底；降级回退占位生成器。
-  - 冒烟附加修复（真实调用 LiteLLM 暴露）：
+  - 冒烟附加修复（真实调用模型网关暴露）：
     - `AiChatClient` 路径写死 ai-server 专有端点（真实 404）→ 新增 `scrm.ai.chat-path` /
-      `scrm.ai.api-key` 配置，可对接 OpenAI 兼容服务（冒烟用 NAS LiteLLM 4000）。
-    - `AiChatRequest.maxTokens` 序列化 camelCase（LiteLLM 上游 500）→
+      `scrm.ai.api-key` 配置，可对接 OpenAI 兼容服务（冒烟用 NAS 模型网关）。
+    - `AiChatRequest.maxTokens` 序列化 camelCase（上游网关 500）→
       `@JsonProperty("max_tokens")`。
   - 前端：`AiAssistant.tsx` 对话页（选客户 + 对话 + 意图/情感标签 + 推荐回复 + 历史记录）。
   - 冒烟：`RealAiResponseGeneratorSmokeTest`（`@EnabledIfEnvironmentVariable` 保护，
-    无 `SCRM_SMOKE_AI_*` 自动跳过），连 NAS LiteLLM 返回真实回复。
+    无 `SCRM_SMOKE_AI_*` 自动跳过），连 NAS 模型网关返回真实回复。
   - 验证：后端 40 用例 + 前端 270 用例 + `tsc --noEmit` + `lint 0 error` 全绿。
   - 待办：测试环境 8840 需重启加载新 jar + `SCRM_AI_ENABLED=true` +
     `SCRM_AI_CHAT_PATH=/v1/chat/completions` + `SCRM_AI_API_KEY` 才真正启用（登记 todo）。

@@ -202,7 +202,7 @@ const navGroups: NavGroup[] = [
       { key: '/data-transfers', icon: '🔄', label: '导入导出', permission: 'scrm_data_transfer:read', roles: ['admin'] },
       { key: '/task-scheduler', icon: '⏰', label: '任务调度', permission: 'scrm_task_scheduler:read', roles: ['admin'] },
       { key: '/open-api-apps', icon: '🔐', label: 'OpenAPI', permission: 'scrm_open_api:read', roles: ['admin'] },
-      { key: '/message-template-center', icon: '🗂️', label: '模板中心', permission: 'scrm_message_template_center:read', roles: ['admin', 'manager', 'sales', 'accountant'] },
+{ key: '/message-template-center', icon: '🗂️', label: '模板中心', permission: 'scrm_message_template_center:read', roles: ['admin', 'manager', 'sales', 'accountant'] },
     ],
   },
   {
