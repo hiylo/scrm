@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -150,6 +151,45 @@ public class ScrmFixedAssetController {
         assertCompanyAccessible(companyId);
         return OperationResponse.build(fixedAssetService.monthlyDepreciate(
                 companyId, periodYear, periodMonth, expenseSubjectCode));
+    }
+
+    /**
+     * 跨多户批量计提折旧（会计月初高频动作）。
+     * <p>
+     * 会计月初要给所有负责户逐户计提，本端点一次完成：
+     * </p>
+     * <ul>
+     *   <li><b>管理人员</b>（可见全部）→ 对「所有有在管资产的企业」计提；</li>
+     *   <li><b>会计</b> → 只对「自己负责的主体」计提。</li>
+     * </ul>
+     * <p>
+     * 逐户独立容错：某户缺科目/无资产不影响其它户，返回明细。费用科目为空时
+     * 每户自动探测（兼容新准则 66xx / 旧准则 56xx）。
+     * </p>
+     *
+     * @param periodYear         会计年度
+     * @param periodMonth        会计月份（1-12）
+     * @param expenseSubjectCode 费用科目（可空 → 每户自动探测）
+     * @return {successCount, failCount, skippedCount, totalCount, totalAmount, details}
+     * @throws ScrmException 会计月份非法
+     */
+    @RequirePermission(resource = "scrm_voucher", action = "create")
+    @PostMapping("/batch-depreciate")
+    public OperationResponse<Map<String, Object>> batchDepreciate(
+            @RequestParam int periodYear,
+            @RequestParam int periodMonth,
+            @RequestParam(required = false) String expenseSubjectCode) throws ScrmException {
+        List<Long> accessible = financeDataScope.resolveAccessibleCompanyIds();
+        List<Long> targetCompanyIds;
+        if (accessible == null) {
+            // 管理角色：全部有在管资产的企业
+            targetCompanyIds = fixedAssetService.companiesWithActiveAssets();
+        } else {
+            // 会计：自己负责的主体（保留有资产的，其余由 Service 逐户跳过）
+            targetCompanyIds = accessible;
+        }
+        return OperationResponse.build(fixedAssetService.batchDepreciate(
+                targetCompanyIds, periodYear, periodMonth, expenseSubjectCode));
     }
 
     /**

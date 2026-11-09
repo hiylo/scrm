@@ -79,6 +79,29 @@ interface DepreciateResult {
   message?: string;
 }
 
+/** 批量计提单项结果 */
+interface BatchDepreciateDetail {
+  companyId: string;
+  companyName?: string;
+  success: boolean;
+  /** 该户无在管资产 / 当期已计提，被跳过（不计入失败） */
+  skipped?: boolean;
+  count?: number;
+  totalAmount?: number;
+  voucherId?: string | number | null;
+  message?: string;
+}
+
+/** 批量计提结果 */
+interface BatchDepreciateResult {
+  successCount: number;
+  failCount: number;
+  skippedCount: number;
+  totalCount: number;
+  totalAmount?: number;
+  details?: BatchDepreciateDetail[];
+}
+
 /** 新增/修改表单值 */
 interface AssetFormValues {
   assetName: string;
@@ -184,6 +207,8 @@ export default function FixedAssets() {
 
   // ============ 计提折旧弹窗 ============
   const [depreciateOpen, setDepreciateOpen] = useState(false);
+  /** 批量计提模式：不针对单个企业，而是当前会计负责的全部主体 */
+  const [batchMode, setBatchMode] = useState(false);
   const [depreciating, setDepreciating] = useState(false);
   const [depreciateForm] = Form.useForm<DepreciateFormValues>();
 
@@ -367,26 +392,74 @@ export default function FixedAssets() {
       return;
     }
     const lastMonth = dayjs().subtract(1, 'month');
+    setBatchMode(false);
     depreciateForm.resetFields();
     depreciateForm.setFieldsValue({
       periodYear: lastMonth.year(),
       periodMonth: lastMonth.month() + 1,
-      expenseSubjectCode: '6602',
+      // 留空 → 后端按企业科目体系自动探测（新准则 66xx / 旧准则 56xx）
+      expenseSubjectCode: undefined,
     } as never);
     setDepreciateOpen(true);
   };
 
-  /** 提交计提折旧 */
+  /**
+   * 打开「批量计提」弹窗（会计月初给所有负责户一次计提）。
+   * <p>不要求先选企业；范围由后端按登录会计的数据范围解析。</p>
+   */
+  const openBatchDepreciate = () => {
+    const lastMonth = dayjs().subtract(1, 'month');
+    setBatchMode(true);
+    depreciateForm.resetFields();
+    depreciateForm.setFieldsValue({
+      periodYear: lastMonth.year(),
+      periodMonth: lastMonth.month() + 1,
+      expenseSubjectCode: undefined,
+    } as never);
+    setDepreciateOpen(true);
+  };
+
+  /** 提交计提折旧（单户 / 批量） */
   const submitDepreciate = async () => {
-    if (!companyId) return;
     let values: DepreciateFormValues;
     try {
       values = await depreciateForm.validateFields();
     } catch {
       return;
     }
+    if (!batchMode && !companyId) return;
     setDepreciating(true);
     try {
+      if (batchMode) {
+        const result = await apiClient.post<BatchDepreciateResult>(
+          '/scrm/fixed-assets/batch-depreciate',
+          undefined,
+          {
+            params: {
+              periodYear: values.periodYear,
+              periodMonth: values.periodMonth,
+              expenseSubjectCode: values.expenseSubjectCode?.trim() || undefined,
+            },
+          },
+        );
+        const line =
+          `共 ${result.totalCount} 户：计提成功 ${result.successCount} 户` +
+          `（合计 ¥${money(result.totalAmount ?? 0)}）、跳过 ${result.skippedCount} 户、失败 ${result.failCount} 户`;
+        if (result.failCount > 0) {
+          const reasons = (result.details || [])
+            // 跳过（无资产/已计提）不算失败，只有真正出错的户才列原因
+            .filter((d) => !d.success && !d.skipped)
+            .slice(0, 3)
+            .map((d) => `${d.companyName || d.companyId}：${d.message}`)
+            .join('；');
+          message.warning(`${line}。失败原因：${reasons}`, 10);
+        } else {
+          message.success(line, 8);
+        }
+        setDepreciateOpen(false);
+        await Promise.all([loadAssets(), loadSummary()]);
+        return;
+      }
       const result = await apiClient.post<DepreciateResult>('/scrm/fixed-assets/depreciate', undefined, {
         params: {
           companyId,
@@ -553,6 +626,11 @@ export default function FixedAssets() {
           <Tooltip title="按直线法对企业全部在用资产计提一个会计期间，生成凭证草稿">
             <Button icon={<ThunderboltOutlined />} onClick={openDepreciate}>
               计提本月折旧
+            </Button>
+          </Tooltip>
+          <Tooltip title="一次给「我负责的全部主体」计提同一期间（逐户容错，缺科目/无资产的户自动跳过）">
+            <Button icon={<ThunderboltOutlined />} onClick={openBatchDepreciate}>
+              批量计提（我负责户）
             </Button>
           </Tooltip>
         </Space>
@@ -749,12 +827,12 @@ export default function FixedAssets() {
         </Form>
       </Modal>
 
-      {/* 计提折旧弹窗 */}
+      {/* 计提折旧弹窗（单户 / 批量） */}
       <Modal
-        title="计提折旧"
+        title={batchMode ? '批量计提折旧（我负责的全部主体）' : '计提折旧'}
         open={depreciateOpen}
         confirmLoading={depreciating}
-        okText="开始计提"
+        okText={batchMode ? '开始批量计提' : '开始计提'}
         onOk={() => void submitDepreciate()}
         onCancel={() => setDepreciateOpen(false)}
         destroyOnClose
@@ -763,8 +841,16 @@ export default function FixedAssets() {
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message="按直线法对企业全部在用资产计提，生成「借：费用 贷：1602 累计折旧」凭证草稿"
-          description="已计提过的期间会自动跳过（幂等），可重复点击不会重复计提。"
+          message={
+            batchMode
+              ? '对「我负责的全部主体」逐户计提，每户生成「借：费用 贷：1602 累计折旧」凭证草稿'
+              : '按直线法对企业全部在用资产计提，生成「借：费用 贷：1602 累计折旧」凭证草稿'
+          }
+          description={
+            batchMode
+              ? '逐户独立容错：缺科目或无资产的户会被跳过/记为失败，不影响其它户。已计提过的期间自动跳过（幂等）。'
+              : '已计提过的期间会自动跳过（幂等），可重复点击不会重复计提。'
+          }
         />
         <Form form={depreciateForm} layout="vertical" preserve={false}>
           <Row gutter={16}>
@@ -790,9 +876,9 @@ export default function FixedAssets() {
               <Form.Item
                 name="expenseSubjectCode"
                 label="费用科目"
-                tooltip="留空则使用 6602 管理费用；需为已存在的科目编码"
+                tooltip="留空则按企业科目体系自动探测（新准则 6602 / 旧准则 5602 管理费用）；也可指定已存在的科目编码"
               >
-                <Input allowClear placeholder="默认 6602 管理费用" maxLength={20} />
+                <Input allowClear placeholder="留空自动探测（6602 / 5602 管理费用）" maxLength={20} />
               </Form.Item>
             </Col>
           </Row>

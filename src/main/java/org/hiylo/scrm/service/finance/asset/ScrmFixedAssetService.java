@@ -66,8 +66,17 @@ public class ScrmFixedAssetService {
     /** 累计折旧科目编码（标准科目表） */
     private static final String SUBJECT_ACCUM_DEPRECIATION = "1602";
 
-    /** 默认费用科目：管理费用 */
-    private static final String DEFAULT_EXPENSE_SUBJECT = "6602";
+    /**
+     * 默认费用科目候选（按优先级自动探测）。
+     * <p>
+     * 国内企业会计科目体系有两套：新准则损益类为 66xx，旧准则（小企业会计准则）为 56xx。
+     * 不同代账客户初始化的标准科目表可能只含其中一套，不能写死 6602——
+     * 否则旧准则企业计提折旧会被「缺少可用科目 6602」挡住。这里按
+     * 「新准则管理费用 → 旧准则管理费用 → 销售费用 → 财务费用」依次探测第一个 ACTIVE 的。
+     * </p>
+     */
+    private static final List<String> EXPENSE_SUBJECT_CANDIDATES =
+            List.of("6602", "5602", "6601", "5601", "6603", "5603");
 
     /** 凭证字：折旧用「转」 */
     private static final String VOUCHER_WORD = "转";
@@ -255,8 +264,7 @@ public class ScrmFixedAssetService {
         }
         requireSubject(companyId, SUBJECT_FIXED_ASSET, "固定资产");
         requireSubject(companyId, SUBJECT_ACCUM_DEPRECIATION, "累计折旧");
-        String expenseCode = expenseSubjectCode == null || expenseSubjectCode.isBlank()
-                ? DEFAULT_EXPENSE_SUBJECT : expenseSubjectCode.trim();
+        String expenseCode = resolveExpenseCode(companyId, expenseSubjectCode);
         requireSubject(companyId, expenseCode, "费用");
 
         List<ScrmFixedAssetEntity> actives =
@@ -391,6 +399,123 @@ public class ScrmFixedAssetService {
             throw ScrmException.badRequest(
                     "缺少可用科目「" + code + " " + label + "」，请先点「初始化标准科目」或补充该科目");
         }
+    }
+
+    /**
+     * 查询拥有在管资产的企业 ID（批量计提「管理角色 → 全部」用）。
+     *
+     * @return 有 ACTIVE 资产的企业 ID 列表
+     */
+    public List<Long> companiesWithActiveAssets() {
+        return assetRepository.findDistinctCompanyIdsByStatus(ScrmFixedAssetEntity.STATUS_ACTIVE);
+    }
+
+    /**
+     * 跨多户批量计提折旧（会计月初高频动作）。
+     * <p>
+     * 会计月初要给所有负责户逐户计提，本方法一次遍历：每户复用
+     * {@link #monthlyDepreciate}（含直线法计算、幂等跳过、凭证草稿生成），
+     * <b>逐户独立捕获异常</b>——某户缺科目/无资产不影响其它户，返回明细供核对。
+     * </p>
+     * <p>
+     * <b>不加 {@code @Transactional}</b>：monthlyDepreciate 自带事务，逐户独立提交/回滚，
+     * 避免一户异常把整批标记 rollback-only。
+     * </p>
+     *
+     * @param companyIds         待计提的企业 ID 列表
+     * @param periodYear         会计年度
+     * @param periodMonth        会计月份（1-12）
+     * @param expenseSubjectCode 费用科目（可空 → 每户按新/旧准则自动探测）
+     * @return {successCount, failCount, skippedCount, totalCount, totalAmount,
+     *         details:[{companyId, companyName, success, skipped, count, totalAmount, voucherId, message}]}
+     */
+    public Map<String, Object> batchDepreciate(List<Long> companyIds, int periodYear,
+                                               int periodMonth, String expenseSubjectCode) {
+        int success = 0;
+        int fail = 0;
+        int skipped = 0;
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        List<Map<String, Object>> details = new ArrayList<>();
+        if (companyIds != null) {
+            for (Long companyId : companyIds) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("companyId", companyId);
+                row.put("companyName", companyRepository.findById(companyId)
+                        .map(c -> c.getCompanyName()).orElse(null));
+                try {
+                    Map<String, Object> r = monthlyDepreciate(
+                            companyId, periodYear, periodMonth, expenseSubjectCode);
+                    Object countObj = r.get("count");
+                    BigDecimal amount = r.get("totalAmount") instanceof BigDecimal
+                            ? (BigDecimal) r.get("totalAmount") : BigDecimal.ZERO;
+                    int count = countObj instanceof Number ? ((Number) countObj).intValue() : 0;
+                    row.put("count", count);
+                    row.put("totalAmount", amount);
+                    row.put("voucherId", r.get("voucherId"));
+                    row.put("message", r.get("message"));
+                    if (count == 0) {
+                        // 无资产/已计提 → 记为「跳过」，不与「成功」混淆（否则明细显示 OK 但金额为 0 会误导核对）
+                        skipped++;
+                        row.put("success", false);
+                        row.put("skipped", true);
+                    } else {
+                        success++;
+                        totalAmount = totalAmount.add(amount);
+                        row.put("success", true);
+                        row.put("skipped", false);
+                    }
+                } catch (Exception e) {
+                    fail++;
+                    row.put("success", false);
+                    row.put("skipped", false);
+                    row.put("count", 0);
+                    row.put("message", e.getMessage());
+                }
+                details.add(row);
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("successCount", success);
+        result.put("failCount", fail);
+        result.put("skippedCount", skipped);
+        result.put("totalCount", companyIds == null ? 0 : companyIds.size());
+        result.put("totalAmount", totalAmount);
+        result.put("details", details);
+        log.info("[固定资产-批量计提] {}-{}: 共 {} 户, 计提成功 {}, 跳过 {}, 失败 {}, 合计 {} 元",
+                periodYear, periodMonth, companyIds == null ? 0 : companyIds.size(),
+                success, skipped, fail, totalAmount);
+        return result;
+    }
+
+    /**
+     * 解析计提折旧使用的费用科目。
+     * <p>
+     * 调用方显式指定时直接用（并校验存在）；未指定时按
+     * {@link #EXPENSE_SUBJECT_CANDIDATES} 自动探测该企业第一个可用的费用科目，
+     * 兼容新准则（66xx）与旧准则（56xx）两套科目表。
+     * </p>
+     *
+     * @param companyId     企业 ID
+     * @param requestedCode 调用方指定的费用科目（可空）
+     * @return 可用的费用科目编码
+     * @throws ScrmException 未指定且该企业没有任何可用费用科目
+     */
+    private String resolveExpenseCode(Long companyId, String requestedCode) throws ScrmException {
+        if (requestedCode != null && !requestedCode.isBlank()) {
+            return requestedCode.trim();
+        }
+        for (String candidate : EXPENSE_SUBJECT_CANDIDATES) {
+            Optional<ScrmAccountSubjectEntity> subject =
+                    subjectRepository.findByCompanyIdAndSubjectCode(companyId, candidate);
+            if (subject.isPresent()
+                    && ScrmAccountSubjectEntity.STATUS_ACTIVE.equals(subject.get().getStatus())) {
+                log.debug("[固定资产-折旧] 自动选用费用科目 {}（企业 {}）", candidate, companyId);
+                return candidate;
+            }
+        }
+        throw ScrmException.badRequest(
+                "该企业没有可用的费用类科目，请先点「初始化标准科目」，或补充费用科目"
+                        + "（新准则 6602 管理费用 / 旧准则 5602 管理费用）");
     }
 
     private Object extractId(Map<String, Object> voucherDetail) {

@@ -242,4 +242,138 @@ class ScrmFixedAssetServiceTest {
                 .isInstanceOf(ScrmException.class)
                 .hasMessageContaining("月份");
     }
+
+    @Test
+    @DisplayName("未指定费用科目 + 旧准则企业（只有 5602）→ 自动探测 5602 成功计提")
+    void monthlyDepreciate_autoDetectsLegacyExpenseSubject() throws ScrmException {
+        ScrmFixedAssetEntity a = asset(10L, BigDecimal.ZERO);
+        when(assetRepository.findByCompanyIdAndStatusOrderByCreateTimeDesc(100L,
+                ScrmFixedAssetEntity.STATUS_ACTIVE)).thenReturn(List.of(a));
+        when(subjectRepository.findByCompanyIdAndSubjectCode(100L, "1601"))
+                .thenReturn(Optional.of(subject("1601")));
+        when(subjectRepository.findByCompanyIdAndSubjectCode(100L, "1602"))
+                .thenReturn(Optional.of(subject("1602")));
+        // 新准则 6602 不存在，旧准则 5602 存在
+        when(subjectRepository.findByCompanyIdAndSubjectCode(100L, "6602"))
+                .thenReturn(Optional.empty());
+        when(subjectRepository.findByCompanyIdAndSubjectCode(100L, "5602"))
+                .thenReturn(Optional.of(subject("5602")));
+        when(assetRepository.save(any(ScrmFixedAssetEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(depreciationRepository.save(any(ScrmFixedAssetDepreciationEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(voucherService.createVoucher(anyLong(), any(ScrmVoucherSaveDto.class)))
+                .thenReturn(Map.of("voucher", Map.of("id", 777L)));
+
+        Map<String, Object> result = service.monthlyDepreciate(100L, 2026, 11, null);
+
+        assertThat(result.get("count")).isEqualTo(1);
+        // 凭证借方应落在自动探测出的 5602
+        ArgumentCaptor<ScrmVoucherSaveDto> captor = ArgumentCaptor.forClass(ScrmVoucherSaveDto.class);
+        verify(voucherService, times(1)).createVoucher(anyLong(), captor.capture());
+        assertThat(captor.getValue().getEntries().get(0).getSubjectCode()).isEqualTo("5602");
+    }
+
+    @Test
+    @DisplayName("未指定费用科目 + 新准则企业（6602 与 5602 都有）→ 优先 6602")
+    void monthlyDepreciate_prefersNewStandardSubject() throws ScrmException {
+        ScrmFixedAssetEntity a = asset(10L, BigDecimal.ZERO);
+        when(assetRepository.findByCompanyIdAndStatusOrderByCreateTimeDesc(100L,
+                ScrmFixedAssetEntity.STATUS_ACTIVE)).thenReturn(List.of(a));
+        when(subjectRepository.findByCompanyIdAndSubjectCode(100L, "1601"))
+                .thenReturn(Optional.of(subject("1601")));
+        when(subjectRepository.findByCompanyIdAndSubjectCode(100L, "1602"))
+                .thenReturn(Optional.of(subject("1602")));
+        when(subjectRepository.findByCompanyIdAndSubjectCode(100L, "6602"))
+                .thenReturn(Optional.of(subject("6602")));
+        when(subjectRepository.findByCompanyIdAndSubjectCode(100L, "5602"))
+                .thenReturn(Optional.of(subject("5602")));
+        when(assetRepository.save(any(ScrmFixedAssetEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(depreciationRepository.save(any(ScrmFixedAssetDepreciationEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(voucherService.createVoucher(anyLong(), any(ScrmVoucherSaveDto.class)))
+                .thenReturn(Map.of("voucher", Map.of("id", 888L)));
+
+        service.monthlyDepreciate(100L, 2026, 11, null);
+
+        ArgumentCaptor<ScrmVoucherSaveDto> captor = ArgumentCaptor.forClass(ScrmVoucherSaveDto.class);
+        verify(voucherService, times(1)).createVoucher(anyLong(), captor.capture());
+        assertThat(captor.getValue().getEntries().get(0).getSubjectCode()).isEqualTo("6602");
+    }
+
+    @Test
+    @DisplayName("未指定费用科目 + 企业无任何费用科目 → 报错提示两套准则科目号")
+    void monthlyDepreciate_noExpenseSubjectAtAll() {
+        when(subjectRepository.findByCompanyIdAndSubjectCode(100L, "1601"))
+                .thenReturn(Optional.of(subject("1601")));
+        when(subjectRepository.findByCompanyIdAndSubjectCode(100L, "1602"))
+                .thenReturn(Optional.of(subject("1602")));
+        when(subjectRepository.findByCompanyIdAndSubjectCode(100L, "6602"))
+                .thenReturn(Optional.empty());
+        when(subjectRepository.findByCompanyIdAndSubjectCode(100L, "5602"))
+                .thenReturn(Optional.empty());
+        when(subjectRepository.findByCompanyIdAndSubjectCode(100L, "6601"))
+                .thenReturn(Optional.empty());
+        when(subjectRepository.findByCompanyIdAndSubjectCode(100L, "5601"))
+                .thenReturn(Optional.empty());
+        when(subjectRepository.findByCompanyIdAndSubjectCode(100L, "6603"))
+                .thenReturn(Optional.empty());
+        when(subjectRepository.findByCompanyIdAndSubjectCode(100L, "5603"))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.monthlyDepreciate(100L, 2026, 11, null))
+                .isInstanceOf(ScrmException.class)
+                .hasMessageContaining("费用类科目");
+    }
+
+    @Test
+    @DisplayName("batchDepreciate：多户逐户计提，某户缺科目失败不影响其它户")
+    void batchDepreciate_partialFailureIsolated() {
+        // 户 100 正常（有资产、科目齐全）；户 200 缺 1601 → 该户失败
+        ScrmFixedAssetEntity a100 = asset(10L, BigDecimal.ZERO);
+        a100.setCompanyId(100L);
+        when(assetRepository.findByCompanyIdAndStatusOrderByCreateTimeDesc(100L,
+                ScrmFixedAssetEntity.STATUS_ACTIVE)).thenReturn(List.of(a100));
+        when(assetRepository.findByCompanyIdAndStatusOrderByCreateTimeDesc(200L,
+                ScrmFixedAssetEntity.STATUS_ACTIVE)).thenReturn(List.of());
+        when(subjectRepository.findByCompanyIdAndSubjectCode(100L, "1601"))
+                .thenReturn(Optional.of(subject("1601")));
+        when(subjectRepository.findByCompanyIdAndSubjectCode(100L, "1602"))
+                .thenReturn(Optional.of(subject("1602")));
+        when(subjectRepository.findByCompanyIdAndSubjectCode(100L, "6602"))
+                .thenReturn(Optional.of(subject("6602")));
+        when(subjectRepository.findByCompanyIdAndSubjectCode(200L, "1601"))
+                .thenReturn(Optional.empty());
+        when(assetRepository.save(any(ScrmFixedAssetEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(depreciationRepository.save(any(ScrmFixedAssetDepreciationEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(voucherService.createVoucher(anyLong(), any(ScrmVoucherSaveDto.class)))
+                .thenReturn(Map.of("voucher", Map.of("id", 555L)));
+        when(companyRepository.findById(anyLong())).thenReturn(Optional.empty());
+
+        Map<String, Object> result =
+                service.batchDepreciate(List.of(100L, 200L), 2026, 11, null);
+
+        assertThat(result.get("totalCount")).isEqualTo(2);
+        assertThat(result.get("successCount")).isEqualTo(1);
+        assertThat(result.get("failCount")).isEqualTo(1);
+        assertThat(new BigDecimal(result.get("totalAmount").toString()))
+                .isEqualByComparingTo("1900.00");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> details = (List<Map<String, Object>>) result.get("details");
+        assertThat(details).hasSize(2);
+        assertThat(details.get(0).get("success")).isEqualTo(true);
+        assertThat(details.get(1).get("success")).isEqualTo(false);
+    }
+
+    @Test
+    @DisplayName("batchDepreciate：空列表 → 0 户 0 金额，不抛")
+    void batchDepreciate_emptySafe() {
+        Map<String, Object> result = service.batchDepreciate(List.of(), 2026, 11, null);
+        assertThat(result.get("totalCount")).isEqualTo(0);
+        assertThat(result.get("successCount")).isEqualTo(0);
+        assertThat(result.get("failCount")).isEqualTo(0);
+    }
 }

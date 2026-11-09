@@ -173,20 +173,53 @@ describe('FixedAssets', () => {
 
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     expect(post.mock.calls[0][0]).toBe('/scrm/fixed-assets/depreciate');
-    expect(post.mock.calls[0][2]).toMatchObject({
-      params: expect.objectContaining({
-        companyId: '1',
-        periodYear: expect.any(Number),
-        periodMonth: expect.any(Number),
-        expenseSubjectCode: '6602',
-      }),
-    });
+    const params = (post.mock.calls[0][2] as { params: Record<string, unknown> }).params;
+    expect(params.companyId).toBe('1');
+    expect(typeof params.periodYear).toBe('number');
+    expect(typeof params.periodMonth).toBe('number');
+    // 费用科目默认留空 → 不发 expenseSubjectCode，由后端按企业科目体系自动探测
+    // （新准则 6602 / 旧准则 5602 管理费用）
+    expect(params.expenseSubjectCode).toBeUndefined();
     // 计提成功后刷新列表与汇总
     await waitFor(() =>
       expect(
         get.mock.calls.filter(([url]) => String(url).includes('/company-summary')).length,
       ).toBeGreaterThan(1),
     );
+  });
+
+  it('批量计提：不选企业也可提交，POST 到 batch-depreciate 并展示汇总', async () => {
+    routeMock();
+    post.mockResolvedValue({
+      successCount: 2,
+      failCount: 1,
+      skippedCount: 1,
+      totalCount: 4,
+      totalAmount: 7600,
+      details: [
+        { companyId: '1', companyName: '测试财税公司', success: true, count: 2, totalAmount: 3800 },
+        { companyId: '2', companyName: '另一家公司', success: false, message: '缺少可用科目「1602 累计折旧」' },
+      ],
+    } as never);
+    const user = userEvent.setup();
+    renderWithProviders(<FixedAssets />);
+
+    // 不选企业直接点批量计提
+    await user.click(await screen.findByRole('button', { name: /批量计提/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('批量计提折旧（我负责的全部主体）')).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: cn('开始批量计提') }));
+
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(post.mock.calls[0][0]).toBe('/scrm/fixed-assets/batch-depreciate');
+    const params = (post.mock.calls[0][2] as { params: Record<string, unknown> }).params;
+    expect(typeof params.periodYear).toBe('number');
+    expect(typeof params.periodMonth).toBe('number');
+    // 不传 companyId（范围由后端按登录会计的数据范围解析）
+    expect(params.companyId).toBeUndefined();
+    // 失败户原因要在提示里出现
+    expect(await screen.findByText(/缺少可用科目/)).toBeInTheDocument();
   });
 
   it('未选企业时点新增给出提示且不发请求', async () => {
