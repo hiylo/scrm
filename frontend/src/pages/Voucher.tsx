@@ -138,6 +138,8 @@ export default function Voucher() {
   const [voucherLoading, setVoucherLoading] = useState(false);
   const [voucherPage, setVoucherPage] = useState(0);
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
+  /** 关键词筛选（摘要/凭证号模糊搜索） */
+  const [keywordFilter, setKeywordFilter] = useState<string>('');
   const [summary, setSummary] = useState<VoucherPeriodSummary | null>(null);
 
   // ============ 试算平衡 ============
@@ -231,6 +233,7 @@ export default function Voucher() {
           periodYear: year,
           periodMonth: month,
           status: statusFilter,
+          keyword: keywordFilter || undefined,
           page: voucherPage,
           size: 10,
         }),
@@ -244,7 +247,7 @@ export default function Voucher() {
     } finally {
       setVoucherLoading(false);
     }
-  }, [companyId, year, month, statusFilter, voucherPage]);
+  }, [companyId, year, month, statusFilter, keywordFilter, voucherPage]);
 
   /** 加载试算平衡 */
   const loadTrial = useCallback(async () => {
@@ -871,20 +874,31 @@ export default function Voucher() {
                     </Space>
                   }
                   extra={
-                    <Select
-                      allowClear
-                      placeholder="状态"
-                      style={{ width: 130 }}
-                      value={statusFilter}
-                      onChange={(value) => {
-                        setStatusFilter(value);
-                        setVoucherPage(0);
-                      }}
-                      options={Object.entries(voucherStatusConfig).map(([value, cfg]) => ({
-                        value,
-                        label: cfg.label,
-                      }))}
-                    />
+                    <Space>
+                      <Input.Search
+                        allowClear
+                        placeholder="搜索摘要/凭证号"
+                        style={{ width: 200 }}
+                        onSearch={(value) => {
+                          setKeywordFilter(value);
+                          setVoucherPage(0);
+                        }}
+                      />
+                      <Select
+                        allowClear
+                        placeholder="状态"
+                        style={{ width: 130 }}
+                        value={statusFilter}
+                        onChange={(value) => {
+                          setStatusFilter(value);
+                          setVoucherPage(0);
+                        }}
+                        options={Object.entries(voucherStatusConfig).map(([value, cfg]) => ({
+                          value,
+                          label: cfg.label,
+                        }))}
+                      />
+                    </Space>
                   }
                 >
                   <Table<Voucher>

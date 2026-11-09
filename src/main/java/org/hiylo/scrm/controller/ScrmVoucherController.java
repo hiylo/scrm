@@ -181,6 +181,7 @@ public class ScrmVoucherController {
      * @param periodYear  年（可空）
      * @param periodMonth 月（可空）
      * @param status      状态（可空）
+     * @param keyword     关键词（可空，摘要/凭证号模糊匹配）
      * @return 凭证分页结果
      */
     @RequirePermission(resource = "scrm_voucher", action = "read")
@@ -191,13 +192,14 @@ public class ScrmVoucherController {
             @RequestParam Long companyId,
             @RequestParam(required = false) Integer periodYear,
             @RequestParam(required = false) Integer periodMonth,
-            @RequestParam(required = false) String status) {
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword) {
         // 显式校验：会计传他人 companyId 应 403，而不是静默返回空列表
         assertCompanyAccessible(companyId);
         Pageable pageable = PageRequest.of(Math.max(page, 0), Math.max(size, 1),
                 Sort.by(Sort.Direction.ASC, "periodYear", "periodMonth", "voucherNo"));
         return OperationResponse.build(
-                voucherService.listVouchers(companyId, periodYear, periodMonth, status, pageable));
+                voucherService.listVouchers(companyId, periodYear, periodMonth, status, keyword, pageable));
     }
 
     /**

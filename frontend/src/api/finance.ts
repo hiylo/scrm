@@ -1546,6 +1546,7 @@ export const listVouchers = (params: {
   periodYear?: number;
   periodMonth?: number;
   status?: string;
+  keyword?: string;
   page?: number;
   size?: number;
 }) => apiClient.get<Page<Voucher>>('/scrm/vouchers', { params });

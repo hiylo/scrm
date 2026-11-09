@@ -398,10 +398,11 @@ public class ScrmVoucherService {
      */
     @Transactional(readOnly = true)
     public Page<ScrmVoucherEntity> listVouchers(Long companyId, Integer periodYear,
-                                                Integer periodMonth, String status,
+                                                Integer periodMonth, String status, String keyword,
                                                 Pageable pageable) {
         // 财税数据范围：会计只能看到自己负责主体的凭证
         List<Long> accessibleCompanyIds = financeDataScope.resolveAccessibleCompanyIds();
+        String kw = keyword == null ? null : keyword.trim();
         return voucherRepository.findAll((root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             if (accessibleCompanyIds != null) {
@@ -422,6 +423,23 @@ public class ScrmVoucherService {
             }
             if (status != null && !status.isBlank()) {
                 predicates.add(cb.equal(root.get("status"), status));
+            }
+            // 关键词：摘要模糊匹配；若关键词是纯数字，则同时精确匹配凭证号。
+            // 注意：voucherNo 是 Integer, 不能对它用 lower()/like()（PG 无 lower(integer)），
+            // 因此数字关键词走等值匹配, 非数字只匹配摘要。
+            if (kw != null && !kw.isEmpty()) {
+                String like = "%" + kw.toLowerCase() + "%";
+                Predicate remarkLike = cb.like(cb.lower(cb.coalesce(root.get("remark"), "")), like);
+                if (kw.matches("\\d+")) {
+                    try {
+                        int no = Integer.parseInt(kw);
+                        predicates.add(cb.or(remarkLike, cb.equal(root.get("voucherNo"), no)));
+                    } catch (NumberFormatException ignore) {
+                        predicates.add(remarkLike);
+                    }
+                } else {
+                    predicates.add(remarkLike);
+                }
             }
             return cb.and(predicates.toArray(new Predicate[0]));
         }, pageable);
@@ -553,7 +571,7 @@ public class ScrmVoucherService {
      */
     @Transactional(readOnly = true)
     public Map<String, Object> periodSummary(Long companyId, int periodYear, int periodMonth) {
-        Page<ScrmVoucherEntity> all = listVouchers(companyId, periodYear, periodMonth, null,
+        Page<ScrmVoucherEntity> all = listVouchers(companyId, periodYear, periodMonth, null, null,
                 org.springframework.data.domain.PageRequest.of(0, Integer.MAX_VALUE));
         long draft = 0;
         long posted = 0;
