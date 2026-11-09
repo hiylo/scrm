@@ -593,4 +593,57 @@ class ScrmTaxDeclarationServiceTest {
         p.setCustomerName(customerName);
         return p;
     }
+
+    @Test
+    @DisplayName("batchMarkFiled: 全部合法状态 → 全成功")
+    void batchMarkFiled_allSuccess() {
+        ScrmTaxDeclarationRecordEntity r1 = todoRecord(1L, 11L, "VAT", "PENDING");
+        ScrmTaxDeclarationRecordEntity r2 = todoRecord(2L, 11L, "VAT", "NOT_STARTED");
+        ScrmTaxDeclarationRecordEntity r3 = todoRecord(3L, 11L, "VAT", "OVERDUE");
+        when(recordRepository.findById(1L)).thenReturn(Optional.of(r1));
+        when(recordRepository.findById(2L)).thenReturn(Optional.of(r2));
+        when(recordRepository.findById(3L)).thenReturn(Optional.of(r3));
+        when(recordRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        Map<String, Object> result = service.batchMarkFiled(List.of(1L, 2L, 3L));
+
+        assertThat(result.get("successCount")).isEqualTo(3);
+        assertThat(result.get("failCount")).isEqualTo(0);
+        assertThat(r1.getDeclarationStatus()).isEqualTo("FILED");
+        assertThat(r2.getDeclarationStatus()).isEqualTo("FILED");
+        assertThat(r3.getDeclarationStatus()).isEqualTo("FILED");
+    }
+
+    @Test
+    @DisplayName("batchMarkFiled: 混合状态 → 失败条不影响其它条，返回失败明细")
+    void batchMarkFiled_partialFailure() {
+        ScrmTaxDeclarationRecordEntity ok = todoRecord(1L, 11L, "VAT", "PENDING");
+        // PAID 为终态，不允许再申报 → 该条失败
+        ScrmTaxDeclarationRecordEntity paid = todoRecord(2L, 11L, "VAT", "PAID");
+        when(recordRepository.findById(1L)).thenReturn(Optional.of(ok));
+        when(recordRepository.findById(2L)).thenReturn(Optional.of(paid));
+        when(recordRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        Map<String, Object> result = service.batchMarkFiled(List.of(1L, 2L));
+
+        assertThat(result.get("successCount")).isEqualTo(1);
+        assertThat(result.get("failCount")).isEqualTo(1);
+        assertThat(ok.getDeclarationStatus()).isEqualTo("FILED");
+        assertThat(paid.getDeclarationStatus()).isEqualTo("PAID");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> failures =
+                (List<Map<String, Object>>) result.get("failures");
+        assertThat(failures).hasSize(1);
+        assertThat(failures.get(0).get("id")).isEqualTo(2L);
+    }
+
+    @Test
+    @DisplayName("batchMarkFiled: 空列表 / null → 0 成功 0 失败，不抛异常")
+    void batchMarkFiled_emptySafe() {
+        Map<String, Object> empty = service.batchMarkFiled(List.of());
+        assertThat(empty.get("successCount")).isEqualTo(0);
+        assertThat(empty.get("failCount")).isEqualTo(0);
+        Map<String, Object> nullInput = service.batchMarkFiled(null);
+        assertThat(nullInput.get("successCount")).isEqualTo(0);
+    }
 }

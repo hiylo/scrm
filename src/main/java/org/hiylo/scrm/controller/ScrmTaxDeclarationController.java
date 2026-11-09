@@ -208,6 +208,22 @@ public class ScrmTaxDeclarationController {
     }
 
     /**
+     * 批量申报完成（征期收尾高频动作）。
+     * <p>
+     * 逐条复用单条申报的状态校验；某条失败（状态不允许/记录不存在）不影响其它条，
+     * 返回成功/失败明细供会计核对。只批量申报，不批量缴款（缴款每条实缴金额不同）。
+     * </p>
+     *
+     * @param ids 记录 ID 列表
+     * @return {successCount, failCount, failures:[{id, message}]}
+     */
+    @RequirePermission(resource = "scrm_tax_record", action = "declare")
+    @PostMapping("/records/batch-filed")
+    public OperationResponse<Map<String, Object>> batchMarkFiled(@RequestBody List<Long> ids) {
+        return OperationResponse.build(taxDeclarationService.batchMarkFiled(ids));
+    }
+
+    /**
      * 缴款完成（会计动作, FILED/OVERDUE → PAID）。
      *
      * <p><b>paidAmount 必填</b>：进入 PAID 必须带实缴金额。缺失（null）与零（0）语义

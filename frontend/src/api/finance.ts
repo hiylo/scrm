@@ -548,6 +548,14 @@ export const markRecordFiled = (id: string, taxAmount?: number, receiptNo?: stri
     },
   });
 
+/** 批量申报完成（逐条校验状态，返回成功/失败明细） */
+export const batchMarkFiled = (ids: string[]) =>
+  apiClient.post<{
+    successCount: number;
+    failCount: number;
+    failures: Array<{ id: string; message: string }>;
+  }>('/scrm/tax-calendar/records/batch-filed', ids);
+
 /** 缴款完成（FILED/OVERDUE → PAID） */
 export const markRecordPaid = (id: string, paidAmount?: number, receiptNo?: string) =>
   apiClient.post<TaxRecord>(`/scrm/tax-calendar/records/${id}/paid`, undefined, {

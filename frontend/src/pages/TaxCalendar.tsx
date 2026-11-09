@@ -36,6 +36,7 @@ import {
   cancelRecord,
   createTaxProfile,
   deleteTaxProfile,
+  batchMarkFiled,
   listRecordsByMonth,
   listTaxProfiles,
   markRecordBackFilled,
@@ -118,6 +119,8 @@ export default function TaxCalendar() {
   // 月历记录
   const [records, setRecords] = useState<TaxRecord[]>([]);
   const [recordsLoading, setRecordsLoading] = useState(false);
+  /** 批量申报选中的记录 ID（仅 NOT_STARTED/PENDING/OVERDUE 可勾选） */
+  const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
 
   // 申报档案
   const [profiles, setProfiles] = useState<TaxProfile[]>([]);
@@ -233,6 +236,40 @@ export default function TaxCalendar() {
   }, [records]);
 
   /** 打开动作弹窗 */
+  /**
+   * 批量申报（征期收尾高频动作）。
+   * <p>逐条由后端校验状态：仅 NOT_STARTED/PENDING/OVERDUE 可申报，其余跳过并在
+   * 结果里列出，不阻塞整批。申报 ≠ 缴款，缴款需逐条填实缴金额。</p>
+   */
+  const handleBatchFiled = () => {
+    if (selectedRecordIds.length === 0) return;
+    modal.confirm({
+      title: `批量申报 ${selectedRecordIds.length} 条记录？`,
+      content:
+        '逐条标记为「已申报」；状态不允许的记录会被跳过并在结果中列出。申报不等于缴款，缴款仍需逐条填写实缴金额。',
+      onOk: async () => {
+        try {
+          const result = await batchMarkFiled(selectedRecordIds);
+          setSelectedRecordIds([]);
+          if (result.failCount > 0) {
+            message.warning(
+              `成功 ${result.successCount} 条，失败 ${result.failCount} 条：` +
+                result.failures
+                  .slice(0, 3)
+                  .map((f) => f.message)
+                  .join('；'),
+            );
+          } else {
+            message.success(`已批量申报 ${result.successCount} 条`);
+          }
+          void loadRecords(month);
+        } catch {
+          // 已统一提示
+        }
+      },
+    });
+  };
+
   const openAction = (record: TaxRecord, type: 'filed' | 'paid' | 'backfill') => {
     setActionRecord(record);
     setActionType(type);
@@ -578,6 +615,13 @@ export default function TaxCalendar() {
             <Button icon={<ReloadOutlined />} onClick={() => void loadRecords(month)}>
               刷新
             </Button>
+            <Button
+              type="primary"
+              disabled={selectedRecordIds.length === 0}
+              onClick={handleBatchFiled}
+            >
+              批量申报（{selectedRecordIds.length}）
+            </Button>
           </Space>
         }
       >
@@ -587,6 +631,15 @@ export default function TaxCalendar() {
           loading={recordsLoading}
           columns={recordColumns}
           dataSource={records}
+          rowSelection={{
+            selectedRowKeys: selectedRecordIds,
+            onChange: (keys) => setSelectedRecordIds(keys as string[]),
+            getCheckboxProps: (record) => ({
+              disabled: !['NOT_STARTED', 'PENDING', 'OVERDUE'].includes(
+                record.declarationStatus,
+              ),
+            }),
+          }}
           locale={{ emptyText: <Empty description="本月没有申报任务（先在下方建申报档案，调度会自动生成记录）" /> }}
           pagination={{ pageSize: 20, showTotal: (t) => `共 ${t} 条` }}
         />

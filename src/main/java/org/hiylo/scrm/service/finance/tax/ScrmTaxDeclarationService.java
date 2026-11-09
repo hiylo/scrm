@@ -489,6 +489,51 @@ public class ScrmTaxDeclarationService {
     }
 
     /**
+     * 批量申报完成（征期收尾高频动作）。
+     * <p>
+     * 会计征期结束时往往要把几十上百条待申报记录一次性标记「已申报」。逐条复用
+     * {@link #markFiled} 的状态校验与落库，<b>每条独立捕获异常</b>——某条状态不允许
+     * 不影响其它条，返回成功/失败明细供会计核对。
+     * </p>
+     * <p>
+     * <b>刻意不加 {@code @Transactional}</b>：让每条 {@link #markFiled} 用自身的事务
+     * 独立提交/回滚。若在此方法上开外层事务，某条抛异常会被标记 rollback-only，
+     * 导致整批无法提交（UnexpectedRollbackException）。
+     * </p>
+     * <p>
+     * 只批量「申报」，不批量「缴款」：缴款每条实缴金额不同，无法用统一参数批量完成，
+     * 逐条填金额更安全。
+     * </p>
+     *
+     * @param ids 记录 ID 列表
+     * @return {successCount, failCount, failures:[{id, message}]}
+     */
+    public Map<String, Object> batchMarkFiled(List<Long> ids) {
+        int success = 0;
+        List<Map<String, Object>> failures = new ArrayList<>();
+        if (ids != null) {
+            for (Long id : ids) {
+                try {
+                    markFiled(id, null, null, null);
+                    success++;
+                } catch (Exception e) {
+                    Map<String, Object> f = new LinkedHashMap<>();
+                    f.put("id", id);
+                    f.put("message", e.getMessage());
+                    failures.add(f);
+                }
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("successCount", success);
+        result.put("failCount", failures.size());
+        result.put("failures", failures);
+        log.info("[报税日历-批量申报] 共 {} 条, 成功 {}, 失败 {}", 
+                ids == null ? 0 : ids.size(), success, failures.size());
+        return result;
+    }
+
+    /**
      * 缴款完成（会计动作）: FILED / OVERDUE → PAID, 回填实缴税额。
      *
      * @param id         记录 ID
