@@ -24,6 +24,7 @@ import org.hiylo.scrm.repository.ScrmTaxDeclarationProfileRepository;
 import org.hiylo.scrm.repository.ScrmTaxDeclarationRecordRepository;
 import org.hiylo.scrm.service.ScrmNotificationCenterService;
 import org.hiylo.scrm.service.ScrmTicketService;
+import org.hiylo.scrm.entity.ScrmCompanyEntity;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,6 +36,9 @@ import org.mockito.quality.Strictness;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -483,5 +487,110 @@ class ScrmTaxDeclarationServiceTest {
                 .getDeclaredMethod("nextWorkday", LocalDate.class);
         m.setAccessible(true);
         return (LocalDate) m.invoke(service, date);
+    }
+
+    @Test
+    @DisplayName("listMonthTodo：隔离为 null（全量可见）时按状态分三组，CANCELED 排除、PAID 忽略")
+    void listMonthTodo_groupsByStatusWhenNoScope() {
+        when(recordRepository.findByDueDateBetween(any(), any()))
+                .thenReturn(List.of(
+                        todoRecord(1L, 11L, "VAT", "NOT_STARTED"),
+                        todoRecord(2L, 11L, "VAT", "PENDING"),
+                        todoRecord(3L, 12L, "CIT", "FILED"),
+                        todoRecord(4L, 12L, "VAT", "OVERDUE"),
+                        todoRecord(5L, 12L, "VAT", "CANCELED"),
+                        todoRecord(6L, 12L, "VAT", "PAID")));
+        // 显式模拟"全量可见"主路径（Mockito 对 List 默认返回空列表, 会走 fail-closed 空分支）
+        when(financeDataScope.resolveAccessibleCompanyIds()).thenReturn(null);
+        // profile 11→company 100（有公司名），profile 12→company 101（查不到，用 customerName 兜底）
+        ScrmTaxDeclarationProfileEntity p11 = todoProfile(11L, 100L, "模板客户");
+        ScrmTaxDeclarationProfileEntity p12 = todoProfile(12L, 101L, "兜底客户名");
+        when(profileRepository.findById(11L)).thenReturn(Optional.of(p11));
+        when(profileRepository.findById(12L)).thenReturn(Optional.of(p12));
+        ScrmCompanyEntity c100 = new ScrmCompanyEntity();
+        c100.setId(100L);
+        c100.setCompanyName("测试企业A");
+        when(companyRepository.findById(100L)).thenReturn(Optional.of(c100));
+        when(companyRepository.findById(101L)).thenReturn(Optional.empty());
+
+        Map<String, Object> result = service.listMonthTodo(2026, 11);
+
+        assertThat(result.get("pendingCount")).isEqualTo(2);
+        assertThat(result.get("toPayCount")).isEqualTo(1);
+        assertThat(result.get("overdueCount")).isEqualTo(1);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> pending = (List<Map<String, Object>>) result.get("pending");
+        assertThat(pending).hasSize(2);
+        assertThat(pending.get(0).get("companyName")).isEqualTo("测试企业A");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> toPay = (List<Map<String, Object>>) result.get("toPay");
+        assertThat(toPay).hasSize(1);
+        assertThat(toPay.get(0).get("companyName")).isEqualTo("兜底客户名");
+        assertThat(toPay.get(0).get("taxType")).isEqualTo("CIT");
+    }
+
+    @Test
+    @DisplayName("listMonthTodo：隔离返回空列表时（fail-closed）三组为空")
+    void listMonthTodo_emptyWhenNoAccessibleCompanies() {
+        when(recordRepository.findByDueDateBetween(any(), any()))
+                .thenReturn(List.of(todoRecord(1L, 11L, "VAT", "PENDING")));
+        when(financeDataScope.resolveAccessibleCompanyIds()).thenReturn(List.of());
+
+        Map<String, Object> result = service.listMonthTodo(2026, 11);
+
+        assertThat(result.get("pendingCount")).isEqualTo(0);
+        assertThat(result.get("toPayCount")).isEqualTo(0);
+        assertThat(result.get("overdueCount")).isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("listMonthTodo：隔离返回可见主体时仅保留其档案的记录")
+    void listMonthTodo_filtersByScope() {
+        // 可见主体 100 → 档案 11；记录 r1 档案 11（可见）、r2 档案 12（不可见）
+        ScrmTaxDeclarationRecordEntity r1 = todoRecord(1L, 11L, "VAT", "PENDING");
+        ScrmTaxDeclarationRecordEntity r2 = todoRecord(2L, 12L, "VAT", "PENDING");
+        when(recordRepository.findByDueDateBetween(any(), any()))
+                .thenReturn(List.of(r1, r2));
+        when(financeDataScope.resolveAccessibleCompanyIds()).thenReturn(List.of(100L));
+        ScrmTaxDeclarationProfileEntity p11 = todoProfile(11L, 100L, "可见档案");
+        ScrmTaxDeclarationProfileEntity p12 = todoProfile(12L, 200L, "他人档案");
+        when(profileRepository.findById(11L)).thenReturn(Optional.of(p11));
+        when(profileRepository.findById(12L)).thenReturn(Optional.of(p12));
+        // findByCompanyIdIn(List.of(100L)) 只返回档案 11
+        when(profileRepository.findByCompanyIdIn(List.of(100L))).thenReturn(List.of(p11));
+
+        Map<String, Object> result = service.listMonthTodo(2026, 11);
+
+        assertThat(result.get("pendingCount")).isEqualTo(1);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> pending = (List<Map<String, Object>>) result.get("pending");
+        assertThat(pending).hasSize(1);
+        assertThat(pending.get(0).get("recordId")).isEqualTo(1L);
+    }
+
+    /** 构造申报记录（所属期/截止日固定在本月，便于 findDueDateBetween 命中） */
+    private ScrmTaxDeclarationRecordEntity todoRecord(Long id, Long profileId, String taxType,
+                                                      String status) {
+        ScrmTaxDeclarationRecordEntity r = new ScrmTaxDeclarationRecordEntity();
+        r.setId(id);
+        r.setProfileId(profileId);
+        r.setTaxType(taxType);
+        r.setPeriodStart(LocalDate.of(2026, 11, 1));
+        r.setPeriodEnd(LocalDate.of(2026, 11, 30));
+        r.setDueDate(LocalDate.of(2026, 11, 15));
+        r.setTaxAmount(new BigDecimal("100.00"));
+        r.setPaidAmount(BigDecimal.ZERO);
+        r.setDeclarationStatus(status);
+        r.setOverdueDays("OVERDUE".equals(status) ? 3 : 0);
+        return r;
+    }
+
+    /** 构造申报档案（companyId + customerName 兜底） */
+    private ScrmTaxDeclarationProfileEntity todoProfile(Long id, Long companyId, String customerName) {
+        ScrmTaxDeclarationProfileEntity p = new ScrmTaxDeclarationProfileEntity();
+        p.setId(id);
+        p.setCompanyId(companyId);
+        p.setCustomerName(customerName);
+        return p;
     }
 }

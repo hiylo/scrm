@@ -883,6 +883,111 @@ public class ScrmTaxDeclarationService {
     }
 
     /**
+     * 当前会计本月的申报待办（会计工作台「本月待办」）。
+     * <p>
+     * 把本月（按截止日落在当月）申报记录按代办性质分三组，每条带上户名：
+     * </p>
+     * <ul>
+     *   <li><b>待申报</b>（NOT_STARTED + PENDING）：尚未完成申报；</li>
+     *   <li><b>待缴款</b>（FILED）：已申报未缴清；</li>
+     *   <li><b>已逾期</b>（OVERDUE）：截止日已过未申报。</li>
+     * </ul>
+     * <p>
+     * 数据范围与 {@link #listRecordsByMonth} 一致：会计只能看到自己负责主体的
+     * 申报记录（financeDataScope 隔离）。户名经 record → profile → company 反查，
+     * company 缺失时兜底用 profile.customerName。
+     * </p>
+     *
+     * @param year  年份
+     * @param month 月份（1-12）
+     * @return {pending, toPay, overdue, pendingCount, toPayCount, overdueCount}
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> listMonthTodo(int year, int month) {
+        LocalDate from = YearMonth.of(year, month).atDay(1);
+        LocalDate to = YearMonth.of(year, month).atEndOfMonth();
+        List<ScrmTaxDeclarationRecordEntity> records = recordRepository.findByDueDateBetween(from, to);
+
+        // 财税数据范围：会计只能看到自己负责主体的申报记录（同 listRecordsByMonth）
+        List<Long> accessibleCompanyIds = financeDataScope.resolveAccessibleCompanyIds();
+        java.util.Set<Long> accessibleProfileIds = null;
+        if (accessibleCompanyIds != null) {
+            if (accessibleCompanyIds.isEmpty()) {
+                Map<String, Object> empty = new LinkedHashMap<>();
+                empty.put("pending", List.of());
+                empty.put("toPay", List.of());
+                empty.put("overdue", List.of());
+                empty.put("pendingCount", 0);
+                empty.put("toPayCount", 0);
+                empty.put("overdueCount", 0);
+                return empty;
+            }
+            accessibleProfileIds = profileRepository
+                    .findByCompanyIdIn(accessibleCompanyIds).stream()
+                    .map(ScrmTaxDeclarationProfileEntity::getId)
+                    .collect(Collectors.toSet());
+        }
+
+        List<Map<String, Object>> pendingList = new ArrayList<>();
+        List<Map<String, Object>> toPayList = new ArrayList<>();
+        List<Map<String, Object>> overdueList = new ArrayList<>();
+        for (ScrmTaxDeclarationRecordEntity r : records) {
+            if (STATUS_CANCELED.equals(r.getDeclarationStatus())) {
+                continue;
+            }
+            if (accessibleProfileIds != null && !accessibleProfileIds.contains(r.getProfileId())) {
+                continue;
+            }
+            Map<String, Object> item = monthTodoItem(r);
+            String status = r.getDeclarationStatus();
+            if (STATUS_OVERDUE.equals(status)) {
+                overdueList.add(item);
+            } else if (STATUS_NOT_STARTED.equals(status) || STATUS_PENDING.equals(status)) {
+                pendingList.add(item);
+            } else if (STATUS_FILED.equals(status)) {
+                toPayList.add(item);
+            }
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("pending", pendingList);
+        result.put("toPay", toPayList);
+        result.put("overdue", overdueList);
+        result.put("pendingCount", pendingList.size());
+        result.put("toPayCount", toPayList.size());
+        result.put("overdueCount", overdueList.size());
+        return result;
+    }
+
+    /** 组装单条月待办项（含户名：record → profile → company，缺 company 用 customerName 兜底） */
+    private Map<String, Object> monthTodoItem(ScrmTaxDeclarationRecordEntity r) {
+        String companyName = null;
+        ScrmTaxDeclarationProfileEntity profile =
+                profileRepository.findById(r.getProfileId()).orElse(null);
+        if (profile != null && profile.getCompanyId() != null) {
+            companyName = companyRepository.findById(profile.getCompanyId())
+                    .map(c -> c.getCompanyName())
+                    .orElse(null);
+        }
+        if ((companyName == null || companyName.isBlank()) && profile != null) {
+            companyName = profile.getCustomerName();
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("recordId", r.getId());
+        m.put("companyId", profile != null ? profile.getCompanyId() : null);
+        m.put("companyName", companyName);
+        m.put("taxType", r.getTaxType());
+        m.put("periodStart", r.getPeriodStart());
+        m.put("periodEnd", r.getPeriodEnd());
+        m.put("dueDate", r.getDueDate());
+        m.put("taxAmount", r.getTaxAmount());
+        m.put("paidAmount", r.getPaidAmount());
+        m.put("status", r.getDeclarationStatus());
+        m.put("overdueDays", r.getOverdueDays());
+        return m;
+    }
+
+    /**
      * 解析月历默认应展示的年月。
      * <p>
      * 为什么需要：月历此前固定默认本月，但申报记录的截止日通常落在<b>次月</b>

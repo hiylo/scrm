@@ -21,6 +21,7 @@ import {
   Space,
   Statistic,
   Table,
+  Tabs,
   Tag,
   Tooltip,
   Typography,
@@ -32,10 +33,13 @@ import { useRole } from '../hooks/useRole';
 import {
   batchAssignAccountant,
   getAccountantWorkload,
+  getMonthTodo,
   listMyCompanies,
   searchUsers,
   type AccountantWorkload,
   type Company,
+  type MonthTodo,
+  type MonthTodoResult,
   type UserOption,
 } from '../api/finance';
 
@@ -54,6 +58,74 @@ const serviceStatusConfig: Record<string, { color: string; label: string }> = {
   SUSPENDED: { color: 'orange', label: '暂停' },
   TERMINATED: { color: 'red', label: '已终止' },
 };
+
+/** 申报状态映射 */
+const todoStatusConfig: Record<string, { color: string; label: string }> = {
+  NOT_STARTED: { color: 'default', label: '未开始' },
+  PENDING: { color: 'processing', label: '申报中' },
+  FILED: { color: 'blue', label: '已申报' },
+  PAID: { color: 'green', label: '已缴款' },
+  OVERDUE: { color: 'red', label: '已逾期' },
+  ARCHIVED: { color: 'default', label: '已归档' },
+  CANCELED: { color: 'default', label: '已取消' },
+};
+
+/** 税种中文映射 */
+const taxTypeLabel: Record<string, string> = {
+  VAT: '增值税',
+  CIT: '企业所得税',
+  IIT: '个人所得税',
+  SOCIAL_SECURITY: '社保',
+  ADDITIONAL: '附加税',
+  PROPERTY_TAX: '房产税',
+};
+
+/** 渲染一组本月申报待办表格 */
+function renderTodoTable(rows: MonthTodo[], emptyText: string, loading: boolean) {
+  const columns: ColumnsType<MonthTodo> = [
+    { title: '公司名', dataIndex: 'companyName', ellipsis: true },
+    {
+      title: '税种',
+      dataIndex: 'taxType',
+      width: 120,
+      render: (v: string) => taxTypeLabel[v] ?? v,
+    },
+    {
+      title: '所属期',
+      key: 'period',
+      width: 190,
+      render: (_, r) => `${r.periodStart ?? ''} ~ ${r.periodEnd ?? ''}`,
+    },
+    {
+      title: '应缴',
+      dataIndex: 'taxAmount',
+      width: 120,
+      align: 'right',
+      render: (v?: number) => (v == null ? '-' : v.toLocaleString('zh-CN')),
+    },
+    { title: '截止日', dataIndex: 'dueDate', width: 110 },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 100,
+      render: (v: string) => {
+        const cfg = todoStatusConfig[v] ?? { color: 'default', label: v };
+        return <Tag color={cfg.color}>{cfg.label}</Tag>;
+      },
+    },
+  ];
+  return (
+    <Table<MonthTodo>
+      rowKey="recordId"
+      size="small"
+      loading={loading}
+      columns={columns}
+      dataSource={rows}
+      pagination={false}
+      locale={{ emptyText: <Empty description={emptyText} /> }}
+    />
+  );
+}
 
 /**
  * 会计工作台。
@@ -84,6 +156,16 @@ export default function AccountantWorkbench() {
 
   const [workload, setWorkload] = useState<AccountantWorkload[]>([]);
   const [workloadLoading, setWorkloadLoading] = useState(false);
+
+  const [monthTodo, setMonthTodo] = useState<MonthTodoResult>({
+    pending: [],
+    toPay: [],
+    overdue: [],
+    pendingCount: 0,
+    toPayCount: 0,
+    overdueCount: 0,
+  });
+  const [todoLoading, setTodoLoading] = useState(false);
 
   // 批量指派弹窗
   const [assignOpen, setAssignOpen] = useState(false);
@@ -125,6 +207,26 @@ export default function AccountantWorkbench() {
     // 分派总览是主管视角，会计不发起该请求（避免无意义的越权调用）
     if (!isAccountant) void loadWorkload();
   }, [loadWorkload, isAccountant]);
+
+  /** 加载本月申报待办（按当前登录会计数据范围隔离） */
+  const loadMonthTodo = useCallback(async () => {
+    const now = dayjs();
+    setTodoLoading(true);
+    try {
+      const r = await getMonthTodo(now.year(), now.month() + 1);
+      setMonthTodo(
+        r || { pending: [], toPay: [], overdue: [], pendingCount: 0, toPayCount: 0, overdueCount: 0 },
+      );
+    } catch {
+      // 已统一提示
+    } finally {
+      setTodoLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadMonthTodo();
+  }, [loadMonthTodo]);
 
   /** 远程搜索用户 */
   const handleUserSearch = async (value: string) => {
@@ -311,6 +413,43 @@ export default function AccountantWorkbench() {
           </Card>
         </Col>
       </Row>
+
+      {/* 本月申报待办：所有角色可见，数据由后端按登录会计范围隔离 */}
+      <Card
+        size="small"
+        style={{ marginBottom: 16 }}
+        title="本月申报待办"
+        extra={
+          <Space>
+            <Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 'normal' }}>
+              本月共 {monthTodo.pendingCount + monthTodo.toPayCount + monthTodo.overdueCount} 项待处理
+            </Typography.Text>
+            <Button size="small" icon={<ReloadOutlined />} onClick={() => void loadMonthTodo()}>
+              刷新
+            </Button>
+          </Space>
+        }
+      >
+        <Tabs
+          items={[
+            {
+              key: 'pending',
+              label: `待申报（${monthTodo.pendingCount}）`,
+              children: renderTodoTable(monthTodo.pending, '本月没有待申报', todoLoading),
+            },
+            {
+              key: 'toPay',
+              label: `待缴款（${monthTodo.toPayCount}）`,
+              children: renderTodoTable(monthTodo.toPay, '本月没有待缴款', todoLoading),
+            },
+            {
+              key: 'overdue',
+              label: `已逾期（${monthTodo.overdueCount}）`,
+              children: renderTodoTable(monthTodo.overdue, '本月没有逾期', todoLoading),
+            },
+          ]}
+        />
+      </Card>
 
       <Row gutter={16}>
         <Col span={15}>

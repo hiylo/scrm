@@ -504,6 +504,37 @@ export const listRecordsByCompany = (companyId: string) =>
 export const listRecordsByMonth = (year: number, month: number) =>
   apiClient.get<TaxRecord[]>('/scrm/tax-calendar/records/month', { params: { year, month } });
 
+/** 本月申报待办单项（会计工作台） */
+export interface MonthTodo {
+  recordId: string;
+  companyId?: string;
+  companyName?: string;
+  taxType: string;
+  periodStart?: string;
+  periodEnd?: string;
+  dueDate?: string;
+  taxAmount?: number;
+  paidAmount?: number;
+  status: string;
+  overdueDays?: number;
+}
+
+/** 本月申报待办（三组分组，按当前登录会计数据隔离） */
+export interface MonthTodoResult {
+  pending: MonthTodo[];
+  toPay: MonthTodo[];
+  overdue: MonthTodo[];
+  pendingCount: number;
+  toPayCount: number;
+  overdueCount: number;
+}
+
+/** 会计工作台本月申报待办（分 待申报/待缴款/已逾期 三组） */
+export const getMonthTodo = (year: number, month: number) =>
+  apiClient.get<MonthTodoResult>('/scrm/tax-calendar/records/month/todo', {
+    params: { year, month },
+  });
+
 /** 申报记录详情 */
 export const getTaxRecord = (id: string) =>
   apiClient.get<TaxRecord>(`/scrm/tax-calendar/records/${id}`);

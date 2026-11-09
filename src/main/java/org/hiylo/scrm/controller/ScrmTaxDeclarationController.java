@@ -340,6 +340,30 @@ public class ScrmTaxDeclarationController {
     }
 
     /**
+     * 会计工作台「本月申报待办」（按截止日落在当月聚合）。
+     * <p>
+     * 分三组返回当前登录会计可见的申报记录：
+     * <ul>
+     *   <li><b>pending</b>（待申报）：NOT_STARTED + PENDING 状态；</li>
+     *   <li><b>toPay</b>（待缴款）：FILED 已申报未缴；</li>
+     *   <li><b>overdue</b>（已逾期）：OVERDUE 状态。</li>
+     * </ul>
+     * 每条含户名（companyName，经 record→profile→company 反查）。
+     * 数据隔离：只能看到当前会计负责主体的记录。
+     * </p>
+     *
+     * @param year  年份
+     * @param month 月份（1-12）
+     * @return {pending, toPay, overdue, pendingCount, toPayCount, overdueCount}
+     */
+    @RequirePermission(resource = "scrm_tax_record", action = "read")
+    @GetMapping("/records/month/todo")
+    public OperationResponse<Map<String, Object>> listMonthTodo(
+            @RequestParam int year, @RequestParam int month) {
+        return OperationResponse.build(taxDeclarationService.listMonthTodo(year, month));
+    }
+
+    /**
      * 月历默认月份建议（本月为空时自动跳到下一个有记录的月份）。
      *
      * @return {year, month} 建议展示的年月
