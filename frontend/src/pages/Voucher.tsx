@@ -316,6 +316,51 @@ export default function Voucher() {
     setEditorOpen(true);
   };
 
+  /**
+   * 以某张凭证为模板新建（复制）。
+   * <p>
+   * 代账场景高频：房租/工资/折旧等固定分录每月重复发生，会计不必重录。
+   * 复制只取「凭证字 + 摘要 + 分录」，日期落在当前期间月末，新凭证为草稿，
+   * 原凭证状态（草稿/已记账/已作废）不影响复制。附件数不继承（需重新挂）。
+   * </p>
+   *
+   * @param record 作为模板的凭证
+   */
+  const handleCopy = async (record: Voucher) => {
+    if (!companyId) {
+      message.warning('请先选择企业');
+      return;
+    }
+    if (subjects.length === 0) {
+      message.warning('该企业还没有科目表，请先点「初始化标准科目」');
+      return;
+    }
+    try {
+      const detail: VoucherDetail = await getVoucher(record.id);
+      setEditingId(null);
+      setEditingStatus('DRAFT');
+      setEntries(
+        (detail.entries || []).map((e, index) => ({
+          ...e,
+          lineNo: index + 1,
+          debitAmount: Number(e.debitAmount) || 0,
+          creditAmount: Number(e.creditAmount) || 0,
+        })),
+      );
+      editorForm.resetFields();
+      editorForm.setFieldsValue({
+        voucherWord: detail.voucher.voucherWord,
+        voucherDate: period.endOf('month'),
+        attachmentCount: 0,
+        remark: detail.voucher.remark,
+      } as never);
+      setEditorOpen(true);
+      message.success('已复制为新建凭证草稿，请确认期间与金额后保存');
+    } catch {
+      // 已统一提示
+    }
+  };
+
   /** 打开编辑（仅草稿可改） */
   const openEdit = async (record: Voucher) => {
     if (record.status !== 'DRAFT') {
@@ -596,7 +641,7 @@ export default function Voucher() {
     {
       title: '操作',
       key: 'action',
-      width: 210,
+      width: 280,
       fixed: 'right',
       render: (_, record) => (
         <Space size="small">
@@ -613,6 +658,9 @@ export default function Voucher() {
             </Button>
           )}
           {record.status === 'VOID' && <span style={{ color: '#bbb' }}>已作废</span>}
+          <Tooltip title="以本凭证为模板新建一张草稿（固定分录免重录）">
+            <Button size="small" onClick={() => void handleCopy(record)}>复制</Button>
+          </Tooltip>
         </Space>
       ),
     },
