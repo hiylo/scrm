@@ -147,6 +147,7 @@ const navGroups: NavGroup[] = [
       { key: '/inspections', icon: '🔍', label: '巡检与公告', permission: 'scrm_inspection_task:read', roles: ['admin', 'manager'] },
       { key: '/finance-readiness', icon: '🧭', label: '就绪看板', permission: 'scrm_inspection_task:read', roles: ['admin'] },
       { key: '/tax-calendar', icon: '📅', label: '报税日历', permission: 'scrm_tax_record:read', roles: ['admin', 'manager', 'sales', 'accountant'] },
+      { key: '/client-portal', icon: '🔎', label: '客户查账', permission: 'scrm_company:read', roles: ['admin', 'manager', 'sales', 'viewer', 'accountant'] },
       { key: '/tax-risk-profile', icon: '🛡️', label: '税负风险', permission: 'scrm_tax_record:read', roles: ['admin', 'manager', 'sales', 'viewer', 'accountant'] },
       { key: '/tax-holidays', icon: '🎏', label: '假期维护', permission: 'scrm_tax_holiday:read', roles: ['admin', 'manager'] },
       { key: '/renewals', icon: '🔄', label: '服务续费', permission: 'scrm_renewal_task:read', roles: ['admin', 'manager', 'sales', 'accountant'] },

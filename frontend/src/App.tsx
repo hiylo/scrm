@@ -101,6 +101,7 @@ const OpenApiApps = lazy(() => import('./pages/OpenApiApps'));
 const MessageTemplateCenter = lazy(() => import('./pages/MessageTemplateCenter'));
 const FixedAssets = lazy(() => import('./pages/FixedAssets'));
 const TaxRiskProfile = lazy(() => import('./pages/TaxRiskProfile'));
+const ClientPortal = lazy(() => import('./pages/ClientPortal'));
 
 /** 页面加载占位符 */
 const PageLoading = () => (
@@ -208,6 +209,7 @@ const appRoutes: Array<{ path?: string; index?: boolean; element: React.ReactEle
   { path: 'open-api-apps', element: <OpenApiApps /> },
   { path: 'fixed-assets', element: <FixedAssets /> },
   { path: 'tax-risk-profile', element: <TaxRiskProfile /> },
+  { path: 'client-portal', element: <ClientPortal /> },
 ];
 
 /** 主路由组件 */
