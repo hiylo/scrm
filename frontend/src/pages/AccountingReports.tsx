@@ -69,6 +69,32 @@ const money = (value?: number | null) =>
         maximumFractionDigits: 2,
       });
 
+/** CSV 单元格转义（含逗号/引号/换行时用双引号包裹，内部引号翻倍） */
+const csvEscape = (v: unknown): string => {
+  const s = v == null ? '' : String(v);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+/** 生成 CSV 文本（带 UTF-8 BOM，Excel 直接打开不乱码） */
+const buildCsv = (
+  headers: string[],
+  rows: Array<Array<string | number | undefined | null>>,
+): string => {
+  const lines = [headers, ...rows].map((r) => r.map(csvEscape).join(','));
+  return `\uFEFF${lines.join('\r\n')}`;
+};
+
+/** 触发浏览器下载 CSV 文件 */
+const downloadCsv = (filename: string, content: string): void => {
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+};
+
 /**
  * 账务报表页（资产负债表 / 利润表 / 总账 / 明细账 / 序时账 + 结账）。
  * <p>
@@ -269,6 +295,54 @@ export default function AccountingReports() {
     }
     return rows;
   }, [balanceSheet]);
+
+  /** 导出资产负债表 CSV（左右两栏并排 + 合计行） */
+  const exportBalanceSheet = () => {
+    if (!balanceSheet) {
+      message.warning('本期还没有报表数据，无法导出');
+      return;
+    }
+    const rows: Array<Array<string | number | undefined | null>> = balanceRows.map((r) => [
+      r.leftName,
+      r.leftClosing,
+      r.leftOpening,
+      r.rightName,
+      r.rightClosing,
+      r.rightOpening,
+    ]);
+    rows.push([
+      '资产合计',
+      balanceSheet.totalAssetClosing,
+      balanceSheet.totalAssetOpening,
+      '负债和所有者权益合计',
+      balanceSheet.totalLiabilityAndEquityClosing,
+      balanceSheet.totalLiabilityAndEquityOpening,
+    ]);
+    downloadCsv(
+      `资产负债表_${period.format('YYYYMM')}.csv`,
+      buildCsv(['资产', '期末余额', '年初余额', '负债和所有者权益', '期末余额', '年初余额'], rows),
+    );
+    message.success('资产负债表已导出');
+  };
+
+  /** 导出利润表 CSV（项目 / 本期金额 / 本年累计） */
+  const exportIncomeStatement = () => {
+    const src = incomeStatement?.rows ?? [];
+    if (src.length === 0) {
+      message.warning('本期没有损益发生额，无法导出');
+      return;
+    }
+    const rows: Array<Array<string | number | undefined | null>> = src.map((r) => [
+      r.name,
+      r.current,
+      r.ytd,
+    ]);
+    downloadCsv(
+      `利润表_${period.format('YYYYMM')}.csv`,
+      buildCsv(['项目', '本期金额', '本年累计'], rows),
+    );
+    message.success('利润表已导出');
+  };
 
   const balanceColumns: ColumnsType<(typeof balanceRows)[number]> = [
     { title: '资产', dataIndex: 'leftName', width: 180, render: (v: string) => v || '' },
@@ -533,6 +607,11 @@ export default function AccountingReports() {
                       </Typography.Text>
                     </Space>
                   }
+                  extra={
+                    <Button size="small" onClick={exportBalanceSheet}>
+                      导出 CSV
+                    </Button>
+                  }
                 >
                   <Table
                     rowKey="key"
@@ -639,6 +718,11 @@ export default function AccountingReports() {
                         {period.format('YYYY 年 M 月')} · 已排除结转损益凭证
                       </Typography.Text>
                     </Space>
+                  }
+                  extra={
+                    <Button size="small" onClick={exportIncomeStatement}>
+                      导出 CSV
+                    </Button>
                   }
                 >
                   <Table<IncomeStatementRow>
