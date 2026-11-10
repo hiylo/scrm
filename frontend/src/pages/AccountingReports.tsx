@@ -13,10 +13,12 @@ import {
   App,
   Button,
   Card,
+  Checkbox,
   Col,
   DatePicker,
   Descriptions,
   Empty,
+  Modal,
   Row,
   Select,
   Space,
@@ -133,6 +135,11 @@ export default function AccountingReports() {
   const [detailLedger, setDetailLedger] = useState<DetailLedger | null>(null);
   const [journal, setJournal] = useState<Journal | null>(null);
   const [loading, setLoading] = useState(false);
+  /** 结账弹窗可见性（用受控 Modal 而非 modal.confirm：需要放「无期初」勾选框） */
+  const [closeOpen, setCloseOpen] = useState(false);
+  /** 会计确认「本户从零起账」，结账时传给后端 */
+  const [confirmNoOpening, setConfirmNoOpening] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [subjectCode, setSubjectCode] = useState<string | undefined>();
   const [subjects, setSubjects] = useState<AccountSubject[]>([]);
 
@@ -229,25 +236,29 @@ export default function AccountingReports() {
     void loadReport();
   }, [loadReport]);
 
-  /** 结账 */
+  /** 打开结账弹窗（每次重置「无期初」勾选，避免上次的确认被误带进来） */
   const handleClose = () => {
     if (!companyId) return;
-    modal.confirm({
-      title: `结账 ${year} 年 ${month} 月？`,
-      content:
-        '将自动生成「结转损益」凭证（把收入/费用结转到本年利润）并记账，随后本期封账。封账后不可再新增或修改凭证，如需补录须先反结账。',
-      onOk: async () => {
-        try {
-          const result = await closePeriod(companyId, year, month);
-          message.success(
-            `${result.message}${result.closingVoucherLabel ? `（凭证 ${result.closingVoucherLabel}，结转利润 ${money(result.profit)}）` : ''}`,
-          );
-          await Promise.all([loadContext(), loadReport()]);
-        } catch {
-          // 已统一提示
-        }
-      },
-    });
+    setConfirmNoOpening(false);
+    setCloseOpen(true);
+  };
+
+  /** 执行结账 */
+  const submitClose = async () => {
+    if (!companyId) return;
+    setClosing(true);
+    try {
+      const result = await closePeriod(companyId, year, month, confirmNoOpening);
+      message.success(
+        `${result.message}${result.closingVoucherLabel ? `（凭证 ${result.closingVoucherLabel}，结转利润 ${money(result.profit)}）` : ''}`,
+      );
+      setCloseOpen(false);
+      await Promise.all([loadContext(), loadReport()]);
+    } catch {
+      // 已统一提示（如未录期初的 409 会原样弹出后端提示语）
+    } finally {
+      setClosing(false);
+    }
   };
 
   /** 反结账 */
@@ -663,6 +674,33 @@ export default function AccountingReports() {
           </Button>
         </Space>
       </Card>
+
+      <Modal
+        title={`结账 ${year} 年 ${month} 月？`}
+        open={closeOpen}
+        onCancel={() => setCloseOpen(false)}
+        onOk={() => void submitClose()}
+        confirmLoading={closing}
+        okText="确认结账"
+        cancelText="取消"
+      >
+        <p>
+          将自动生成「结转损益」凭证（把收入/费用结转到本年利润）并记账，随后本期封账。
+          封账后不可再新增或修改凭证，如需补录须先反结账。
+        </p>
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="结转损益按「截至本期的累计余额」计算利润。若本户是中途接手的，应先录入期初余额，否则利润可能不含上家结转的损益科目余额。"
+        />
+        <Checkbox
+          checked={confirmNoOpening}
+          onChange={(e) => setConfirmNoOpening(e.target.checked)}
+        >
+          本户无期初（从零起账），确认无需录入期初余额
+        </Checkbox>
+      </Modal>
 
       {!companyId && (
         <Alert

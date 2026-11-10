@@ -1892,8 +1892,19 @@ export interface Journal {
   balanced: boolean;
 }
 
-/** 结账（结转损益 + 封账） */
-export const closePeriod = (companyId: string, periodYear: number, periodMonth: number) =>
+/**
+ * 结账（结转损益 + 封账）。
+ *
+ * 未录入期初余额的企业必须显式传 `confirmNoOpening=true` 表示「本户从零起账」，
+ * 否则后端拒绝结账——结转损益按累计余额算利润，缺了期初会把利润算错，
+ * 而结账一旦封盘就锁死。
+ */
+export const closePeriod = (
+  companyId: string,
+  periodYear: number,
+  periodMonth: number,
+  confirmNoOpening = false,
+) =>
   apiClient.post<{
     period: string;
     status: string;
@@ -1903,7 +1914,7 @@ export const closePeriod = (companyId: string, periodYear: number, periodMonth: 
     entryCount?: number;
     message: string;
   }>('/scrm/vouchers/close-period', undefined, {
-    params: { companyId, periodYear, periodMonth },
+    params: { companyId, periodYear, periodMonth, confirmNoOpening },
   });
 
 /** 反结账 */
