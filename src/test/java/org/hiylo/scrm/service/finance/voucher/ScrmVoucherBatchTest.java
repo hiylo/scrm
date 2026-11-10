@@ -77,6 +77,10 @@ class ScrmVoucherBatchTest {
     @Mock
     private org.hiylo.scrm.service.finance.FinanceDataScope financeDataScope;
 
+    /** 原始单据服务（列表回填单据数 / 删凭证级联清理） */
+    @Mock
+    private ScrmVoucherAttachmentService attachmentService;
+
     /** 被测服务 */
     private ScrmVoucherService service;
 
@@ -95,7 +99,8 @@ class ScrmVoucherBatchTest {
     @BeforeEach
     void setUp() {
         service = new ScrmVoucherService(subjectRepository, voucherRepository,
-                entryRepository, companyRepository, periodCloseService, financeDataScope);
+                entryRepository, companyRepository, periodCloseService, financeDataScope,
+                attachmentService);
 
         // 默认期间未结账；结账场景在专门用例里覆盖
         when(periodCloseService.isClosed(anyLong(), any(), any())).thenReturn(false);

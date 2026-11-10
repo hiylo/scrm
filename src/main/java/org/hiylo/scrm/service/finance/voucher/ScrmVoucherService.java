@@ -87,6 +87,9 @@ public class ScrmVoucherService {
     /** 财税数据范围（会计只看到自己负责主体的凭证） */
     private final org.hiylo.scrm.service.finance.FinanceDataScope financeDataScope;
 
+    /** 原始单据服务（列表回填单据数、删凭证级联清理；不反向依赖本服务，无循环） */
+    private final ScrmVoucherAttachmentService attachmentService;
+
     // ============================================================
     // 科目
     // ============================================================
@@ -452,6 +455,8 @@ public class ScrmVoucherService {
                     + voucher.getVoucherLabel());
         }
         entryRepository.deleteByVoucherId(id);
+        // 原始单据一并清理：凭证都没了，挂在上面的发票/回单会变成无主孤儿数据
+        attachmentService.deleteByVoucherId(id);
         voucherRepository.delete(voucher);
     }
 
@@ -476,7 +481,7 @@ public class ScrmVoucherService {
         // 财税数据范围：会计只能看到自己负责主体的凭证
         List<Long> accessibleCompanyIds = financeDataScope.resolveAccessibleCompanyIds();
         String kw = keyword == null ? null : keyword.trim();
-        return voucherRepository.findAll((root, query, cb) -> {
+        Page<ScrmVoucherEntity> page = voucherRepository.findAll((root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             if (accessibleCompanyIds != null) {
                 if (accessibleCompanyIds.isEmpty()) {
@@ -516,6 +521,40 @@ public class ScrmVoucherService {
             }
             return cb.and(predicates.toArray(new Predicate[0]));
         }, pageable);
+        fillAttachmentFileCount(page.getContent());
+        return page;
+    }
+
+    /**
+     * 批量回填每张凭证的电子单据份数。
+     * <p>
+     * 一次 group by 查出整页，避免逐张 count 的 N+1。无单据的凭证置 0，
+     * 让前端稳定拿到数字而不是 null。
+     * </p>
+     *
+     * @param vouchers 当前页凭证
+     */
+    private void fillAttachmentFileCount(List<ScrmVoucherEntity> vouchers) {
+        if (vouchers == null || vouchers.isEmpty()) {
+            return;
+        }
+        List<Long> ids = new ArrayList<>();
+        for (ScrmVoucherEntity v : vouchers) {
+            v.setAttachmentFileCount(0);
+            if (v.getId() != null) {
+                ids.add(v.getId());
+            }
+        }
+        if (ids.isEmpty()) {
+            return;
+        }
+        Map<String, Integer> counts = attachmentService.countByVoucherIds(ids);
+        for (ScrmVoucherEntity v : vouchers) {
+            Integer count = v.getId() == null ? null : counts.get(String.valueOf(v.getId()));
+            if (count != null) {
+                v.setAttachmentFileCount(count);
+            }
+        }
     }
 
     /**

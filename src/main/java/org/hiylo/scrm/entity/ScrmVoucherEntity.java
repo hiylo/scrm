@@ -125,9 +125,20 @@ public class ScrmVoucherEntity {
     @Column(name = "status", nullable = false, length = 20)
     private String status = STATUS_DRAFT;
 
-    /** 附件张数 */
+    /** 附件张数（会计手工声明的纸质附件数，非电子单据数） */
     @Column(name = "attachment_count", nullable = false)
     private Integer attachmentCount = 0;
+
+    /**
+     * 已挂载的电子单据份数（不落库，列表查询时批量回填）。
+     * <p>
+     * 与 {@link #attachmentCount} 是两个概念：后者是会计声明的纸质张数，
+     * 本字段是真实可下载的原始单据份数。手上有 3 张纸质单据但只扫描 2 份时，
+     * 两个数字本来就不该相等，因此分列展示而不是覆盖。
+     * </p>
+     */
+    @jakarta.persistence.Transient
+    private Integer attachmentFileCount;
 
     /**
      * 是否为期末结转损益凭证。

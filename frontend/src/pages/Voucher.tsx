@@ -68,6 +68,7 @@ import {
   type VoucherEntry,
   type VoucherPeriodSummary,
 } from '../api/finance';
+import VoucherAttachmentDrawer from '../components/VoucherAttachmentDrawer';
 
 /** 科目类别映射 */
 const categoryConfig: Record<string, { label: string; color: string }> = {
@@ -146,6 +147,8 @@ export default function Voucher() {
   /** 批量记账/作废选中的凭证 ID */
   const [selectedVoucherIds, setSelectedVoucherIds] = useState<string[]>([]);
   const [batchRunning, setBatchRunning] = useState(false);
+  /** 原始单据抽屉：当前凭证（null 表示未打开） */
+  const [attachmentVoucher, setAttachmentVoucher] = useState<Voucher | null>(null);
 
   // ============ 试算平衡 ============
   const [trial, setTrial] = useState<TrialBalance | null>(null);
@@ -716,11 +719,30 @@ export default function Voucher() {
       align: 'right',
     },
     {
-      title: '附件',
-      dataIndex: 'attachmentCount',
-      width: 70,
+      title: (
+        <Tooltip title="纸质张数 = 会计手工声明；单据 = 已挂载的电子原始单据份数">
+          <span>附件/单据</span>
+        </Tooltip>
+      ),
+      key: 'attachments',
+      width: 110,
       align: 'right',
-      render: (v: number) => v ?? 0,
+      render: (_, record) => {
+        const paper = record.attachmentCount ?? 0;
+        const files = record.attachmentFileCount ?? 0;
+        return (
+          <Tooltip title="点击管理原始单据（发票/回单/合同）">
+            <Button
+              type="link"
+              size="small"
+              style={{ padding: 0, height: 'auto' }}
+              onClick={() => setAttachmentVoucher(record)}
+            >
+              {paper} 张 / {files} 份
+            </Button>
+          </Tooltip>
+        );
+      },
     },
     {
       title: '状态',
@@ -1366,6 +1388,21 @@ export default function Voucher() {
           )}
         />
       </Modal>
+
+      {/* 原始单据抽屉：上传/下载/删除凭证的发票、回单、合同 */}
+      <VoucherAttachmentDrawer
+        open={!!attachmentVoucher}
+        voucherId={attachmentVoucher?.id}
+        voucherLabel={
+          attachmentVoucher
+            ? (attachmentVoucher.voucherLabel ??
+              `${attachmentVoucher.voucherWord}-${attachmentVoucher.voucherNo}`)
+            : undefined
+        }
+        voucherStatus={attachmentVoucher?.status}
+        onClose={() => setAttachmentVoucher(null)}
+        onChanged={() => void loadVouchers()}
+      />
     </div>
   );
 }

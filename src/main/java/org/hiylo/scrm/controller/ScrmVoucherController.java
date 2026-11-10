@@ -14,6 +14,7 @@ import org.hiylo.scrm.common.OperationResponse;
 import org.hiylo.scrm.dto.ScrmAiVoucherSuggestionDto;
 import org.hiylo.scrm.dto.ScrmVoucherSaveDto;
 import org.hiylo.scrm.entity.ScrmAccountSubjectEntity;
+import org.hiylo.scrm.entity.ScrmVoucherAttachmentEntity;
 import org.hiylo.scrm.entity.ScrmVoucherEntity;
 import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.rbac.annotation.RequirePermission;
@@ -22,6 +23,7 @@ import org.hiylo.scrm.service.finance.voucher.ScrmAiVoucherAssistService;
 import org.hiylo.scrm.service.finance.voucher.ScrmFinancialReportService;
 import org.hiylo.scrm.service.finance.voucher.ScrmLedgerService;
 import org.hiylo.scrm.service.finance.voucher.ScrmPeriodCloseService;
+import org.hiylo.scrm.service.finance.voucher.ScrmVoucherAttachmentService;
 import org.hiylo.scrm.service.finance.voucher.ScrmVoucherService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -69,6 +71,9 @@ public class ScrmVoucherController {
 
     /** 账簿服务 */
     private final ScrmLedgerService ledgerService;
+
+    /** 原始单据服务（凭证电子附件） */
+    private final ScrmVoucherAttachmentService voucherAttachmentService;
 
     /** AI 智能凭证助手（票据识别 → 凭证草稿建议） */
     private final ScrmAiVoucherAssistService aiVoucherAssistService;
@@ -294,6 +299,79 @@ public class ScrmVoucherController {
     public OperationResponse<Void> deleteVoucher(@PathVariable Long id) throws ScrmException {
         assertCompanyAccessible(voucherService.findCompanyIdByVoucherId(id));
         voucherService.deleteVoucher(id);
+        return OperationResponse.build(null);
+    }
+
+    // ============================================================
+    // 原始单据（电子附件）
+    // ============================================================
+
+    /**
+     * 给凭证挂一份原始单据（发票 / 银行回单 / 合同 / 工资表）。
+     * <p>
+     * 文件本体进对象存储，库里只留元数据与 object_key；下载走预签名 URL 直连存储。
+     * 已记账凭证也可补挂——单据是证据，事后补交是常态，不应被凭证状态挡住。
+     * </p>
+     *
+     * @param id      凭证 ID
+     * @param file    文件（multipart 字段名 file）
+     * @param docType 单据类型（INVOICE/BANK_RECEIPT/CONTRACT/PAYROLL/RECEIPT/OTHER，可空）
+     * @param remark  备注（可空）
+     * @return 挂载后的单据记录
+     * @throws ScrmException 凭证不存在 / 无权访问 / 文件为空或超限 / 存储失败
+     */
+    @RequirePermission(resource = "scrm_voucher", action = "update")
+    @PostMapping("/{id}/attachments")
+    public OperationResponse<ScrmVoucherAttachmentEntity> uploadAttachment(
+            @PathVariable Long id,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(required = false) String docType,
+            @RequestParam(required = false) String remark) throws ScrmException {
+        assertCompanyAccessible(voucherService.findCompanyIdByVoucherId(id));
+        return OperationResponse.build(
+                voucherAttachmentService.upload(id, file, docType, remark));
+    }
+
+    /**
+     * 查某张凭证的全部原始单据。
+     *
+     * @param id 凭证 ID
+     * @return 单据列表（上传时间倒序）
+     * @throws ScrmException 凭证不存在 / 无权访问
+     */
+    @RequirePermission(resource = "scrm_voucher", action = "read")
+    @GetMapping("/{id}/attachments")
+    public OperationResponse<List<ScrmVoucherAttachmentEntity>> listAttachments(@PathVariable Long id)
+            throws ScrmException {
+        assertCompanyAccessible(voucherService.findCompanyIdByVoucherId(id));
+        return OperationResponse.build(voucherAttachmentService.list(id));
+    }
+
+    /**
+     * 生成原始单据的下载预签名 URL（直连对象存储，不经应用中转）。
+     *
+     * @param id 单据 ID
+     * @return {url} 预签名下载地址
+     * @throws ScrmException 单据不存在 / 无权访问 / 生成失败
+     */
+    @RequirePermission(resource = "scrm_voucher", action = "read")
+    @GetMapping("/attachments/{id}/download-url")
+    public OperationResponse<Map<String, String>> attachmentDownloadUrl(@PathVariable Long id)
+            throws ScrmException {
+        return OperationResponse.build(Map.of("url", voucherAttachmentService.presignDownload(id)));
+    }
+
+    /**
+     * 删除一份原始单据（删记录 + 删存储对象）。
+     *
+     * @param id 单据 ID
+     * @return 空响应
+     * @throws ScrmException 单据不存在 / 无权访问
+     */
+    @RequirePermission(resource = "scrm_voucher", action = "delete")
+    @DeleteMapping("/attachments/{id}")
+    public OperationResponse<Void> deleteAttachment(@PathVariable Long id) throws ScrmException {
+        voucherAttachmentService.delete(id);
         return OperationResponse.build(null);
     }
 

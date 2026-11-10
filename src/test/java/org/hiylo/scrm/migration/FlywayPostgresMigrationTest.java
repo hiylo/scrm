@@ -78,14 +78,14 @@ class FlywayPostgresMigrationTest {
     /** 与手工验证时一致的镜像 */
     private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:16-alpine");
 
-    /** scrm schema 下的业务表数 (截至 V27 共 304 表: V26 302 + 固定资产 2) */
-    private static final int EXPECTED_SCRM_TABLES = 304;
+    /** scrm schema 下的业务表数 (截至 V28 共 305 表: V27 304 + 凭证原始单据 1) */
+    private static final int EXPECTED_SCRM_TABLES = 305;
 
-    /** 业务表 304 + flyway_schema_history 1 的非系统 schema 基表总数 */
-    private static final int EXPECTED_TOTAL_TABLES = 305;
+    /** 业务表 305 + flyway_schema_history 1 的非系统 schema 基表总数 */
+    private static final int EXPECTED_TOTAL_TABLES = 306;
 
-    /** V1~V26 迁移记录数 */
-    private static final int EXPECTED_MIGRATIONS = 27;
+    /** V1~V28 迁移记录数 */
+    private static final int EXPECTED_MIGRATIONS = 28;
 
     /** scrm_conversation_message 的月分区 (202607~202706) + default 分区 */
     private static final int EXPECTED_LEAF_PARTITIONS = 13;
@@ -180,7 +180,8 @@ class FlywayPostgresMigrationTest {
                         "SQL|24|V24__tax_holiday_draft.sql|true",
                         "SQL|25|V25__fix_2026_national_day_workday.sql|true",
                         "SQL|26|V26__ai_provider.sql|true",
-                        "SQL|27|V27__fixed_asset.sql|true");
+                        "SQL|27|V27__fixed_asset.sql|true",
+                        "SQL|28|V28__voucher_attachment.sql|true");
         // spring.flyway.schemas=scrm 会让 Flyway 自建 schema 并写入一条 SCHEMA 记录, 此时 V1 的
         // CREATE SCHEMA IF NOT EXISTS scrm 退化为空操作
         assertThat(entries).filteredOn(entry -> entry.startsWith("SCHEMA|"))

@@ -1424,7 +1424,10 @@ export interface Voucher {
   totalCredit: number;
   entryCount: number;
   status: string;
+  /** 纸质附件张数（会计手工声明） */
   attachmentCount?: number;
+  /** 已挂载的电子单据份数（后端列表回填，无单据为 0） */
+  attachmentFileCount?: number;
   remark?: string;
   createdBy?: string;
   postedBy?: string;
@@ -1616,6 +1619,64 @@ export const batchVoidVouchers = (ids: string[], reason?: string) =>
   apiClient.post<BatchVoucherResult>('/scrm/vouchers/batch-void', ids, {
     params: reason ? { reason } : {},
   });
+
+// ============================================================
+// 凭证原始单据（电子附件）
+// ============================================================
+
+/** 凭证原始单据（发票 / 银行回单 / 合同 / 工资表） */
+export interface VoucherAttachment {
+  id: string;
+  voucherId: string;
+  companyId: string;
+  objectKey: string;
+  fileName?: string;
+  fileSize?: number;
+  contentType?: string;
+  docType: string;
+  remark?: string;
+  uploadedBy?: string;
+  uploadedAt?: string;
+}
+
+/** 单据类型 → 中文与颜色（前端展示用） */
+export const VOUCHER_ATTACHMENT_DOC_TYPES: Array<{ value: string; label: string }> = [
+  { value: 'INVOICE', label: '发票' },
+  { value: 'BANK_RECEIPT', label: '银行回单' },
+  { value: 'CONTRACT', label: '合同' },
+  { value: 'PAYROLL', label: '工资表' },
+  { value: 'RECEIPT', label: '收据' },
+  { value: 'OTHER', label: '其他' },
+];
+
+/** 查某张凭证的全部原始单据 */
+export const listVoucherAttachments = (voucherId: string) =>
+  apiClient.get<VoucherAttachment[]>(`/scrm/vouchers/${voucherId}/attachments`);
+
+/** 给凭证挂一份原始单据（文件本体进对象存储，库里只存元数据） */
+export const uploadVoucherAttachment = (
+  voucherId: string,
+  file: File,
+  params: { docType?: string; remark?: string } = {},
+) => {
+  const form = new FormData();
+  form.append('file', file);
+  if (params.docType) form.append('docType', params.docType);
+  if (params.remark) form.append('remark', params.remark);
+  // 覆盖全局 application/json，让浏览器自动带 boundary
+  return apiClient.post<VoucherAttachment>(`/scrm/vouchers/${voucherId}/attachments`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000,
+  });
+};
+
+/** 取单据下载预签名 URL（直连对象存储，不经应用进程中转） */
+export const getVoucherAttachmentDownloadUrl = (attachmentId: string) =>
+  apiClient.get<{ url: string }>(`/scrm/vouchers/attachments/${attachmentId}/download-url`);
+
+/** 删除一份原始单据（删记录 + 删存储对象） */
+export const deleteVoucherAttachment = (attachmentId: string) =>
+  apiClient.delete<void>(`/scrm/vouchers/attachments/${attachmentId}`);
 
 /** 试算平衡表 */
 export const getTrialBalance = (companyId: string, periodYear: number, periodMonth: number) =>
