@@ -111,6 +111,8 @@ class ScrmPeriodCloseServiceTest {
         // 透传合并：不设置期初余额时行为与改造前完全一致
         when(openingBalanceService.mergeInto(any(), any(), any()))
                 .thenAnswer(inv -> inv.getArgument(0));
+        // 默认视为已录期初，避免新加的「无期初需确认」校验误伤既有用例
+        when(openingBalanceService.openingPeriod(anyLong())).thenReturn(202601);
 
         ScrmCompanyEntity company = new ScrmCompanyEntity();
         company.setId(100L);
@@ -331,5 +333,40 @@ class ScrmPeriodCloseServiceTest {
         assertThatThrownBy(() -> service.closePeriod(100L, 2026, 10))
                 .isInstanceOf(ScrmException.class)
                 .hasMessageContaining("本年利润");
+    }
+
+    // ==================== 结账前的期初确认 ====================
+
+    @Test
+    @DisplayName("未录期初且未确认时拒绝结账（避免利润不含期初损益）")
+    void rejectsCloseWhenNoOpeningAndNotConfirmed() {
+        when(openingBalanceService.openingPeriod(100L)).thenReturn(null);
+
+        assertThatThrownBy(() -> service.closePeriod(100L, 2026, 11))
+                .isInstanceOf(ScrmException.class)
+                .hasMessageContaining("尚未录入期初余额")
+                .hasMessageContaining("从零起账");
+    }
+
+    @Test
+    @DisplayName("未录期初但显式确认「从零起账」时可正常结账")
+    void allowsCloseWhenNoOpeningButConfirmed() {
+        when(openingBalanceService.openingPeriod(100L)).thenReturn(null);
+
+        Map<String, Object> result = service.closePeriod(100L, 2026, 11, true);
+
+        assertThat(result).isNotNull();
+        // 确认后应正常封账
+        assertThat(result.get("status")).isEqualTo(ScrmAccountPeriodEntity.STATUS_CLOSED);
+    }
+
+    @Test
+    @DisplayName("已录期初时无需确认，正常结账")
+    void allowsCloseWhenOpeningConfigured() {
+        when(openingBalanceService.openingPeriod(100L)).thenReturn(202601);
+
+        Map<String, Object> result = service.closePeriod(100L, 2026, 11);
+
+        assertThat(result).isNotNull();
     }
 }

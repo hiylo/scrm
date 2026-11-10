@@ -410,21 +410,28 @@ public class ScrmVoucherController {
     /**
      * 结账：生成结转损益凭证并封账。
      *
-     * @param companyId 公司主体 ID
-     * @param periodYear 年
-     * @param periodMonth 月
+     * <p>
+     * 未录入期初余额的企业，需显式传 {@code confirmNoOpening=true} 表示「本户从零起账」，
+     * 否则拒绝结账——避免中途接手的客户忘了录期初就把利润算错并封盘。
+     * </p>
+     *
+     * @param companyId        公司主体 ID
+     * @param periodYear       年
+     * @param periodMonth      月
+     * @param confirmNoOpening 是否确认本户无期初（从零起账），默认 false
      * @return 结账结果（结转凭证、结转利润）
-     * @throws ScrmException 已结账 / 存在草稿
+     * @throws ScrmException 已结账 / 存在草稿 / 未录期初且未确认
      */
     @RequirePermission(resource = "scrm_voucher", action = "update")
     @PostMapping("/close-period")
     public OperationResponse<Map<String, Object>> closePeriod(
             @RequestParam Long companyId,
             @RequestParam int periodYear,
-            @RequestParam int periodMonth) throws ScrmException {
+            @RequestParam int periodMonth,
+            @RequestParam(defaultValue = "false") boolean confirmNoOpening) throws ScrmException {
         assertCompanyAccessible(companyId);
         return OperationResponse.build(
-                periodCloseService.closePeriod(companyId, periodYear, periodMonth));
+                periodCloseService.closePeriod(companyId, periodYear, periodMonth, confirmNoOpening));
     }
 
     /**

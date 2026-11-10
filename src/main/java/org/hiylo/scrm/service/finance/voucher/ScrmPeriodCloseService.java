@@ -102,16 +102,42 @@ public class ScrmPeriodCloseService {
     }
 
     /**
-     * 结账：生成结转损益凭证并封账。
+     * 结账：生成结转损益凭证并封账（未显式确认「无期初」的调用方）。
      *
      * @param companyId 公司主体 ID
      * @param year      年
      * @param month     月
      * @return 结账结果（结转凭证号、结转金额、期末状态）
-     * @throws ScrmException 主体不存在 / 期间已结账 / 存在未记账凭证
+     * @throws ScrmException 主体不存在 / 期间已结账 / 存在未记账凭证 / 未录期初且未确认
      */
     @Transactional
     public Map<String, Object> closePeriod(Long companyId, int year, int month) throws ScrmException {
+        return closePeriod(companyId, year, month, false);
+    }
+
+    /**
+     * 结账：生成结转损益凭证并封账。
+     * <p>
+     * <b>为什么要确认期初</b>：结转损益是拿「截至本期的累计余额」算利润的，而中途接手的
+     * 客户如果没录期初，累计余额里就少了上家结转过来的损益科目余额——利润直接算错，
+     * 而且一旦结账就封盘锁死，事后只能反结账重来。
+     * </p>
+     * <p>
+     * <b>为什么用显式确认而不是硬禁</b>：真正从零起账的新公司本来就没有期初，一刀切禁止
+     * 会天天打扰正常业务。所以这里不替会计判定「该不该有期初」，只要求他在结账时
+     * 明确表态一次——把「有没有想过这件事」拉到台面上。录过期初就再也不问。
+     * </p>
+     *
+     * @param companyId       公司主体 ID
+     * @param year            年
+     * @param month           月
+     * @param confirmNoOpening 是否已确认「本户无期初（从零起账）」
+     * @return 结账结果（结转凭证号、结转金额、期末状态）
+     * @throws ScrmException 主体不存在 / 期间已结账 / 存在未记账凭证 / 未录期初且未确认
+     */
+    @Transactional
+    public Map<String, Object> closePeriod(Long companyId, int year, int month,
+                                          boolean confirmNoOpening) throws ScrmException {
         ScrmCompanyEntity company = companyRepository.findById(companyId)
                 .orElseThrow(() -> ScrmException.notFound("公司主体不存在: " + companyId));
         ScrmAccountPeriodEntity period = periodRepository
@@ -127,6 +153,14 @@ public class ScrmPeriodCloseService {
         if (draftCount > 0) {
             throw ScrmException.badRequest("本期还有 " + draftCount
                     + " 张草稿凭证未记账，请先记账或删除后再结账");
+        }
+
+        // 没录过期初的户，结账前必须显式确认「从零起账」。
+        // 中途接手的客户忘了录期初直接结账，结转损益会拿 0 期初算，利润直接错。
+        if (!confirmNoOpening && openingBalanceService.openingPeriod(companyId) == null) {
+            throw ScrmException.conflict("该企业尚未录入期初余额，结账后结转损益将不含上家结转的损益科目余额，"
+                    + "利润可能算错。如果本户确实是从零起账（无期初），请在结账时勾选"
+                    + "「无期初（从零起账）」；否则请先到「期初余额」页录入期初再结账");
         }
 
         int yyyymm = year * 100 + month;
