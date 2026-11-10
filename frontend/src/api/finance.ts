@@ -1224,6 +1224,14 @@ export const markSocialDeclared = (id: string) =>
 export const markSocialPaid = (id: string) =>
   apiClient.post<SocialRecord>(`/scrm/payroll/social/${id}/paid`);
 
+/** 批量变更社保状态（toPaid: true=缴款, false=申报）；逐条状态机校验，返回成功/失败明细 */
+export const batchMarkSocialStatus = (ids: string[], toPaid: boolean) =>
+  apiClient.post<{
+    successCount: number;
+    failCount: number;
+    failures: Array<{ id: string; message: string }>;
+  }>('/scrm/payroll/social/batch-status', ids, { params: { toPaid } });
+
 /** 某月个税明细 */
 export const listIitRecords = (companyId: string, year: number, month: number) =>
   apiClient.get<IitRecord[]>('/scrm/payroll/iit', { params: { companyId, year, month } });
@@ -1241,6 +1249,14 @@ export const markIitDeclared = (id: string) =>
 /** 标记个税已缴款 */
 export const markIitPaid = (id: string) =>
   apiClient.post<IitRecord>(`/scrm/payroll/iit/${id}/paid`);
+
+/** 批量变更个税状态（toPaid: true=缴款, false=申报）；逐条状态机校验，返回成功/失败明细 */
+export const batchMarkIitStatus = (ids: string[], toPaid: boolean) =>
+  apiClient.post<{
+    successCount: number;
+    failCount: number;
+    failures: Array<{ id: string; message: string }>;
+  }>('/scrm/payroll/iit/batch-status', ids, { params: { toPaid } });
 
 // ============================================================
 // 资料归档域：客户资料归档

@@ -35,6 +35,8 @@ import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined, ReloadOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import {
+  batchMarkIitStatus,
+  batchMarkSocialStatus,
   createEmployee,
   deleteEmployee,
   generatePayroll,
@@ -122,11 +124,15 @@ export default function Payroll() {
   const [socialRecords, setSocialRecords] = useState<SocialRecord[]>([]);
   const [socialSummary, setSocialSummary] = useState<SocialSummary | null>(null);
   const [socialLoading, setSocialLoading] = useState(false);
+  /** 批量操作的选中行 */
+  const [selectedSocialIds, setSelectedSocialIds] = useState<string[]>([]);
 
   // ============ 个税 ============
   const [iitRecords, setIitRecords] = useState<IitRecord[]>([]);
   const [iitSummary, setIitSummary] = useState<IitSummary | null>(null);
   const [iitLoading, setIitLoading] = useState(false);
+  /** 批量操作的选中行 */
+  const [selectedIitIds, setSelectedIitIds] = useState<string[]>([]);
 
   // ============ 批量生成弹窗 ============
   const [generateOpen, setGenerateOpen] = useState(false);
@@ -320,6 +326,56 @@ export default function Payroll() {
   };
 
   /** 打开批量生成弹窗（预填在职员工） */
+  /**
+   * 批量变更明细状态（社保 / 个税共用）。
+   * <p>逐条由后端状态机校验：已缴费的记录不能被批量「退回申报」，失败行会在提示里列出。</p>
+   */
+  const runBatchStatus = (
+    kind: 'social' | 'iit',
+    toPaid: boolean,
+    ids: string[],
+  ) => {
+    if (ids.length === 0) return;
+    const label = kind === 'social' ? '社保' : '个税';
+    const action = toPaid ? '缴款' : '申报';
+    modal.confirm({
+      title: `批量标记 ${ids.length} 条${label}明细为「已${action}」？`,
+      content: `逐条校验状态；已${toPaid ? '申报' : '缴款'}的记录会被跳过并在结果中列出。`,
+      onOk: async () => {
+        try {
+          const result =
+            kind === 'social'
+              ? await batchMarkSocialStatus(ids, toPaid)
+              : await batchMarkIitStatus(ids, toPaid);
+          if (kind === 'social') {
+            setSelectedSocialIds([]);
+          } else {
+            setSelectedIitIds([]);
+          }
+          if (result.failCount > 0) {
+            message.warning(
+              `成功 ${result.successCount} 条，失败 ${result.failCount} 条：` +
+                result.failures
+                  .slice(0, 3)
+                  .map((f) => f.message)
+                  .join('；'),
+              10,
+            );
+          } else {
+            message.success(`已批量标记 ${result.successCount} 条为已${action}`);
+          }
+          if (kind === 'social') {
+            await loadSocial();
+          } else {
+            await loadIit();
+          }
+        } catch {
+          // 已统一提示
+        }
+      },
+    });
+  };
+
   const openGenerate = async () => {
     if (!companyId) {
       message.warning('请先在页面顶部选择企业');
@@ -862,6 +918,25 @@ export default function Payroll() {
                       </Typography.Text>
                     </Space>
                   }
+                  extra={
+                    <Space>
+                      <Button
+                        size="small"
+                        disabled={selectedSocialIds.length === 0}
+                        onClick={() => runBatchStatus('social', false, selectedSocialIds)}
+                      >
+                        批量申报（{selectedSocialIds.length}）
+                      </Button>
+                      <Button
+                        size="small"
+                        type="primary"
+                        disabled={selectedSocialIds.length === 0}
+                        onClick={() => runBatchStatus('social', true, selectedSocialIds)}
+                      >
+                        批量缴费（{selectedSocialIds.length}）
+                      </Button>
+                    </Space>
+                  }
                 >
                   <Table<SocialRecord>
                     rowKey="id"
@@ -870,6 +945,11 @@ export default function Payroll() {
                     columns={socialColumns}
                     dataSource={socialRecords}
                     scroll={{ x: 1400 }}
+                    rowSelection={{
+                      selectedRowKeys: selectedSocialIds,
+                      onChange: (keys) => setSelectedSocialIds(keys as string[]),
+                      getCheckboxProps: (record) => ({ disabled: record.status === 'PAID' }),
+                    }}
                     locale={{ emptyText: <Empty description="暂无社保明细" /> }}
                     pagination={false}
                   />
@@ -938,6 +1018,25 @@ export default function Payroll() {
                       </Typography.Text>
                     </Space>
                   }
+                  extra={
+                    <Space>
+                      <Button
+                        size="small"
+                        disabled={selectedIitIds.length === 0}
+                        onClick={() => runBatchStatus('iit', false, selectedIitIds)}
+                      >
+                        批量申报（{selectedIitIds.length}）
+                      </Button>
+                      <Button
+                        size="small"
+                        type="primary"
+                        disabled={selectedIitIds.length === 0}
+                        onClick={() => runBatchStatus('iit', true, selectedIitIds)}
+                      >
+                        批量缴款（{selectedIitIds.length}）
+                      </Button>
+                    </Space>
+                  }
                 >
                   <Table<IitRecord>
                     rowKey="id"
@@ -946,6 +1045,11 @@ export default function Payroll() {
                     columns={iitColumns}
                     dataSource={iitRecords}
                     scroll={{ x: 1400 }}
+                    rowSelection={{
+                      selectedRowKeys: selectedIitIds,
+                      onChange: (keys) => setSelectedIitIds(keys as string[]),
+                      getCheckboxProps: (record) => ({ disabled: record.status === 'PAID' }),
+                    }}
                     locale={{ emptyText: <Empty description="暂无个税明细" /> }}
                     pagination={false}
                   />

@@ -465,13 +465,28 @@ public class ScrmPayrollService {
             throws ScrmException {
         ScrmSocialSecurityRecordEntity record = socialRepository.findById(id)
                 .orElseThrow(() -> ScrmException.notFound("社保明细不存在: " + id));
+        String current = record.getStatus();
         if (toPaid) {
+            // 缴款：PAID 已是终态，重复缴款视为幂等成功（不刷新 paidAt，避免掩盖真实缴款时间）
+            if (ScrmSocialSecurityRecordEntity.STATUS_PAID.equals(current)) {
+                log.debug("[社保-状态机] 已是缴款状态，幂等返回: id={}", id);
+                return record;
+            }
             record.setStatus(ScrmSocialSecurityRecordEntity.STATUS_PAID);
             record.setPaidAt(LocalDateTime.now());
             if (record.getDeclaredAt() == null) {
                 record.setDeclaredAt(LocalDateTime.now());
             }
         } else {
+            // 申报：PAID 是终态，不允许降级回 DECLARED（否则已缴款记录被「撤回」造成对账错误）
+            if (ScrmSocialSecurityRecordEntity.STATUS_PAID.equals(current)) {
+                throw ScrmException.conflict(
+                        "已缴费的社保明细不能退回「已申报」: id=" + id + ", status=" + current);
+            }
+            if (ScrmSocialSecurityRecordEntity.STATUS_DECLARED.equals(current)) {
+                log.debug("[社保-状态机] 已是申报状态，幂等返回: id={}", id);
+                return record;
+            }
             record.setStatus(ScrmSocialSecurityRecordEntity.STATUS_DECLARED);
             record.setDeclaredAt(LocalDateTime.now());
         }
@@ -490,17 +505,105 @@ public class ScrmPayrollService {
     public ScrmIitRecordEntity markIitStatus(Long id, boolean toPaid) throws ScrmException {
         ScrmIitRecordEntity record = iitRepository.findById(id)
                 .orElseThrow(() -> ScrmException.notFound("个税明细不存在: " + id));
+        String current = record.getStatus();
         if (toPaid) {
+            // 缴款：PAID 已是终态，重复缴款视为幂等成功（不刷新 paidAt）
+            if (ScrmIitRecordEntity.STATUS_PAID.equals(current)) {
+                log.debug("[个税-状态机] 已是缴款状态，幂等返回: id={}", id);
+                return record;
+            }
             record.setStatus(ScrmIitRecordEntity.STATUS_PAID);
             record.setPaidAt(LocalDateTime.now());
             if (record.getDeclaredAt() == null) {
                 record.setDeclaredAt(LocalDateTime.now());
             }
         } else {
+            // 申报：PAID 是终态，不允许降级回 DECLARED
+            if (ScrmIitRecordEntity.STATUS_PAID.equals(current)) {
+                throw ScrmException.conflict(
+                        "已缴款的个税明细不能退回「已申报」: id=" + id + ", status=" + current);
+            }
+            if (ScrmIitRecordEntity.STATUS_DECLARED.equals(current)) {
+                log.debug("[个税-状态机] 已是申报状态，幂等返回: id={}", id);
+                return record;
+            }
             record.setStatus(ScrmIitRecordEntity.STATUS_DECLARED);
             record.setDeclaredAt(LocalDateTime.now());
         }
         return iitRepository.save(record);
+    }
+
+    /**
+     * 批量变更社保明细状态（会计月度高频动作）。
+     * <p>
+     * 逐条复用 {@link #markSocialStatus} 的状态机校验，<b>每条独立捕获异常</b>——
+     * 某条状态不允许（如已缴费想退回申报）不影响其它条，返回成功/失败明细。
+     * </p>
+     * <p>
+     * <b>刻意不加 {@code @Transactional}</b>：让每条用自身事务独立提交/回滚，
+     * 避免一条异常把整批标记 rollback-only。
+     * </p>
+     *
+     * @param ids    社保明细 ID 列表
+     * @param toPaid true=标记已缴费, false=标记已申报
+     * @return {successCount, failCount, failures:[{id, message}]}
+     */
+    public Map<String, Object> batchMarkSocialStatus(List<Long> ids, boolean toPaid) {
+        int success = 0;
+        List<Map<String, Object>> failures = new ArrayList<>();
+        if (ids != null) {
+            for (Long id : ids) {
+                try {
+                    markSocialStatus(id, toPaid);
+                    success++;
+                } catch (Exception e) {
+                    Map<String, Object> f = new LinkedHashMap<>();
+                    f.put("id", id);
+                    f.put("message", e.getMessage());
+                    failures.add(f);
+                }
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("successCount", success);
+        result.put("failCount", failures.size());
+        result.put("failures", failures);
+        log.info("[社保-批量{}] 共 {} 条, 成功 {}, 失败 {}",
+                toPaid ? "缴款" : "申报", ids == null ? 0 : ids.size(), success, failures.size());
+        return result;
+    }
+
+    /**
+     * 批量变更个税明细状态（会计月度高频动作）。
+     * <p>语义同 {@link #batchMarkSocialStatus}：逐条状态机校验 + 独立容错 + 不开外层事务。</p>
+     *
+     * @param ids    个税明细 ID 列表
+     * @param toPaid true=标记已缴款, false=标记已申报
+     * @return {successCount, failCount, failures:[{id, message}]}
+     */
+    public Map<String, Object> batchMarkIitStatus(List<Long> ids, boolean toPaid) {
+        int success = 0;
+        List<Map<String, Object>> failures = new ArrayList<>();
+        if (ids != null) {
+            for (Long id : ids) {
+                try {
+                    markIitStatus(id, toPaid);
+                    success++;
+                } catch (Exception e) {
+                    Map<String, Object> f = new LinkedHashMap<>();
+                    f.put("id", id);
+                    f.put("message", e.getMessage());
+                    failures.add(f);
+                }
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("successCount", success);
+        result.put("failCount", failures.size());
+        result.put("failures", failures);
+        log.info("[个税-批量{}] 共 {} 条, 成功 {}, 失败 {}",
+                toPaid ? "缴款" : "申报", ids == null ? 0 : ids.size(), success, failures.size());
+        return result;
     }
 
     /**

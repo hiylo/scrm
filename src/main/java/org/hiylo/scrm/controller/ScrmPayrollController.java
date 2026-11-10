@@ -236,6 +236,25 @@ public class ScrmPayrollController {
         return OperationResponse.build(payrollService.markSocialStatus(id, true));
     }
 
+    /**
+     * 批量变更社保明细状态（会计月度高频动作）。
+     * <p>
+     * 逐条复用单条状态机校验（PAID 为终态，不允许退回已申报）；某条失败不影响其它条，
+     * 返回成功/失败明细供核对。
+     * </p>
+     *
+     * @param ids    社保明细 ID 列表
+     * @param toPaid true=标记已缴费, false=标记已申报（默认）
+     * @return {successCount, failCount, failures:[{id, message}]}
+     */
+    @RequirePermission(resource = "scrm_social_security_record", action = "update")
+    @PostMapping("/social/batch-status")
+    public OperationResponse<Map<String, Object>> batchMarkSocialStatus(
+            @RequestBody List<Long> ids,
+            @RequestParam(defaultValue = "false") boolean toPaid) {
+        return OperationResponse.build(payrollService.batchMarkSocialStatus(ids, toPaid));
+    }
+
     // ============================================================
     // 个税明细
     // ============================================================
@@ -297,6 +316,22 @@ public class ScrmPayrollController {
     public OperationResponse<ScrmIitRecordEntity> markIitPaid(@PathVariable Long id)
             throws ScrmException {
         return OperationResponse.build(payrollService.markIitStatus(id, true));
+    }
+
+    /**
+     * 批量变更个税明细状态（会计月度高频动作）。
+     * <p>语义同 {@link #batchMarkSocialStatus}：逐条状态机校验 + 独立容错。</p>
+     *
+     * @param ids    个税明细 ID 列表
+     * @param toPaid true=标记已缴款, false=标记已申报（默认）
+     * @return {successCount, failCount, failures:[{id, message}]}
+     */
+    @RequirePermission(resource = "scrm_iit_record", action = "update")
+    @PostMapping("/iit/batch-status")
+    public OperationResponse<Map<String, Object>> batchMarkIitStatus(
+            @RequestBody List<Long> ids,
+            @RequestParam(defaultValue = "false") boolean toPaid) {
+        return OperationResponse.build(payrollService.batchMarkIitStatus(ids, toPaid));
     }
 
     // ============================================================
