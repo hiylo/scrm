@@ -110,4 +110,72 @@ describe('AccountantWorkbench 会计工作台', () => {
     );
     expect(workloadCalls).toHaveLength(0);
   });
+
+  it('工资社保待办：汇总当月社保/个税的待申报与待缴费，不传 companyId（按登录会计范围）', async () => {
+    setRole('accountant', ['ACCOUNTANT']);
+    routeMock({
+      '/scrm/companies/mine': () => [company('1', '鼎昊环境工程有限公司', '李会计')],
+      '/scrm/payroll/social/summary': () => ({
+        headcount: 12,
+        personalTotal: 100,
+        companyTotal: 200,
+        grandTotal: 300,
+        pending: 3,
+        declared: 4,
+        paid: 5,
+      }),
+      '/scrm/payroll/iit/summary': () => ({
+        headcount: 12,
+        incomeTotal: 1000,
+        taxTotal: 50,
+        pending: 2,
+        declared: 1,
+        paid: 9,
+      }),
+    });
+
+    renderWithProviders(<AccountantWorkbench />);
+
+    await waitFor(() => expect(screen.getByText('工资社保待办')).toBeInTheDocument());
+    // 四项统计：社保待申报 3 / 社保待缴费 4（= declared）/ 个税待申报 2 / 个税待缴款 1
+    await waitFor(() => expect(screen.getByText('社保待申报')).toBeInTheDocument());
+    const statValue = (title: string) =>
+      screen.getByText(title).closest('.ant-statistic')?.querySelector('.ant-statistic-content')
+        ?.textContent ?? '';
+    expect(statValue('社保待申报')).toBe('3人');
+    expect(statValue('社保待缴费')).toBe('4人');
+    expect(statValue('个税待申报')).toBe('2人');
+    expect(statValue('个税待缴款')).toBe('1人');
+    // 合计 3+4+2+1 = 10 项待处理
+    expect(screen.getByText(/共 10 项待处理/)).toBeInTheDocument();
+
+    // 汇总接口不传 companyId（= 登录会计负责的全部主体，与报税待办同口径）
+    const socialCall = get.mock.calls.find(args =>
+      String(args[0]).includes('/scrm/payroll/social/summary'),
+    );
+    expect(socialCall?.[1]).toMatchObject({ params: { year: expect.any(Number), month: expect.any(Number) } });
+    expect((socialCall?.[1] as { params: Record<string, unknown> })?.params?.companyId).toBeUndefined();
+  });
+
+  it('工资社保待办：全部处理完时显示完成提示', async () => {
+    setRole('accountant', ['ACCOUNTANT']);
+    routeMock({
+      '/scrm/companies/mine': () => [company('1', '鼎昊环境工程有限公司', '李会计')],
+      '/scrm/payroll/social/summary': () => ({
+        headcount: 5, personalTotal: 0, companyTotal: 0, grandTotal: 0,
+        pending: 0, declared: 0, paid: 5,
+      }),
+      '/scrm/payroll/iit/summary': () => ({
+        headcount: 5, incomeTotal: 0, taxTotal: 0,
+        pending: 0, declared: 0, paid: 5,
+      }),
+    });
+
+    renderWithProviders(<AccountantWorkbench />);
+
+    await waitFor(() => expect(screen.getByText('工资社保待办')).toBeInTheDocument());
+    expect(
+      await screen.findByText(/本月工资社保已全部处理完成/),
+    ).toBeInTheDocument();
+  });
 });

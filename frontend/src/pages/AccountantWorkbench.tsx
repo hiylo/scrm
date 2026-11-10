@@ -33,13 +33,17 @@ import { useRole } from '../hooks/useRole';
 import {
   batchAssignAccountant,
   getAccountantWorkload,
+  getIitSummary,
   getMonthTodo,
+  getSocialSummary,
   listMyCompanies,
   searchUsers,
   type AccountantWorkload,
   type Company,
+  type IitSummary,
   type MonthTodo,
   type MonthTodoResult,
+  type SocialSummary,
   type UserOption,
 } from '../api/finance';
 
@@ -167,6 +171,11 @@ export default function AccountantWorkbench() {
   });
   const [todoLoading, setTodoLoading] = useState(false);
 
+  // 工资社保待办（按登录会计数据范围隔离，汇总接口传空 companyId 即全范围）
+  const [socialSummary, setSocialSummary] = useState<SocialSummary | null>(null);
+  const [iitSummary, setIitSummary] = useState<IitSummary | null>(null);
+  const [payrollLoading, setPayrollLoading] = useState(false);
+
   // 批量指派弹窗
   const [assignOpen, setAssignOpen] = useState(false);
   const [assigning, setAssigning] = useState(false);
@@ -227,6 +236,48 @@ export default function AccountantWorkbench() {
   useEffect(() => {
     void loadMonthTodo();
   }, [loadMonthTodo]);
+
+  /**
+   * 加载工资社保待办汇总（当月）。
+   * <p>数据范围由后端按登录会计解析（不传 companyId = 自己负责的全部主体），
+   * 与报税待办保持同一口径，避免两处看到的户数不一致。</p>
+   */
+  const loadPayrollTodo = useCallback(async () => {
+    const now = dayjs();
+    setPayrollLoading(true);
+    try {
+      const [social, iit] = await Promise.all([
+        getSocialSummary(now.year(), now.month() + 1),
+        getIitSummary(now.year(), now.month() + 1),
+      ]);
+      setSocialSummary(social || null);
+      setIitSummary(iit || null);
+    } catch {
+      // 已统一提示
+    } finally {
+      setPayrollLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadPayrollTodo();
+  }, [loadPayrollTodo]);
+
+  /** 工资社保待办汇总（待申报 / 待缴费 两段口径） */
+  const payrollTodo = useMemo(() => {
+    const socialPending = socialSummary?.pending ?? 0;
+    const socialToPay = socialSummary?.declared ?? 0;
+    const iitPending = iitSummary?.pending ?? 0;
+    const iitToPay = iitSummary?.declared ?? 0;
+    return {
+      socialPending,
+      socialToPay,
+      iitPending,
+      iitToPay,
+      total: socialPending + socialToPay + iitPending + iitToPay,
+      headcount: socialSummary?.headcount ?? iitSummary?.headcount ?? 0,
+    };
+  }, [socialSummary, iitSummary]);
 
   /** 远程搜索用户 */
   const handleUserSearch = async (value: string) => {
@@ -449,6 +500,67 @@ export default function AccountantWorkbench() {
             },
           ]}
         />
+      </Card>
+
+      {/* 工资社保待办：与报税待办并列，覆盖会计每月另外两项固定动作 */}
+      <Card
+        title="工资社保待办"
+        extra={
+          <Space>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {dayjs().format('YYYY 年 M 月')} · 共 {payrollTodo.total} 项待处理
+              {payrollTodo.headcount > 0 ? ` · ${payrollTodo.headcount} 人` : ''}
+            </Typography.Text>
+            <Button size="small" icon={<ReloadOutlined />} onClick={() => void loadPayrollTodo()}>
+              刷新
+            </Button>
+          </Space>
+        }
+        style={{ marginBottom: 16 }}
+      >
+        <Row gutter={16}>
+          <Col span={6}>
+            <Statistic
+              title="社保待申报"
+              value={payrollTodo.socialPending}
+              suffix="人"
+              loading={payrollLoading}
+              valueStyle={{ color: payrollTodo.socialPending > 0 ? '#fa8c16' : undefined }}
+            />
+          </Col>
+          <Col span={6}>
+            <Statistic
+              title="社保待缴费"
+              value={payrollTodo.socialToPay}
+              suffix="人"
+              loading={payrollLoading}
+              valueStyle={{ color: payrollTodo.socialToPay > 0 ? '#1677ff' : undefined }}
+            />
+          </Col>
+          <Col span={6}>
+            <Statistic
+              title="个税待申报"
+              value={payrollTodo.iitPending}
+              suffix="人"
+              loading={payrollLoading}
+              valueStyle={{ color: payrollTodo.iitPending > 0 ? '#fa8c16' : undefined }}
+            />
+          </Col>
+          <Col span={6}>
+            <Statistic
+              title="个税待缴款"
+              value={payrollTodo.iitToPay}
+              suffix="人"
+              loading={payrollLoading}
+              valueStyle={{ color: payrollTodo.iitToPay > 0 ? '#1677ff' : undefined }}
+            />
+          </Col>
+        </Row>
+        {payrollTodo.total === 0 && (
+          <Typography.Text type="secondary" style={{ display: 'block', marginTop: 12, fontSize: 12 }}>
+            本月工资社保已全部处理完成；如需处理可在「工资社保」页切换期间。
+          </Typography.Text>
+        )}
       </Card>
 
       <Row gutter={16}>
