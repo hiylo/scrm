@@ -366,6 +366,79 @@ public class ScrmVoucherService {
     }
 
     /**
+     * 批量记账（月末把整批草稿一次记完，会计月度高频动作）。
+     * <p>逐条复用 {@link #postVoucher(Long)} 的状态机校验：已记账/已作废/已结账/借贷不平
+     * 的凭证只计入失败清单，不影响其余凭证入账。因此本方法<b>不开启外层事务</b>，
+     * 避免单条失败回滚整批。</p>
+     *
+     * @param ids 凭证 ID 列表
+     * @return {successCount, failCount, failures:[{id, label, message}]}
+     */
+    public Map<String, Object> batchPost(List<Long> ids) {
+        int success = 0;
+        List<Map<String, Object>> failures = new ArrayList<>();
+        if (ids != null) {
+            for (Long id : ids) {
+                Map<String, Object> fail = new LinkedHashMap<>();
+                fail.put("id", id);
+                String label = null;
+                try {
+                    label = findVoucherOrThrow(id).getVoucherLabel();
+                    postVoucher(id);
+                    success++;
+                } catch (Exception e) {
+                    fail.put("label", label);
+                    fail.put("message", e.getMessage());
+                    failures.add(fail);
+                }
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("successCount", success);
+        result.put("failCount", failures.size());
+        result.put("failures", failures);
+        log.info("[凭证-批量记账] 共 {} 张, 成功 {}, 失败 {}",
+                ids == null ? 0 : ids.size(), success, failures.size());
+        return result;
+    }
+
+    /**
+     * 批量作废（配合批量记账的纠错动作）。
+     * <p>逐条复用 {@link #voidVoucher(Long, String)}，已作废的凭证计入失败清单但不中断整批。</p>
+     *
+     * @param ids    凭证 ID 列表
+     * @param reason 作废原因（可空，统一写入各凭证备注）
+     * @return {successCount, failCount, failures:[{id, label, message}]}
+     */
+    public Map<String, Object> batchVoid(List<Long> ids, String reason) {
+        int success = 0;
+        List<Map<String, Object>> failures = new ArrayList<>();
+        if (ids != null) {
+            for (Long id : ids) {
+                Map<String, Object> fail = new LinkedHashMap<>();
+                fail.put("id", id);
+                String label = null;
+                try {
+                    label = findVoucherOrThrow(id).getVoucherLabel();
+                    voidVoucher(id, reason);
+                    success++;
+                } catch (Exception e) {
+                    fail.put("label", label);
+                    fail.put("message", e.getMessage());
+                    failures.add(fail);
+                }
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("successCount", success);
+        result.put("failCount", failures.size());
+        result.put("failures", failures);
+        log.info("[凭证-批量作废] 共 {} 张, 成功 {}, 失败 {}",
+                ids == null ? 0 : ids.size(), success, failures.size());
+        return result;
+    }
+
+    /**
      * 删除凭证（仅允许草稿；已记账请用作废）。
      *
      * @param id 凭证 ID

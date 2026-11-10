@@ -249,6 +249,40 @@ public class ScrmVoucherController {
     }
 
     /**
+     * 批量记账：把选中的草稿凭证一次性记账。
+     * <p>逐条校验，单张失败（已记账/已作废/已结账/借贷不平）不影响其余凭证，
+     * 返回成功数与失败明细供前端提示。</p>
+     *
+     * @param ids 凭证 ID 列表
+     * @return {successCount, failCount, failures:[{id, label, message}]}
+     * @throws ScrmException 任一凭证不属于当前账号可访问的主体
+     */
+    @RequirePermission(resource = "scrm_voucher", action = "update")
+    @PostMapping("/batch-post")
+    public OperationResponse<Map<String, Object>> batchPost(@RequestBody List<Long> ids)
+            throws ScrmException {
+        assertAllAccessible(ids);
+        return OperationResponse.build(voucherService.batchPost(ids));
+    }
+
+    /**
+     * 批量作废：把选中的凭证一次性作废（保留痕迹，退出余额）。
+     *
+     * @param ids    凭证 ID 列表
+     * @param reason 作废原因（可空，统一写入各凭证备注）
+     * @return {successCount, failCount, failures:[{id, label, message}]}
+     * @throws ScrmException 任一凭证不属于当前账号可访问的主体
+     */
+    @RequirePermission(resource = "scrm_voucher", action = "update")
+    @PostMapping("/batch-void")
+    public OperationResponse<Map<String, Object>> batchVoid(
+            @RequestBody List<Long> ids, @RequestParam(required = false) String reason)
+            throws ScrmException {
+        assertAllAccessible(ids);
+        return OperationResponse.build(voucherService.batchVoid(ids, reason));
+    }
+
+    /**
      * 删除凭证（仅草稿）。
      *
      * @param id 凭证 ID
@@ -508,6 +542,25 @@ public class ScrmVoucherController {
     private void assertCompanyAccessible(Long companyId) throws ScrmException {
         if (!financeDataScope.canAccessCompany(companyId)) {
             throw ScrmException.forbidden("无权访问该主体: " + companyId);
+        }
+    }
+
+    /**
+     * 批量端点的主体归属校验。
+     * <p>
+     * 批量接口没有 {@code companyId} 入参，只能逐张反查凭证归属的主体；
+     * 只要有任意一张不在当前账号的数据范围内就整体拒绝，避免"部分越权写入"。
+     * </p>
+     *
+     * @param ids 凭证 ID 列表
+     * @throws ScrmException 凭证不存在 / 无权访问
+     */
+    private void assertAllAccessible(List<Long> ids) throws ScrmException {
+        if (ids == null || ids.isEmpty()) {
+            throw ScrmException.badRequest("请至少选择一张凭证");
+        }
+        for (Long id : ids) {
+            assertCompanyAccessible(voucherService.findCompanyIdByVoucherId(id));
         }
     }
 }

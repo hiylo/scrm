@@ -57,6 +57,8 @@ import {
   postVoucher,
   updateVoucher,
   voidVoucher,
+  batchPostVouchers,
+  batchVoidVouchers,
   type AccountSubject,
   type AiVoucherSuggestion,
   type TrialBalance,
@@ -141,6 +143,9 @@ export default function Voucher() {
   /** 关键词筛选（摘要/凭证号模糊搜索） */
   const [keywordFilter, setKeywordFilter] = useState<string>('');
   const [summary, setSummary] = useState<VoucherPeriodSummary | null>(null);
+  /** 批量记账/作废选中的凭证 ID */
+  const [selectedVoucherIds, setSelectedVoucherIds] = useState<string[]>([]);
+  const [batchRunning, setBatchRunning] = useState(false);
 
   // ============ 试算平衡 ============
   const [trial, setTrial] = useState<TrialBalance | null>(null);
@@ -583,6 +588,91 @@ export default function Voucher() {
     });
   };
 
+  /** 批量结果提示：全成功用 success，部分失败用 warning 并列出失败明细 */
+  const notifyBatchResult = (action: string, result: { successCount: number; failCount: number; failures: Array<{ id: string; label?: string | null; message?: string | null }> }) => {
+    if (result.failCount === 0) {
+      message.success(`${action}完成：共 ${result.successCount} 张`);
+      return;
+    }
+    const detail = result.failures
+      .slice(0, 5)
+      .map((f) => `${f.label ?? f.id}：${f.message ?? '失败'}`)
+      .join('；');
+    const more = result.failCount > 5 ? ` 等 ${result.failCount} 张` : '';
+    if (result.successCount === 0) {
+      message.error(`${action}全部失败：${detail}${more}`);
+    } else {
+      message.warning(`${action}完成 ${result.successCount} 张，失败 ${result.failCount} 张：${detail}${more}`);
+    }
+  };
+
+  /** 批量记账（草稿 → 已记账） */
+  const handleBatchPost = () => {
+    const drafts = vouchers.filter((v) => selectedVoucherIds.includes(v.id) && v.status === 'DRAFT');
+    if (drafts.length === 0) {
+      message.warning('选中的凭证里没有草稿，无可记账凭证');
+      return;
+    }
+    modal.confirm({
+      title: `批量记账 ${drafts.length} 张凭证？`,
+      content: '记账后分录锁定、计入科目余额，不可再修改（只能作废重开）。已结账期间、已作废或借贷不平的凭证会被跳过并列在结果里。',
+      onOk: async () => {
+        setBatchRunning(true);
+        try {
+          const res = await batchPostVouchers(drafts.map((v) => v.id));
+          notifyBatchResult('批量记账', res);
+          setSelectedVoucherIds([]);
+          await Promise.all([loadVouchers(), loadTrial()]);
+        } catch {
+          // 已统一提示
+        } finally {
+          setBatchRunning(false);
+        }
+      },
+    });
+  };
+
+  /** 批量作废 */
+  const handleBatchVoid = () => {
+    const targets = vouchers.filter((v) => selectedVoucherIds.includes(v.id) && v.status !== 'VOID');
+    if (targets.length === 0) {
+      message.warning('选中的凭证都已是作废状态，无可作废凭证');
+      return;
+    }
+    let reason = '';
+    modal.confirm({
+      title: `批量作废 ${targets.length} 张凭证？`,
+      content: (
+        <div>
+          <div style={{ marginBottom: 8, color: '#666' }}>
+            作废后这些凭证退出余额，但记录保留可查（已作废的会自动跳过）。
+          </div>
+          <Input.TextArea
+            rows={2}
+            placeholder="作废原因（建议填写，便于日后追溯）"
+            onChange={(e) => {
+              reason = e.target.value;
+            }}
+          />
+        </div>
+      ),
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        setBatchRunning(true);
+        try {
+          const res = await batchVoidVouchers(targets.map((v) => v.id), reason || undefined);
+          notifyBatchResult('批量作废', res);
+          setSelectedVoucherIds([]);
+          await Promise.all([loadVouchers(), loadTrial()]);
+        } catch {
+          // 已统一提示
+        } finally {
+          setBatchRunning(false);
+        }
+      },
+    });
+  };
+
   /** 凭证列 */
   const voucherColumns: ColumnsType<Voucher> = [
     {
@@ -874,7 +964,24 @@ export default function Voucher() {
                     </Space>
                   }
                   extra={
-                    <Space>
+                    <Space wrap>
+                      <Button
+                        size="small"
+                        type="primary"
+                        disabled={selectedVoucherIds.length === 0 || batchRunning}
+                        loading={batchRunning}
+                        onClick={handleBatchPost}
+                      >
+                        批量记账（{selectedVoucherIds.length}）
+                      </Button>
+                      <Button
+                        size="small"
+                        danger
+                        disabled={selectedVoucherIds.length === 0 || batchRunning}
+                        onClick={handleBatchVoid}
+                      >
+                        批量作废（{selectedVoucherIds.length}）
+                      </Button>
                       <Input.Search
                         allowClear
                         placeholder="搜索摘要/凭证号"
@@ -908,6 +1015,14 @@ export default function Voucher() {
                     columns={voucherColumns}
                     dataSource={vouchers}
                     scroll={{ x: 1200 }}
+                    rowSelection={{
+                      selectedRowKeys: selectedVoucherIds,
+                      onChange: (keys) => setSelectedVoucherIds(keys as string[]),
+                      getCheckboxProps: (record) => ({
+                        // 已作废的凭证既不能记账也不能再作废，直接禁用勾选减少误操作
+                        disabled: record.status === 'VOID',
+                      }),
+                    }}
                     locale={{
                       emptyText: (
                         <Empty

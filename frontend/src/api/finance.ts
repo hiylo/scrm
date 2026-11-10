@@ -1593,6 +1593,30 @@ export const voidVoucher = (id: string, reason?: string) =>
 export const deleteVoucher = (id: string) =>
   apiClient.delete<void>(`/scrm/vouchers/${id}`);
 
+/** 批量操作单条失败明细 */
+export interface BatchFailure {
+  id: string;
+  label?: string | null;
+  message?: string | null;
+}
+
+/** 批量记账 / 批量作废的统一返回 */
+export interface BatchVoucherResult {
+  successCount: number;
+  failCount: number;
+  failures: BatchFailure[];
+}
+
+/** 批量记账（草稿 → 已记账；逐条校验，单张失败不影响其余） */
+export const batchPostVouchers = (ids: string[]) =>
+  apiClient.post<BatchVoucherResult>('/scrm/vouchers/batch-post', ids);
+
+/** 批量作废（保留痕迹，退出余额） */
+export const batchVoidVouchers = (ids: string[], reason?: string) =>
+  apiClient.post<BatchVoucherResult>('/scrm/vouchers/batch-void', ids, {
+    params: reason ? { reason } : {},
+  });
+
 /** 试算平衡表 */
 export const getTrialBalance = (companyId: string, periodYear: number, periodMonth: number) =>
   apiClient.get<TrialBalance>('/scrm/vouchers/trial-balance', {
