@@ -70,4 +70,12 @@ public interface ScrmAccountSubjectRepository
     @Query("select max(s.subjectCode) from ScrmAccountSubjectEntity s "
             + "where s.companyId = :companyId and s.subjectCode like concat(:prefix, '%')")
     String findMaxCodeByPrefix(@Param("companyId") Long companyId, @Param("prefix") String prefix);
+
+    /**
+     * 按主体统计科目数（期初录入总览用，一次查询避免逐户 N+1）。
+     *
+     * @return {@code [companyId, count]}
+     */
+    @Query("select s.companyId, count(s) from ScrmAccountSubjectEntity s group by s.companyId")
+    List<Object[]> countByCompanyGrouped();
 }

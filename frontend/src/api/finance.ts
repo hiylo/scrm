@@ -1728,6 +1728,42 @@ export interface OpeningBalanceView {
   configured: boolean;
 }
 
+/** 期初录入总览行（按主体） */
+export interface OpeningBalanceSummaryRow {
+  companyId: string;
+  companyName: string;
+  /** 是否已录期初 */
+  configured: boolean;
+  /** 启用期间（形如 202601），未录时为 null */
+  openingPeriod?: number | null;
+  totalDebit: number;
+  totalCredit: number;
+  balanced: boolean;
+  /** 已建科目数 */
+  subjectCount: number;
+  /** 已录期初的科目行数 */
+  configuredSubjectCount: number;
+  /** 未录期初但已建科目 → 该提示去录（没科目则无法录，不提示） */
+  suggestOpening: boolean;
+}
+
+/** 期初录入总览 */
+export interface OpeningBalanceSummary {
+  items: OpeningBalanceSummaryRow[];
+  /** 需要录入的主体数 */
+  pendingCount: number;
+  totalCount: number;
+}
+
+/**
+ * 期初录入状态总览（按数据范围）。
+ *
+ * 供代账主管在结账前找出「哪些户还没录期初」——结账虽会拦未录期初，
+ * 但那是事后才知道；有了总览才能提前补齐。
+ */
+export const getOpeningBalanceSummary = () =>
+  apiClient.get<OpeningBalanceSummary>('/scrm/vouchers/opening-balance/summary');
+
 /**
  * 查某户期初余额录入视图。
  *

@@ -16,6 +16,7 @@ import org.hiylo.scrm.entity.ScrmAccountSubjectEntity;
 import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.repository.ScrmAccountOpeningBalanceRepository;
 import org.hiylo.scrm.entity.ScrmAccountPeriodEntity;
+import org.hiylo.scrm.entity.ScrmCompanyEntity;
 import org.hiylo.scrm.repository.ScrmAccountPeriodRepository;
 import org.hiylo.scrm.repository.ScrmAccountSubjectRepository;
 import org.hiylo.scrm.repository.ScrmCompanyRepository;
@@ -170,6 +171,99 @@ public class ScrmAccountOpeningBalanceService {
         List<ScrmAccountOpeningBalanceEntity> saved =
                 openingRepository.findByCompanyIdOrderBySubjectCodeAsc(companyId);
         return saved.isEmpty() ? null : saved.get(0).getOpeningPeriod();
+    }
+
+    /**
+     * 期初录入状态总览：按数据范围列出各主体的录入情况。
+     * <p>
+     * <b>解决什么</b>：期初余额原先只有「单主体详情」入口。代账主管想在几十个客户里
+     * 找出「哪些户还没录期初」，只能一个个点进去看；而结账拦截虽然会拦「未录期初」，
+     * 但那是事后才知道——没有任何地方能让会计<b>提前</b>看到谁还没录。
+     * </p>
+     * <p>
+     * <b>suggestOpening 的判定</b>：只有「未录期初 <b>且</b> 已建科目」才提示。
+     * 没有科目的主体根本没法录期初，提示了只是噪音。
+     * </p>
+     *
+     * @return {items:[...], pendingCount, totalCount}
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> summary() {
+        // 1) 数据范围：主管看全部，会计看自己负责的主体
+        // 语义：null = 不限制（管理角色）；空集合 = 身份异常或未绑定主体（fail-closed）
+        List<Long> accessible = financeDataScope.resolveAccessibleCompanyIds();
+        List<ScrmCompanyEntity> companies;
+        if (accessible == null) {
+            companies = companyRepository.findAll();
+        } else if (accessible.isEmpty()) {
+            companies = List.of();
+        } else {
+            companies = companyRepository.findAllById(accessible);
+        }
+
+        // 2) 一次聚合查询拿到已录期初的主体
+        Map<Long, Object[]> savedMap = new LinkedHashMap<>();
+        for (Object[] row : openingRepository.summarizeByCompany()) {
+            savedMap.put(((Number) row[0]).longValue(), row);
+        }
+
+        // 3) 科目数：用于判断「没录期初但有科目」= 需要提示
+        Map<Long, Long> subjectCountMap = new LinkedHashMap<>();
+        for (Object[] row : subjectRepository.countByCompanyGrouped()) {
+            subjectCountMap.put(((Number) row[0]).longValue(), ((Number) row[1]).longValue());
+        }
+
+        List<Map<String, Object>> items = new ArrayList<>();
+        int pendingCount = 0;
+        for (ScrmCompanyEntity company : companies) {
+            Long companyId = company.getId();
+            Object[] saved = savedMap.get(companyId);
+            long subjectCount = subjectCountMap.getOrDefault(companyId, 0L);
+            boolean configured = saved != null;
+            BigDecimal debit = saved == null ? BigDecimal.ZERO : toDecimal(saved[2]);
+            BigDecimal credit = saved == null ? BigDecimal.ZERO : toDecimal(saved[3]);
+            boolean balanced = configured && debit.compareTo(credit) == 0;
+
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("companyId", String.valueOf(companyId));
+            item.put("companyName", company.getCompanyName());
+            item.put("configured", configured);
+            item.put("openingPeriod", saved == null ? null : ((Number) saved[1]).intValue());
+            item.put("totalDebit", scale(debit));
+            item.put("totalCredit", scale(credit));
+            item.put("balanced", balanced);
+            item.put("subjectCount", subjectCount);
+            item.put("configuredSubjectCount", saved == null ? 0L : ((Number) saved[4]).longValue());
+            // 未录期初但已建科目 = 该提示去录；没有科目则无意义
+            boolean suggest = !configured && subjectCount > 0;
+            item.put("suggestOpening", suggest);
+            if (suggest) {
+                pendingCount++;
+            }
+            items.add(item);
+        }
+
+        // 待录优先、其次不平衡的，方便主管一眼看到要处理的
+        items.sort((a, b) -> {
+            boolean sa = Boolean.TRUE.equals(a.get("suggestOpening"));
+            boolean sb = Boolean.TRUE.equals(b.get("suggestOpening"));
+            if (sa != sb) {
+                return sa ? -1 : 1;
+            }
+            boolean ba = Boolean.TRUE.equals(a.get("balanced"));
+            boolean bb = Boolean.TRUE.equals(b.get("balanced"));
+            if (ba != bb) {
+                return ba ? 1 : -1;
+            }
+            return String.valueOf(a.get("companyName"))
+                    .compareTo(String.valueOf(b.get("companyName")));
+        });
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("items", items);
+        result.put("pendingCount", pendingCount);
+        result.put("totalCount", items.size());
+        return result;
     }
 
     // ============================================================

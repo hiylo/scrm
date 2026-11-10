@@ -1156,6 +1156,7 @@ export default function Voucher() {
               <OpeningBalancePanel
                 companyId={companyId}
                 onSaved={() => void Promise.all([loadTrial(), loadVouchers()])}
+                onSwitchCompany={(id) => setCompanyId(id)}
               />
             ),
           },

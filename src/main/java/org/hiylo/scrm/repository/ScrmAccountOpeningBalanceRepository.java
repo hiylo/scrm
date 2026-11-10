@@ -50,4 +50,18 @@ public interface ScrmAccountOpeningBalanceRepository
     @Modifying
     @Query("delete from ScrmAccountOpeningBalanceEntity o where o.companyId = :companyId")
     int deleteByCompanyId(@Param("companyId") Long companyId);
+
+    /**
+     * 批量汇总各主体的期初录入状态（一次查询，避免逐户 N+1）。
+     * <p>
+     * 返回 {@code [companyId, openingPeriod, totalDebit, totalCredit, subjectCount, updateTime]}，
+     * 只覆盖已录过期初的主体；未录的主体由服务层补齐。
+     * </p>
+     *
+     * @return 按主体分组的期初汇总
+     */
+    @Query("select o.companyId, min(o.openingPeriod), sum(o.debitAmount), sum(o.creditAmount), "
+            + "count(o), max(o.updateTime) from ScrmAccountOpeningBalanceEntity o "
+            + "group by o.companyId")
+    List<Object[]> summarizeByCompany();
 }

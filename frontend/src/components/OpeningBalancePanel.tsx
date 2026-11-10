@@ -30,7 +30,9 @@ import dayjs, { type Dayjs } from 'dayjs';
 import {
   clearOpeningBalance,
   getOpeningBalance,
+  getOpeningBalanceSummary,
   saveOpeningBalance,
+  type OpeningBalanceSummaryRow,
   type OpeningBalanceItem,
   type OpeningBalanceView,
 } from '../api/finance';
@@ -71,6 +73,8 @@ export interface OpeningBalancePanelProps {
   companyId?: string;
   /** 录入/保存后回调（页面据此刷新试算平衡等下游视图） */
   onSaved?: () => void;
+  /** 切换到其他主体（总览条里点某户时用） */
+  onSwitchCompany?: (companyId: string) => void;
 }
 
 /**
@@ -93,7 +97,11 @@ export interface OpeningBalancePanelProps {
  *
  * @param props 组件入参
  */
-export default function OpeningBalancePanel({ companyId, onSaved }: OpeningBalancePanelProps) {
+export default function OpeningBalancePanel({
+  companyId,
+  onSaved,
+  onSwitchCompany,
+}: OpeningBalancePanelProps) {
   const { message, modal } = App.useApp();
 
   const [view, setView] = useState<OpeningBalanceView | null>(null);
@@ -102,6 +110,8 @@ export default function OpeningBalancePanel({ companyId, onSaved }: OpeningBalan
   const [saving, setSaving] = useState(false);
   const [openingPeriod, setOpeningPeriod] = useState<Dayjs | null>(null);
   const [showAll, setShowAll] = useState(false);
+  /** 全主体期初录入状态（用于提示「还有几户没录」） */
+  const [summaryRows, setSummaryRows] = useState<OpeningBalanceSummaryRow[]>([]);
 
   /** 从后端视图生成可编辑行 */
   const toEditable = useCallback(
@@ -146,6 +156,31 @@ export default function OpeningBalancePanel({ companyId, onSaved }: OpeningBalan
     void load();
   }, [load]);
 
+  /**
+   * 加载全主体期初录入状态。
+   * <p>
+   * 未选企业时不查：总览是「这个户之外还有谁没录」的旁路信息，没选中主体时
+   * 页面本身就在提示先选企业，此时再发一次请求纯属浪费。
+   * 非关键路径，失败静默，不影响录入主流程。
+   * </p>
+   */
+  const loadSummary = useCallback(async () => {
+    if (!companyId) {
+      setSummaryRows([]);
+      return;
+    }
+    try {
+      const data = await getOpeningBalanceSummary();
+      setSummaryRows(data?.items || []);
+    } catch {
+      setSummaryRows([]);
+    }
+  }, [companyId]);
+
+  useEffect(() => {
+    void loadSummary();
+  }, [loadSummary]);
+
   /** 借贷合计与差额（实时算，不信任后端返回值） */
   const totals = useMemo(() => {
     let debit = 0;
@@ -177,6 +212,12 @@ export default function OpeningBalancePanel({ companyId, onSaved }: OpeningBalan
             (r) => (Number(r.debitAmount) || 0) !== 0 || (Number(r.creditAmount) || 0) !== 0,
           ),
     [rows, showAll],
+  );
+
+  /** 需要录期初的主体（未录且已建科目） */
+  const pendingRows = useMemo(
+    () => summaryRows.filter((row) => row.suggestOpening),
+    [summaryRows],
   );
 
   /** 更新某行 */
@@ -389,6 +430,36 @@ export default function OpeningBalancePanel({ companyId, onSaved }: OpeningBalan
         </Space>
       }
     >
+      {pendingRows.length > 0 && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={`还有 ${pendingRows.length} 户尚未录入期初余额`}
+          description={
+            <Space wrap size={[8, 8]} style={{ marginTop: 4 }}>
+              {pendingRows.map((row) => (
+                <Tag
+                  key={row.companyId}
+                  color={row.companyId === companyId ? 'blue' : 'default'}
+                  style={{ cursor: onSwitchCompany ? 'pointer' : 'default', marginInlineEnd: 0 }}
+                  onClick={() => {
+                    if (row.companyId !== companyId) {
+                      onSwitchCompany?.(row.companyId);
+                    }
+                  }}
+                >
+                  {row.companyName}
+                </Tag>
+              ))}
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                点击可切换；结账时未录期初会被拦截，建议提前补齐
+              </Typography.Text>
+            </Space>
+          }
+        />
+      )}
+
       <Alert
         type={totals.diff === 0 && filledCount > 0 ? 'success' : 'warning'}
         showIcon

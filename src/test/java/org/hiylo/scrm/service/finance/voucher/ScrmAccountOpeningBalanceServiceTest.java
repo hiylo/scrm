@@ -122,6 +122,9 @@ class ScrmAccountOpeningBalanceServiceTest {
         // 默认：没有任何期间结账
         when(periodRepository.findByCompanyIdOrderByPeriodYearAscPeriodMonthAsc(COMPANY_ID))
                 .thenReturn(List.of());
+        // 默认：总览查询无数据（不配置数据范围，避免误命中）
+        when(openingRepository.summarizeByCompany()).thenReturn(List.of());
+        when(subjectRepository.countByCompanyGrouped()).thenReturn(List.of());
         when(openingRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
         when(openingRepository.findByCompanyIdOrderBySubjectCodeAsc(COMPANY_ID)).thenReturn(List.of());
     }
@@ -344,6 +347,89 @@ class ScrmAccountOpeningBalanceServiceTest {
 
         assertThat(result).hasSize(1);
         assertThat(toDecimal(result.get(0)[2])).isEqualByComparingTo("10");
+    }
+
+    // ==================== 期初录入总览 ====================
+
+    @Test
+    @DisplayName("总览：未录期初但已建科目的主体被标记为需录入")
+    void summaryFlagsCompanyWithSubjectsButNoOpening() {
+        givenSummaryScope(List.of(COMPANY_ID));
+        givenCompany(COMPANY_ID, "甲客户");
+        // 已建 32 个科目、未录期初
+        givenSubjectCounts(COMPANY_ID, 32L);
+
+        Map<String, Object> result = service.summary();
+
+        List<Map<String, Object>> items = castItems(result);
+        assertThat(items).hasSize(1);
+        Map<String, Object> row = items.get(0);
+        assertThat(row.get("configured")).isEqualTo(false);
+        assertThat(row.get("suggestOpening")).isEqualTo(true);
+        assertThat(row.get("subjectCount")).isEqualTo(32L);
+        assertThat(result.get("pendingCount")).isEqualTo(1);
+        assertThat(result.get("totalCount")).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("总览：没有科目的主体不提示（无法录期初，提示只是噪音）")
+    void summaryDoesNotFlagCompanyWithoutSubjects() {
+        givenSummaryScope(List.of(COMPANY_ID));
+        givenCompany(COMPANY_ID, "乙客户");
+        givenSubjectCounts(COMPANY_ID, 0L);
+
+        List<Map<String, Object>> items = castItems(service.summary());
+
+        assertThat(items).hasSize(1);
+        assertThat(items.get(0).get("suggestOpening")).isEqualTo(false);
+    }
+
+    @Test
+    @DisplayName("总览：已录期初的主体显示金额与平衡状态，且不提示录入")
+    void summaryReportsConfiguredCompany() {
+        givenSummaryScope(List.of(COMPANY_ID));
+        givenCompany(COMPANY_ID, "丙客户");
+        givenSubjectCounts(COMPANY_ID, 32L);
+        when(openingRepository.summarizeByCompany()).thenReturn(List.<Object[]>of(
+                new Object[]{COMPANY_ID, OPENING_PERIOD,
+                        new BigDecimal("80000.00"), new BigDecimal("80000.00"), 2L, null}));
+
+        Map<String, Object> result = service.summary();
+        List<Map<String, Object>> items = castItems(result);
+
+        assertThat(items).hasSize(1);
+        Map<String, Object> row = items.get(0);
+        assertThat(row.get("configured")).isEqualTo(true);
+        assertThat(row.get("balanced")).isEqualTo(true);
+        assertThat(row.get("openingPeriod")).isEqualTo(OPENING_PERIOD);
+        assertThat(row.get("suggestOpening")).isEqualTo(false);
+        assertThat((BigDecimal) row.get("totalDebit")).isEqualByComparingTo("80000.00");
+        assertThat(result.get("pendingCount")).isEqualTo(0);
+    }
+
+    /** 指定数据范围内的主体（null = 不限制）。 */
+    private void givenSummaryScope(List<Long> scope) {
+        when(financeDataScope.resolveAccessibleCompanyIds()).thenReturn(scope);
+    }
+
+    /** 造一个主体并让 findAllById 返回它。 */
+    private void givenCompany(Long id, String name) {
+        ScrmCompanyEntity entity = new ScrmCompanyEntity();
+        entity.setId(id);
+        entity.setCompanyName(name);
+        when(companyRepository.findAllById(List.of(id))).thenReturn(List.of(entity));
+    }
+
+    /** 指定某主体的科目数。 */
+    private void givenSubjectCounts(Long companyId, long count) {
+        when(subjectRepository.countByCompanyGrouped()).thenReturn(List.<Object[]>of(
+                new Object[]{companyId, count}));
+    }
+
+    /** 取总览 items。 */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> castItems(Map<String, Object> result) {
+        return (List<Map<String, Object>>) result.get("items");
     }
 
     // ==================== 结账锁定 ====================

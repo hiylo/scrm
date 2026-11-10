@@ -170,4 +170,53 @@ describe('OpeningBalancePanel', () => {
       params: { companyId: '1' },
     }));
   });
+
+  it('有未录期初的主体时显示总览条，点击可切换主体', async () => {
+    get.mockImplementation(async (url: string) => {
+      if (url === '/scrm/vouchers/opening-balance/summary') {
+        return {
+          items: [
+            {
+              companyId: '2',
+              companyName: '甲客户',
+              configured: false,
+              totalDebit: 0,
+              totalCredit: 0,
+              balanced: false,
+              subjectCount: 32,
+              configuredSubjectCount: 0,
+              suggestOpening: true,
+            },
+          ],
+          pendingCount: 1,
+          totalCount: 1,
+        } as never;
+      }
+      return view({ configured: true, openingPeriod: 202601 }) as never;
+    });
+    const onSwitchCompany = vi.fn();
+    const user = userEvent.setup();
+    renderWithProviders(<OpeningBalancePanel companyId="1" onSwitchCompany={onSwitchCompany} />);
+
+    expect(await screen.findByText('还有 1 户尚未录入期初余额')).toBeInTheDocument();
+    await user.click(screen.getByText('甲客户'));
+    expect(onSwitchCompany).toHaveBeenCalledWith('2');
+  });
+
+  it('没有未录期初的主体时不渲染总览条', async () => {
+    get.mockImplementation(async (url: string) => {
+      if (url === '/scrm/vouchers/opening-balance/summary') {
+        return { items: [], pendingCount: 0, totalCount: 0 } as never;
+      }
+      return view({
+        configured: true,
+        openingPeriod: 202601,
+        items: [item('1002', '银行存款', { debitAmount: 80000, configured: true })],
+      }) as never;
+    });
+    renderWithProviders(<OpeningBalancePanel companyId="1" />);
+
+    await screen.findByText('银行存款');
+    expect(screen.queryByText(/尚未录入期初余额/)).not.toBeInTheDocument();
+  });
 });

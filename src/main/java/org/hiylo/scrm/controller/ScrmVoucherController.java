@@ -611,6 +611,23 @@ public class ScrmVoucherController {
      * @return {openingPeriod, items, totalDebit, totalCredit, balanced, configured}
      * @throws ScrmException 主体不存在 / 无权访问
      */
+    /**
+     * 期初录入状态总览：按数据范围列出各主体的录入情况。
+     * <p>
+     * 供代账主管一眼找出「哪些户还没录期初」。结账虽会拦未录期初，但那是事后才知道；
+     * 有了这个总览才能在结账前提前补齐。只提示「未录期初 <b>且</b> 已建科目」的主体——
+     * 没有科目根本没法录期初，提示了只是噪音。
+     * </p>
+     *
+     * @return {items:[{companyId, companyName, configured, openingPeriod, totalDebit,
+     *         totalCredit, balanced, subjectCount, suggestOpening, ...}], pendingCount, totalCount}
+     */
+    @RequirePermission(resource = "scrm_voucher", action = "read")
+    @GetMapping("/opening-balance/summary")
+    public OperationResponse<Map<String, Object>> openingBalanceSummary() {
+        return OperationResponse.build(openingBalanceService.summary());
+    }
+
     @RequirePermission(resource = "scrm_voucher", action = "read")
     @GetMapping("/opening-balance")
     public OperationResponse<Map<String, Object>> openingBalance(@RequestParam Long companyId)
