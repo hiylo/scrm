@@ -63,6 +63,9 @@ public class ScrmLedgerService {
     /** 主体仓储 */
     private final ScrmCompanyRepository companyRepository;
 
+    /** 期初余额服务（接户结转数视作启用期前的虚拟分录，只并进期初口径） */
+    private final ScrmAccountOpeningBalanceService openingBalanceService;
+
     /**
      * 总账：按一级科目汇总期初/本期/期末。
      *
@@ -78,7 +81,9 @@ public class ScrmLedgerService {
                 .orElseThrow(() -> ScrmException.notFound("公司主体不存在: " + companyId));
 
         int yyyymm = year * 100 + month;
-        Map<String, BigDecimal[]> opening = rollUp(entryRepository.sumBeforePeriod(companyId, yyyymm));
+        // 期初 = 本系统累计 + 接户期初余额（若有）。期初余额只进期初口径，不进本期发生额
+        Map<String, BigDecimal[]> opening = rollUp(openingBalanceService.mergeInto(
+                entryRepository.sumBeforePeriod(companyId, yyyymm), yyyymm, companyId));
         Map<String, BigDecimal[]> current = rollUp(entryRepository.sumInPeriod(companyId, yyyymm));
 
         // 科目名称取一级科目（明细科目已归并）
@@ -188,7 +193,8 @@ public class ScrmLedgerService {
         int yyyymm = year * 100 + month;
 
         // 期初：该科目（含下级明细）在此期之前的累计
-        BigDecimal[] before = sumByPrefix(entryRepository.sumBeforePeriod(companyId, yyyymm), code);
+        BigDecimal[] before = sumByPrefix(openingBalanceService.mergeInto(
+                entryRepository.sumBeforePeriod(companyId, yyyymm), yyyymm, companyId), code);
         BigDecimal openingNet = before[0].subtract(before[1]);
 
         // 逐笔：本期该科目的所有分录

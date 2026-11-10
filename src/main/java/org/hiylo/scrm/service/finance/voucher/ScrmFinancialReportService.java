@@ -73,6 +73,9 @@ public class ScrmFinancialReportService {
     /** 主体仓储 */
     private final ScrmCompanyRepository companyRepository;
 
+    /** 期初余额服务（接户结转数并进「年初/期末」累计口径） */
+    private final ScrmAccountOpeningBalanceService openingBalanceService;
+
     /**
      * 资产负债表。
      *
@@ -88,11 +91,13 @@ public class ScrmFinancialReportService {
                 .orElseThrow(() -> ScrmException.notFound("公司主体不存在: " + companyId));
 
         int yyyymm = year * 100 + month;
-        // 期末：截至本期的累计发生额
-        Map<String, BigDecimal[]> closing = aggregate(entryRepository.sumUpTo(companyId, yyyymm));
-        // 年初：截至上一年 12 月
-        Map<String, BigDecimal[]> opening = aggregate(
-                entryRepository.sumUpTo(companyId, (year - 1) * 100 + 12));
+        // 期末：截至本期的累计发生额（+ 接户期初余额）
+        Map<String, BigDecimal[]> closing = aggregate(openingBalanceService.mergeInto(
+                entryRepository.sumUpTo(companyId, yyyymm), yyyymm, companyId));
+        // 年初：截至上一年 12 月（+ 接户期初余额；若启用期即为本年 1 月，则年初 = 期初余额本身）
+        Map<String, BigDecimal[]> opening = aggregate(openingBalanceService.mergeInto(
+                entryRepository.sumUpTo(companyId, (year - 1) * 100 + 12),
+                (year - 1) * 100 + 12, companyId));
 
         List<Map<String, Object>> assets = new ArrayList<>();
         List<Map<String, Object>> liabilities = new ArrayList<>();

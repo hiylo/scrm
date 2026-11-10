@@ -90,6 +90,9 @@ public class ScrmVoucherService {
     /** 原始单据服务（列表回填单据数、删凭证级联清理；不反向依赖本服务，无循环） */
     private final ScrmVoucherAttachmentService attachmentService;
 
+    /** 期初余额服务（接户结转数并进试算平衡的期初口径） */
+    private final ScrmAccountOpeningBalanceService openingBalanceService;
+
     // ============================================================
     // 科目
     // ============================================================
@@ -589,7 +592,9 @@ public class ScrmVoucherService {
     @Transactional(readOnly = true)
     public Map<String, Object> trialBalance(Long companyId, int periodYear, int periodMonth) {
         int yyyymm = periodYear * 100 + periodMonth;
-        Map<String, Object[]> beforeMap = toMap(entryRepository.sumBeforePeriod(companyId, yyyymm));
+        // 期初 = 本系统累计 + 接户期初余额（若有）。期初余额只进期初，不进本期发生额
+        Map<String, Object[]> beforeMap = toMap(openingBalanceService.mergeInto(
+                entryRepository.sumBeforePeriod(companyId, yyyymm), yyyymm, companyId));
         Map<String, Object[]> inMap = toMap(entryRepository.sumInPeriod(companyId, yyyymm));
 
         List<ScrmAccountSubjectEntity> subjects = subjectRepository

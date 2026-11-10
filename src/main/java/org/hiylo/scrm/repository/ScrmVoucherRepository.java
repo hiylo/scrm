@@ -68,4 +68,22 @@ public interface ScrmVoucherRepository
      */
     long countByCompanyIdAndPeriodYearAndPeriodMonthAndStatus(
             Long companyId, Integer periodYear, Integer periodMonth, String status);
+
+    /**
+     * 统计某企业「指定期之前」已存在的凭证数（排除已作废）。
+     * <p>
+     * 期初余额录入前的防重复计算检查用。<b>不能只看已记账</b>：
+     * 草稿日后一旦记账，就会与期初余额叠加，余额凭空变大。
+     * 作废凭证已退出余额，不影响，因此排除。
+     * </p>
+     *
+     * @param companyId 公司主体 ID
+     * @param yyyymm    期（形如 202610）；统计严格小于该期的凭证
+     * @return 凭证数
+     */
+    @Query("select count(v) from ScrmVoucherEntity v where v.companyId = :companyId "
+            + "and v.status <> org.hiylo.scrm.entity.ScrmVoucherEntity.STATUS_VOID "
+            + "and (v.periodYear * 100 + v.periodMonth) < :yyyymm")
+    long countEffectiveBeforePeriod(@Param("companyId") Long companyId,
+                                    @Param("yyyymm") Integer yyyymm);
 }

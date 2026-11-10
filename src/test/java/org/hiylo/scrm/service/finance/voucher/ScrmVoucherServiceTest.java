@@ -86,6 +86,10 @@ class ScrmVoucherServiceTest {
     @Mock
     private ScrmVoucherAttachmentService attachmentService;
 
+    /** 期初余额服务（测试透传：不叠加接户期初，保持原有断言口径） */
+    @Mock
+    private ScrmAccountOpeningBalanceService openingBalanceService;
+
 
     /** 被测服务 */
     private ScrmVoucherService service;
@@ -104,7 +108,10 @@ class ScrmVoucherServiceTest {
     void setUp() {
         service = new ScrmVoucherService(subjectRepository, voucherRepository,
                 entryRepository, companyRepository, periodCloseService, financeDataScope,
-                attachmentService);
+                attachmentService, openingBalanceService);
+        // 透传合并：不设置期初余额时行为与改造前完全一致
+        when(openingBalanceService.mergeInto(any(), any(), any()))
+                .thenAnswer(inv -> inv.getArgument(0));
         // 默认期间未结账；封账场景在专门用例里覆盖
         when(periodCloseService.isClosed(anyLong(), any(), any())).thenReturn(false);
 

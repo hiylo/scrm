@@ -80,6 +80,9 @@ public class ScrmPeriodCloseService {
     /** 主体仓储 */
     private final ScrmCompanyRepository companyRepository;
 
+    /** 期初余额服务（接户结转的损益科目余额也要参与结转，否则本期利润失真） */
+    private final ScrmAccountOpeningBalanceService openingBalanceService;
+
     /**
      * 判断期间是否已结账（凭证新增/记账前必须校验）。
      *
@@ -137,8 +140,11 @@ public class ScrmPeriodCloseService {
         ScrmVoucherEntity closingVoucher = null;
         BigDecimal profit = BigDecimal.ZERO;
 
-        // 以库里已记账分录为准计算损益余额（不信任任何缓存合计）
-        List<Object[]> rows = entryRepository.sumUpTo(companyId, yyyymm);
+        // 以库里已记账分录为准计算损益余额（不信任任何缓存合计）。
+        // 期初余额里若有损益科目（上年度未结转干净就接户），必须一起结转，
+        // 否则本期利润会漏掉这部分，结转凭证本身就不平。
+        List<Object[]> rows = openingBalanceService.mergeInto(
+                entryRepository.sumUpTo(companyId, yyyymm), yyyymm, companyId);
         List<ScrmVoucherEntryEntity> entries = new ArrayList<>();
         BigDecimal totalDebit = BigDecimal.ZERO;
         BigDecimal totalCredit = BigDecimal.ZERO;

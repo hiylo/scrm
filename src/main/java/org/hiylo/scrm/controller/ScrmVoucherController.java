@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.hiylo.scrm.common.OperationResponse;
 import org.hiylo.scrm.dto.ScrmAiVoucherSuggestionDto;
 import org.hiylo.scrm.dto.ScrmVoucherSaveDto;
+import org.hiylo.scrm.entity.ScrmAccountOpeningBalanceEntity;
 import org.hiylo.scrm.entity.ScrmAccountSubjectEntity;
 import org.hiylo.scrm.entity.ScrmVoucherAttachmentEntity;
 import org.hiylo.scrm.entity.ScrmVoucherEntity;
@@ -23,6 +24,7 @@ import org.hiylo.scrm.service.finance.voucher.ScrmAiVoucherAssistService;
 import org.hiylo.scrm.service.finance.voucher.ScrmFinancialReportService;
 import org.hiylo.scrm.service.finance.voucher.ScrmLedgerService;
 import org.hiylo.scrm.service.finance.voucher.ScrmPeriodCloseService;
+import org.hiylo.scrm.service.finance.voucher.ScrmAccountOpeningBalanceService;
 import org.hiylo.scrm.service.finance.voucher.ScrmVoucherAttachmentService;
 import org.hiylo.scrm.service.finance.voucher.ScrmVoucherService;
 import org.springframework.data.domain.Page;
@@ -74,6 +76,9 @@ public class ScrmVoucherController {
 
     /** 原始单据服务（凭证电子附件） */
     private final ScrmVoucherAttachmentService voucherAttachmentService;
+
+    /** 期初余额服务（接户结转数） */
+    private final ScrmAccountOpeningBalanceService openingBalanceService;
 
     /** AI 智能凭证助手（票据识别 → 凭证草稿建议） */
     private final ScrmAiVoucherAssistService aiVoucherAssistService;
@@ -582,6 +587,69 @@ public class ScrmVoucherController {
         assertCompanyAccessible(companyId);
         return OperationResponse.build(
                 voucherService.periodSummary(companyId, periodYear, periodMonth));
+    }
+
+    // ============================================================
+    // 期初余额（接户结转数）
+    // ============================================================
+
+    /**
+     * 查询某户期初余额录入视图（科目全量清单 + 合计 + 平衡判定）。
+     * <p>
+     * 中途接手客户时，上家账套的余额就是本系统的起点。没有它，试算平衡的期初
+     * 与资产负债表年初余额永远是 0，账接不上、年报不能用。
+     * </p>
+     *
+     * @param companyId 公司主体 ID
+     * @return {openingPeriod, items, totalDebit, totalCredit, balanced, configured}
+     * @throws ScrmException 主体不存在 / 无权访问
+     */
+    @RequirePermission(resource = "scrm_voucher", action = "read")
+    @GetMapping("/opening-balance")
+    public OperationResponse<Map<String, Object>> openingBalance(@RequestParam Long companyId)
+            throws ScrmException {
+        assertCompanyAccessible(companyId);
+        return OperationResponse.build(openingBalanceService.view(companyId));
+    }
+
+    /**
+     * 重设某户期初余额（整户替换）。
+     * <p>
+     * 强制借贷平衡，并拒绝「启用期之前已有已记账凭证」的户——否则期初与历史
+     * 会重复计算，余额凭空变大。保存后试算平衡/总账/明细账/资产负债表/结转损益
+     * 会自动带上这批期初，不需要额外操作。
+     * </p>
+     *
+     * @param companyId     公司主体 ID
+     * @param openingPeriod 启用期间（形如 202601）
+     * @param items         科目余额行 [{subjectCode, debitAmount, creditAmount, remark}]
+     * @return 保存后的视图
+     * @throws ScrmException 金额非法 / 借贷不平 / 科目不存在 / 启用期前有凭证
+     */
+    @RequirePermission(resource = "scrm_voucher", action = "update")
+    @PutMapping("/opening-balance")
+    public OperationResponse<Map<String, Object>> saveOpeningBalance(
+            @RequestParam Long companyId,
+            @RequestParam Integer openingPeriod,
+            @RequestBody List<ScrmAccountOpeningBalanceEntity> items) throws ScrmException {
+        assertCompanyAccessible(companyId);
+        return OperationResponse.build(
+                openingBalanceService.save(companyId, openingPeriod, items));
+    }
+
+    /**
+     * 清空某户期初余额（回到「全部按本系统凭证累计」的状态）。
+     *
+     * @param companyId 公司主体 ID
+     * @return 删除行数
+     * @throws ScrmException 无权访问
+     */
+    @RequirePermission(resource = "scrm_voucher", action = "delete")
+    @DeleteMapping("/opening-balance")
+    public OperationResponse<Map<String, Object>> clearOpeningBalance(@RequestParam Long companyId)
+            throws ScrmException {
+        assertCompanyAccessible(companyId);
+        return OperationResponse.build(Map.of("deleted", openingBalanceService.clear(companyId)));
     }
 
     /**

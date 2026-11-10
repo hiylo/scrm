@@ -1695,6 +1695,72 @@ export const getVoucherPeriodSummary = (
   });
 
 // ============================================================
+// 期初余额（接户结转数）
+// ============================================================
+
+/** 期初余额行（科目维度） */
+export interface OpeningBalanceItem {
+  subjectCode: string;
+  subjectName: string;
+  category: string;
+  direction: string;
+  /** 期初借方余额 */
+  debitAmount: number;
+  /** 期初贷方余额 */
+  creditAmount: number;
+  /** 该科目是否已录入非零余额 */
+  configured: boolean;
+  /** 科目是否仍启用（停用但已有余额的科目要展示出来，否则钱"消失"了却还在参与试算平衡） */
+  active: boolean;
+  openingPeriod?: number | null;
+  remark?: string | null;
+}
+
+/** 期初余额录入视图 */
+export interface OpeningBalanceView {
+  companyId: string;
+  /** 账套启用期间（形如 202601），未设置时为 null */
+  openingPeriod?: number | null;
+  items: OpeningBalanceItem[];
+  totalDebit: number;
+  totalCredit: number;
+  balanced: boolean;
+  configured: boolean;
+}
+
+/**
+ * 查某户期初余额录入视图。
+ *
+ * 中途接手客户时，上家账套余额就是本系统的起点；没有它，试算平衡期初与
+ * 资产负债表年初余额永远是 0，账接不上、年报不能用。
+ */
+export const getOpeningBalance = (companyId: string) =>
+  apiClient.get<OpeningBalanceView>('/scrm/vouchers/opening-balance', {
+    params: { companyId },
+  });
+
+/**
+ * 重设某户期初余额（整户替换）。
+ *
+ * 后端强制借贷平衡，并拒绝「启用期之前已有已记账凭证」的户——否则期初与历史
+ * 会重复计算。保存后试算平衡/总账/明细账/资产负债表/结转损益自动带上期初。
+ */
+export const saveOpeningBalance = (
+  companyId: string,
+  openingPeriod: number,
+  items: Array<{ subjectCode: string; debitAmount: number; creditAmount: number; remark?: string }>,
+) =>
+  apiClient.put<OpeningBalanceView>('/scrm/vouchers/opening-balance', items, {
+    params: { companyId, openingPeriod },
+  });
+
+/** 清空某户期初余额（回到「全部按本系统凭证累计」的状态） */
+export const clearOpeningBalance = (companyId: string) =>
+  apiClient.delete<{ deleted: number }>('/scrm/vouchers/opening-balance', {
+    params: { companyId },
+  });
+
+// ============================================================
 // 记账域扩展：结账 / 财务报表 / 账簿
 // ============================================================
 

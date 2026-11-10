@@ -62,6 +62,10 @@ class ScrmLedgerServiceTest {
     @Mock
     private ScrmCompanyRepository companyRepository;
 
+    /** 期初余额服务（测试透传：不叠加接户期初，保持原有断言口径） */
+    @Mock
+    private ScrmAccountOpeningBalanceService openingBalanceService;
+
     /** 被测服务 */
     private ScrmLedgerService service;
 
@@ -70,7 +74,11 @@ class ScrmLedgerServiceTest {
      */
     @BeforeEach
     void setUp() {
-        service = new ScrmLedgerService(subjectRepository, entryRepository, companyRepository);
+        service = new ScrmLedgerService(subjectRepository, entryRepository, companyRepository,
+                openingBalanceService);
+        // 透传合并：不设置期初余额时行为与改造前完全一致
+        when(openingBalanceService.mergeInto(any(), any(), any()))
+                .thenAnswer(inv -> inv.getArgument(0));
         ScrmCompanyEntity company = new ScrmCompanyEntity();
         company.setId(100L);
         company.setCompanyName("测试公司");

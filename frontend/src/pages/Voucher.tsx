@@ -69,6 +69,7 @@ import {
   type VoucherPeriodSummary,
 } from '../api/finance';
 import VoucherAttachmentDrawer from '../components/VoucherAttachmentDrawer';
+import OpeningBalancePanel from '../components/OpeningBalancePanel';
 
 /** 科目类别映射 */
 const categoryConfig: Record<string, { label: string; color: string }> = {
@@ -1146,6 +1147,16 @@ export default function Voucher() {
                   />
                 </Card>
               </>
+            ),
+          },
+          {
+            key: 'opening',
+            label: '期初余额',
+            children: (
+              <OpeningBalancePanel
+                companyId={companyId}
+                onSaved={() => void Promise.all([loadTrial(), loadVouchers()])}
+              />
             ),
           },
           {
