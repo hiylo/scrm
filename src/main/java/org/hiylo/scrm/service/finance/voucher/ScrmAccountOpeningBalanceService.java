@@ -15,6 +15,8 @@ import org.hiylo.scrm.entity.ScrmAccountOpeningBalanceEntity;
 import org.hiylo.scrm.entity.ScrmAccountSubjectEntity;
 import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.repository.ScrmAccountOpeningBalanceRepository;
+import org.hiylo.scrm.entity.ScrmAccountPeriodEntity;
+import org.hiylo.scrm.repository.ScrmAccountPeriodRepository;
 import org.hiylo.scrm.repository.ScrmAccountSubjectRepository;
 import org.hiylo.scrm.repository.ScrmCompanyRepository;
 import org.hiylo.scrm.repository.ScrmVoucherRepository;
@@ -78,6 +80,15 @@ public class ScrmAccountOpeningBalanceService {
 
     /** 凭证仓储（校验启用期之前没有任何有效凭证，避免期初与历史重复计算） */
     private final ScrmVoucherRepository voucherRepository;
+
+    /**
+     * 期间仓储（校验是否已有期间结账）。
+     * <p>
+     * 这里注入仓储而不是 {@link ScrmPeriodCloseService}：后者已依赖本服务，
+     * 反向注入会形成循环依赖，只为了调一个 isClosed() 不值得用 {@code @Lazy} 绕。
+     * </p>
+     */
+    private final ScrmAccountPeriodRepository periodRepository;
 
     /** 财税数据范围（会计只能设置自己负责主体的期初） */
     private final FinanceDataScope financeDataScope;
@@ -197,6 +208,12 @@ public class ScrmAccountOpeningBalanceService {
             throw ScrmException.badRequest("启用期间不合法: " + openingPeriod + "（应为 YYYYMM）");
         }
 
+        // 已有期间结账后不再允许改期初：期初是「启用期前一刻」的余额，
+        // 一旦某个期间封了账，改期初就等于改写已经算过、可能已经报出去的报表，
+        // 而结账标志还显示"已结账"——错误会静默传播，事后无法定位是哪次改动导致的。
+        // 这与"凭证在已结账期间不可改"是同一条纪律。
+        assertNoClosedPeriod(companyId);
+
         // 启用期之前不允许存在任何有效凭证（草稿也算），否则期初 + 历史会重复计算。
         // 只看「已记账」是不够的：草稿日后一旦记账，余额就会凭空变大，
         // 而这种错误要等出报表时才会暴露，届时已很难定位是哪一笔重复。
@@ -291,6 +308,8 @@ public class ScrmAccountOpeningBalanceService {
     @Transactional
     public int clear(Long companyId) throws ScrmException {
         assertCompanyAccessible(companyId);
+        // 清空期初同样会改写已结账期间的报表，和保存走同一道门
+        assertNoClosedPeriod(companyId);
         int deleted = openingRepository.deleteByCompanyId(companyId);
         log.info("[期初余额] 清空: companyId={}, 删除 {} 行", companyId, deleted);
         return deleted;
@@ -394,6 +413,35 @@ public class ScrmAccountOpeningBalanceService {
         row.put("openingPeriod", openingPeriod);
         row.put("remark", saved == null ? null : saved.getRemark());
         return row;
+    }
+
+    /**
+     * 校验该主体没有任何已结账期间。
+     * <p>
+     * 期初余额属于「启用期前一刻」的余额，会并入每一个 {@code yyyymm >= 启用期}
+     * 的期间。只要有一个期间已经结账，再改期初就会让已封账期间的报表在无人察觉的
+     * 情况下变数——凭证改不了、期初却能改，这个口子必须堵上。
+     * </p>
+     * <p>
+     * 需要调整时正确做法是先反结账，改完期初再重新结账，让改动留下痕迹。
+     * </p>
+     *
+     * @param companyId 公司主体 ID
+     * @throws ScrmException 已存在已结账期间
+     */
+    private void assertNoClosedPeriod(Long companyId) throws ScrmException {
+        List<ScrmAccountPeriodEntity> closed = periodRepository
+                .findByCompanyIdOrderByPeriodYearAscPeriodMonthAsc(companyId).stream()
+                .filter(p -> ScrmAccountPeriodEntity.STATUS_CLOSED.equals(p.getStatus()))
+                .toList();
+        if (closed.isEmpty()) {
+            return;
+        }
+        ScrmAccountPeriodEntity last = closed.get(closed.size() - 1);
+        throw ScrmException.conflict("该企业已有 " + closed.size() + " 个期间结账（最近 "
+                + last.getPeriodYear() + "-" + String.format("%02d", last.getPeriodMonth())
+                + "），不能再修改期初余额。如需调整，请先反结账，改完期初再重新结账，"
+                + "以便改动留有痕迹");
     }
 
     /**

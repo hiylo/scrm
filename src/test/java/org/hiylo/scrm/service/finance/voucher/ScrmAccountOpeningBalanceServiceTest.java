@@ -12,7 +12,9 @@ import org.hiylo.scrm.entity.ScrmAccountOpeningBalanceEntity;
 import org.hiylo.scrm.entity.ScrmAccountSubjectEntity;
 import org.hiylo.scrm.entity.ScrmCompanyEntity;
 import org.hiylo.scrm.exception.ScrmException;
+import org.hiylo.scrm.entity.ScrmAccountPeriodEntity;
 import org.hiylo.scrm.repository.ScrmAccountOpeningBalanceRepository;
+import org.hiylo.scrm.repository.ScrmAccountPeriodRepository;
 import org.hiylo.scrm.repository.ScrmAccountSubjectRepository;
 import org.hiylo.scrm.repository.ScrmCompanyRepository;
 import org.hiylo.scrm.repository.ScrmVoucherRepository;
@@ -75,6 +77,10 @@ class ScrmAccountOpeningBalanceServiceTest {
     @Mock
     private ScrmVoucherRepository voucherRepository;
 
+    /** 期间仓储 */
+    @Mock
+    private ScrmAccountPeriodRepository periodRepository;
+
     /** 财税数据范围 */
     @Mock
     private org.hiylo.scrm.service.finance.FinanceDataScope financeDataScope;
@@ -92,7 +98,7 @@ class ScrmAccountOpeningBalanceServiceTest {
     @BeforeEach
     void setUp() {
         service = new ScrmAccountOpeningBalanceService(openingRepository, subjectRepository,
-                companyRepository, voucherRepository, financeDataScope);
+                companyRepository, voucherRepository, periodRepository, financeDataScope);
 
         ScrmCompanyEntity company = new ScrmCompanyEntity();
         company.setId(COMPANY_ID);
@@ -113,6 +119,9 @@ class ScrmAccountOpeningBalanceServiceTest {
 
         // 默认：启用期之前没有任何有效凭证
         when(voucherRepository.countEffectiveBeforePeriod(anyLong(), any())).thenReturn(0L);
+        // 默认：没有任何期间结账
+        when(periodRepository.findByCompanyIdOrderByPeriodYearAscPeriodMonthAsc(COMPANY_ID))
+                .thenReturn(List.of());
         when(openingRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
         when(openingRepository.findByCompanyIdOrderBySubjectCodeAsc(COMPANY_ID)).thenReturn(List.of());
     }
@@ -337,6 +346,52 @@ class ScrmAccountOpeningBalanceServiceTest {
         assertThat(toDecimal(result.get(0)[2])).isEqualByComparingTo("10");
     }
 
+    // ==================== 结账锁定 ====================
+
+    @Test
+    @DisplayName("已有期间结账时禁止保存期初（否则已封账报表会静默变数）")
+    void rejectsSaveWhenPeriodClosed() {
+        givenClosedPeriod(2026, 11);
+
+        assertThatThrownBy(() -> service.save(COMPANY_ID, OPENING_PERIOD, List.of(
+                row("1002", "99999.00", "0"),
+                row("4001", "0", "99999.00"))))
+                .isInstanceOf(ScrmException.class)
+                .hasMessageContaining("已有 1 个期间结账")
+                .hasMessageContaining("2026-11")
+                .hasMessageContaining("请先反结账");
+        verify(openingRepository, never()).saveAll(any());
+    }
+
+    @Test
+    @DisplayName("已有期间结账时禁止清空期初（与保存同一道门）")
+    void rejectsClearWhenPeriodClosed() {
+        givenClosedPeriod(2026, 11);
+
+        assertThatThrownBy(() -> service.clear(COMPANY_ID))
+                .isInstanceOf(ScrmException.class)
+                .hasMessageContaining("已有 1 个期间结账");
+        verify(openingRepository, never()).deleteByCompanyId(anyLong());
+    }
+
+    @Test
+    @DisplayName("期间是 OPEN 时不受影响，仍可保存")
+    void allowsSaveWhenPeriodOpen() {
+        ScrmAccountPeriodEntity open = new ScrmAccountPeriodEntity();
+        open.setCompanyId(COMPANY_ID);
+        open.setPeriodYear(2026);
+        open.setPeriodMonth(11);
+        open.setStatus(ScrmAccountPeriodEntity.STATUS_OPEN);
+        when(periodRepository.findByCompanyIdOrderByPeriodYearAscPeriodMonthAsc(COMPANY_ID))
+                .thenReturn(List.of(open));
+
+        service.save(COMPANY_ID, OPENING_PERIOD, List.of(
+                row("1002", "1000.00", "0"),
+                row("4001", "0", "1000.00")));
+
+        verify(openingRepository).saveAll(any());
+    }
+
     // ==================== 视图与清空 ====================
 
     @Test
@@ -366,6 +421,17 @@ class ScrmAccountOpeningBalanceServiceTest {
     }
 
     // ==================== 工具 ====================
+
+    /** 铺一个已结账期间。 */
+    private void givenClosedPeriod(int year, int month) {
+        ScrmAccountPeriodEntity closed = new ScrmAccountPeriodEntity();
+        closed.setCompanyId(COMPANY_ID);
+        closed.setPeriodYear(year);
+        closed.setPeriodMonth(month);
+        closed.setStatus(ScrmAccountPeriodEntity.STATUS_CLOSED);
+        when(periodRepository.findByCompanyIdOrderByPeriodYearAscPeriodMonthAsc(COMPANY_ID))
+                .thenReturn(List.of(closed));
+    }
 
     /** 铺一份已保存的两行期初（银行存款 80000 借 / 实收资本 80000 贷）。 */
     private void givenSavedOpening() {
