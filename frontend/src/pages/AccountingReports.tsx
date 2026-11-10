@@ -31,6 +31,7 @@ import type { ColumnsType } from 'antd/es/table';
 import {
   CheckCircleOutlined,
   LockOutlined,
+  DownloadOutlined,
   ReloadOutlined,
   UnlockOutlined,
 } from '@ant-design/icons';
@@ -342,6 +343,121 @@ export default function AccountingReports() {
       buildCsv(['项目', '本期金额', '本年累计'], rows),
     );
     message.success('利润表已导出');
+  };
+
+  /** 导出总账 CSV（按一级科目汇总 + 合计行），供对账/归档/发客户核对 */
+  const exportGeneralLedger = () => {
+    if (!generalLedger || generalLedger.rows.length === 0) {
+      message.warning('本期没有已记账凭证，无法导出总账');
+      return;
+    }
+    const rows: Array<Array<string | number | undefined | null>> = generalLedger.rows.map((r) => [
+      r.subjectCode,
+      r.subjectName,
+      r.openingDebit,
+      r.openingCredit,
+      r.periodDebit,
+      r.periodCredit,
+      r.closingDebit,
+      r.closingCredit,
+    ]);
+    rows.push([
+      '合计',
+      '',
+      generalLedger.totalOpeningDebit,
+      generalLedger.totalOpeningCredit,
+      generalLedger.totalPeriodDebit,
+      generalLedger.totalPeriodCredit,
+      generalLedger.totalClosingDebit,
+      generalLedger.totalClosingCredit,
+    ]);
+    downloadCsv(
+      `总账_${generalLedger.period}.csv`,
+      buildCsv(
+        ['科目编码', '科目名称', '期初借方', '期初贷方', '本期借方', '本期贷方', '期末借方', '期末贷方'],
+        rows,
+      ),
+    );
+    message.success('总账已导出');
+  };
+
+  /** 导出明细账 CSV（含期初余额行 + 全部分录 + 期末），供客户对账/归档 */
+  const exportDetailLedger = () => {
+    if (!detailLedger) {
+      message.warning('请先选择科目');
+      return;
+    }
+    const rows: Array<Array<string | number | undefined | null>> = [];
+    rows.push([
+      '期初余额',
+      '',
+      '',
+      detailLedger.subjectCode,
+      '',
+      '',
+      detailLedger.openingBalance,
+      detailLedger.openingDirection,
+    ]);
+    detailLedger.items.forEach((r) => {
+      rows.push([
+        r.voucherDate,
+        r.voucherLabel,
+        r.summary ?? '',
+        r.subjectName ?? r.subjectCode,
+        r.debitAmount,
+        r.creditAmount,
+        r.balance,
+        r.balanceDirection,
+      ]);
+    });
+    rows.push([
+      '本期小计',
+      '',
+      '',
+      '',
+      detailLedger.periodDebit,
+      detailLedger.periodCredit,
+      '',
+      '',
+    ]);
+    rows.push([
+      '期末余额',
+      '',
+      '',
+      '',
+      '',
+      '',
+      detailLedger.closingBalance,
+      detailLedger.closingDirection,
+    ]);
+    downloadCsv(
+      `明细账_${detailLedger.subjectCode}_${detailLedger.period}.csv`,
+      buildCsv(['日期', '凭证号', '摘要', '科目', '借方', '贷方', '余额', '方向'], rows),
+    );
+    message.success('明细账已导出');
+  };
+
+  /** 导出序时账 CSV（全部分录 + 借贷合计），作归档用 */
+  const exportJournal = () => {
+    const src = journal?.items ?? [];
+    if (src.length === 0) {
+      message.warning('本期没有已记账分录，无法导出序时账');
+      return;
+    }
+    const rows: Array<Array<string | number | undefined | null>> = src.map((r) => [
+      r.voucherDate,
+      r.voucherLabel,
+      r.summary ?? '',
+      r.subjectName ?? r.subjectCode,
+      r.debitAmount,
+      r.creditAmount,
+    ]);
+    rows.push(['合计', '', '', '', journal?.totalDebit ?? 0, journal?.totalCredit ?? 0]);
+    downloadCsv(
+      `序时账_${journal?.period ?? 0}.csv`,
+      buildCsv(['日期', '凭证号', '摘要', '科目', '借方', '贷方'], rows),
+    );
+    message.success('序时账已导出');
   };
 
   const balanceColumns: ColumnsType<(typeof balanceRows)[number]> = [
@@ -764,6 +880,15 @@ export default function AccountingReports() {
                       </Typography.Text>
                     </Space>
                   }
+                  extra={
+                    <Button
+                      size="small"
+                      icon={<DownloadOutlined />}
+                      onClick={exportGeneralLedger}
+                    >
+                      导出 CSV
+                    </Button>
+                  }
                 >
                   <Table<GeneralLedgerRow>
                     rowKey="subjectCode"
@@ -850,7 +975,19 @@ export default function AccountingReports() {
                   </Descriptions>
                 )}
 
-                <Card title="明细账流水">
+                <Card
+                  title="明细账流水"
+                  extra={
+                    <Button
+                      size="small"
+                      icon={<DownloadOutlined />}
+                      disabled={!detailLedger}
+                      onClick={exportDetailLedger}
+                    >
+                      导出 CSV
+                    </Button>
+                  }
+                >
                   <Table<DetailLedgerItem>
                     rowKey={(_, index) => String(index)}
                     size="small"
@@ -894,6 +1031,15 @@ export default function AccountingReports() {
                         按凭证日期顺序列出本期全部分录
                       </Typography.Text>
                     </Space>
+                  }
+                  extra={
+                    <Button
+                      size="small"
+                      icon={<DownloadOutlined />}
+                      onClick={exportJournal}
+                    >
+                      导出 CSV
+                    </Button>
                   }
                 >
                   <Table<JournalItem>
