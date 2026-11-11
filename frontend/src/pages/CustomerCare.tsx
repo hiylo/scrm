@@ -76,8 +76,10 @@ interface ScrmCareRecord {
   taskId: string;
   customerId: string;
   customerName?: string;
-  careContent?: string;
-  channel?: string;
+  /** 执行详情（后端字段名 actionDetail，无 careContent） */
+  actionDetail?: string;
+  /** 关怀类型（后端字段名 careType） */
+  careType?: string;
   status?: string;
   createdAt?: string;
 }
@@ -524,9 +526,9 @@ export default function CustomerCare() {
           locale={{ emptyText: <Empty description="暂无关怀记录" /> }}
           columns={[
             { title: '客户', dataIndex: 'customerName', width: 110, render: (v?: string) => v || '-' },
-            { title: '内容', dataIndex: 'careContent', ellipsis: true, render: (v?: string) => v || '-' },
-            { title: '渠道', dataIndex: 'channel', width: 90, render: (v?: string) => v || '-' },
-            { title: '时间', dataIndex: 'createdAt', width: 140, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-') },
+            { title: '内容', dataIndex: 'actionDetail', ellipsis: true, render: (v?: string) => v || '-' },
+            { title: '类型', dataIndex: 'careType', width: 100, render: (v?: string) => v || '-' },
+            { title: '时间', dataIndex: 'createTime', width: 140, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-') },
           ]}
         />
       </Modal>

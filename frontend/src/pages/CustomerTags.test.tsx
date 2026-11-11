@@ -93,6 +93,33 @@ describe('CustomerTags', () => {
     expect(screen.getByLabelText('标签键')).toBeInTheDocument();
   });
 
+  it('标签键由 tagId 映射为 tagCode 展示（后端不返回 tagKey）', async () => {
+    get.mockImplementation((url: string) => {
+      // 标签赋值记录：后端只有 tagId，没有 tagKey
+      if (url.includes('/customers/366599420550189056/tags')) {
+        return Promise.resolve([
+          { id: 'tc1', customerId: '366599420550189056', tagId: '378843255812526080', tagValue: '高' },
+        ] as never);
+      }
+      // 标签定义：id → tagCode
+      if (url === '/scrm/customer-tags') {
+        return Promise.resolve({
+          content: [{ id: '378843255812526080', tagCode: 'UI_CONS_LEVEL', tagName: '消费层级' }],
+        } as never);
+      }
+      return Promise.resolve([] as never);
+    });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByPlaceholderText('输入客户 ID 查询标签')).toBeInTheDocument());
+    await userEvent.type(screen.getByPlaceholderText('输入客户 ID 查询标签'), '366599420550189056');
+    fireEvent.click(screen.getByRole('button', { name: cn('查询') }));
+
+    // 映射成功才能看到 tagCode，否则这一列是空白
+    await waitFor(() => expect(screen.getByText('UI_CONS_LEVEL')).toBeInTheDocument());
+    expect(screen.getByText('高')).toBeInTheDocument();
+  });
+
   it('提交成功: 按查询参数带上 tagKey/tagValue', async () => {
     get.mockResolvedValue([] as never);
     post.mockResolvedValue(undefined);

@@ -61,6 +61,15 @@ public class ScrmCustomerService {
     /** 默认生命周期: 新客户 */
     private static final String LIFECYCLE_NEW = "NEW";
 
+    /**
+     * 手动打标签的来源值。
+     * <p>
+     * {@code scrm_tag_customer.tag_source} 为 NOT NULL，此前 addTag /
+     * batchAddTag 未赋值，导致打标签必然触发数据库约束失败。
+     * </p>
+     */
+    private static final String TAG_SOURCE_MANUAL = "MANUAL";
+
     /** 合法的生命周期阶段 (与 ScrmCustomerDto @Pattern 保持一致):
      * NEW 新 / PROSPECT 意向 / ACTIVE 活跃 / DORMANT 沉睡 / CHURNED 流失 / CONVERTED 已转化 */
     private static final List<String> VALID_LIFECYCLES =
@@ -337,6 +346,17 @@ public class ScrmCustomerService {
             tag.setCustomerId(customerId);
             tag.setTagId(tagId);
         }
+        // 以下三列在库中均为 NOT NULL，缺任何一个都会触发约束失败，
+        // 此前 addTag 全都没赋值，导致手动打标签 100% 失败。
+        if (tag.getTagSource() == null) {
+            tag.setTagSource(TAG_SOURCE_MANUAL);
+        }
+        if (tag.getAssignedAt() == null) {
+            tag.setAssignedAt(LocalDateTime.now());
+        }
+        if (tag.getIsAuto() == null) {
+            tag.setIsAuto(Boolean.FALSE);
+        }
         tag.setTagValue(tagValue);
         tagCustomerRepository.save(tag);
         log.info("客户打标签: customerId={}, tagKey={}, tagValue={}", customerId, tagKey, tagValue);
@@ -370,6 +390,16 @@ public class ScrmCustomerService {
                 if (tag.getId() == null) {
                     tag.setCustomerId(customerId);
                     tag.setTagId(tagId);
+                }
+                // 同 addTag：tag_source / assigned_at / is_auto 均为非空约束
+                if (tag.getTagSource() == null) {
+                    tag.setTagSource(TAG_SOURCE_MANUAL);
+                }
+                if (tag.getAssignedAt() == null) {
+                    tag.setAssignedAt(LocalDateTime.now());
+                }
+                if (tag.getIsAuto() == null) {
+                    tag.setIsAuto(Boolean.FALSE);
                 }
                 tag.setTagValue(tagValue);
                 tagCustomerRepository.save(tag);

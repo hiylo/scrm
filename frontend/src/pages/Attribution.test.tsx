@@ -123,7 +123,7 @@ describe('Attribution', () => {
       if (url.includes('/models/list')) return Promise.resolve(page([model('1', { status: 'PUBLISHED' })]));
       if (url.includes('/touchpoints/list')) return Promise.resolve(page([]));
       if (url.includes('/touchpoints?')) {
-        return Promise.resolve(page([{ id: 't1', customerId: '1', customerName: '张三', channel: '公众号', touchpointType: 'CLICK', attributionWeight: 0.5, attributedRevenue: 1000 }]));
+        return Promise.resolve(page([{ id: 't1', customerId: '1', customerName: '张三', channel: '公众号', touchpointType: 'CLICK', attributionWeight: 0.5, touchpointValue: 1000 }]));
       }
       return Promise.resolve(page([]));
     });

@@ -427,7 +427,7 @@ export default function Orders() {
             { title: '产品', dataIndex: 'productName', ellipsis: true, render: (v?: string) => v || '-' },
             { title: '数量', dataIndex: 'quantity', width: 80, render: (v?: number) => v ?? '-' },
             { title: '单价', dataIndex: 'unitPrice', width: 100, render: (v?: number) => (v != null ? `¥${v.toLocaleString()}` : '-') },
-            { title: '小计', dataIndex: 'totalPrice', width: 100, render: (v?: number) => (v != null ? `¥${v.toLocaleString()}` : '-') },
+            { title: '小计', dataIndex: 'subtotal', width: 100, render: (v?: number) => (v != null ? `¥${v.toLocaleString()}` : '-') },
           ]}
         />
       </Drawer>

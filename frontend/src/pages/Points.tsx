@@ -114,9 +114,12 @@ interface ScrmPointsTransaction {
 /** 积分兑换商品实体 */
 interface ScrmPointsExchange {
   id: string;
-  productName: string;
-  productType?: string;
-  pointsCost?: number;
+  /** 商品名称（后端字段名 itemName） */
+  itemName: string;
+  /** 商品分类（后端字段名 itemCategory） */
+  itemCategory?: string;
+  /** 所需积分（后端字段名 pointsRequired） */
+  pointsRequired?: number;
   stockQuantity?: number;
   exchangedQuantity?: number;
   status?: string;
@@ -402,9 +405,9 @@ export default function Points() {
 
   /** 兑换商品列 */
   const exchangeColumns: ColumnsType<ScrmPointsExchange> = useMemo(() => [
-    { title: '商品名称', dataIndex: 'productName', render: (v: string) => <span style={{ fontWeight: 600 }}>{v}</span> },
-    { title: '商品类型', dataIndex: 'productType', width: 110, render: (v?: string) => v || '-' },
-    { title: '所需积分', dataIndex: 'pointsCost', width: 100, render: (v?: number) => (v != null ? <Text strong>{v}</Text> : '-') },
+    { title: '商品名称', dataIndex: 'itemName', render: (v: string) => <span style={{ fontWeight: 600 }}>{v}</span> },
+    { title: '商品类型', dataIndex: 'itemCategory', width: 110, render: (v?: string) => v || '-' },
+    { title: '所需积分', dataIndex: 'pointsRequired', width: 100, render: (v?: number) => (v != null ? <Text strong>{v}</Text> : '-') },
     { title: '库存', dataIndex: 'stockQuantity', width: 90, render: (v?: number) => v ?? '-' },
     { title: '已兑换', dataIndex: 'exchangedQuantity', width: 90, render: (v?: number) => v ?? 0 },
     {
@@ -413,7 +416,7 @@ export default function Points() {
       width: 90,
       render: (v?: string) => (v === 'INACTIVE' ? <Tag>下架</Tag> : <Tag color="green">上架</Tag>),
     },
-    { title: '说明', dataIndex: 'description', ellipsis: true, render: (v?: string) => v || '-' },
+    { title: '说明', dataIndex: 'itemDescription', ellipsis: true, render: (v?: string) => v || '-' },
   ], []);
 
   return (

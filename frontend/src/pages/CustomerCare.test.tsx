@@ -121,7 +121,7 @@ describe('CustomerCare', () => {
       if (url.includes('/rules/list')) return Promise.resolve(page([]));
       if (url.includes('/tasks/list')) return Promise.resolve(page([task('1', { status: 'COMPLETED' })]));
       if (url.includes('/records')) {
-        return Promise.resolve([{ id: 'r1', taskId: '1', customerId: '1', customerName: '张三', careContent: '生日快乐!', channel: 'WECHAT', createdAt: '2026-10-10T09:00:00' }]);
+        return Promise.resolve([{ id: 'r1', taskId: '1', customerId: '1', customerName: '张三', actionDetail: '生日快乐!', careType: 'WECHAT', createTime: '2026-10-10T09:00:00' }]);
       }
       return Promise.resolve(page([]));
     });

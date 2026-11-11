@@ -73,7 +73,8 @@ interface ScrmAttributionTouchpoint {
   channel?: string;
   touchpointType?: string;
   attributionWeight?: number;
-  attributedRevenue?: number;
+  /** 触点价值（后端字段名 touchpointValue，不是 attributedRevenue） */
+  touchpointValue?: number;
   touchpointTime?: string;
 }
 
@@ -224,7 +225,7 @@ export default function Attribution() {
     { title: '渠道', dataIndex: 'channel', width: 110, render: (v?: string) => v || '-' },
     { title: '触点类型', dataIndex: 'touchpointType', width: 110, render: (v?: string) => v || '-' },
     { title: '归因权重', dataIndex: 'attributionWeight', width: 100, render: (v?: number) => (v != null ? v.toFixed(2) : '-') },
-    { title: '归因收入', dataIndex: 'attributedRevenue', width: 110, render: (v?: number) => (v != null ? `¥${v.toLocaleString()}` : '-') },
+    { title: '触点价值', dataIndex: 'touchpointValue', width: 110, render: (v?: number) => (v != null ? `¥${v.toLocaleString()}` : '-') },
     { title: '触点时间', dataIndex: 'touchpointTime', width: 150, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-') },
   ], []);
 

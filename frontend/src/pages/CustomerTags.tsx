@@ -34,13 +34,26 @@ import dayjs from 'dayjs';
 import { apiClient } from '../api/client';
 import { isImeComposing } from '../utils/imeHelpers';
 
-/** 客户标签实体 */
+/** 客户标签赋值记录（后端 ScrmTagCustomerEntity 的真实结构） */
 interface ScrmCustomerTag {
   id: string;
   customerId: string;
-  tagKey: string;
+  /** 后端只返回 tagId，没有 tagKey；tagKey 需由标签定义反查 */
+  tagId?: string;
+  /** 由 tagId → tagCode 映射后填充，仅用于展示与删除 */
+  tagKey?: string;
   tagValue?: string;
+  tagSource?: string;
+  isAuto?: boolean;
+  assignedAt?: string;
   createTime?: string;
+}
+
+/** 标签定义（用于 tagId → tagCode 映射） */
+interface ScrmTagDefinition {
+  id: string;
+  tagCode: string;
+  tagName?: string;
 }
 
 /** 添加标签表单值 */
@@ -76,10 +89,26 @@ export default function CustomerTags() {
     }
     setLoading(true);
     try {
-      const data = await apiClient.get<ScrmCustomerTag[]>(
-        `/scrm/customers/${customerId}/tags`,
+      // 标签赋值记录只返回 tagId，需并发取标签定义把 tagId 映射成 tagCode，
+      // 否则「标签键」列会全部为空、删除操作也拿不到 tagKey。
+      const [data, defs] = await Promise.all([
+        apiClient.get<ScrmCustomerTag[]>(`/scrm/customers/${customerId}/tags`),
+        apiClient
+          .get<{ content?: ScrmTagDefinition[] }>('/scrm/customer-tags', {
+            params: { page: 0, size: 500 },
+          })
+          .catch(() => null),
+      ]);
+      const codeById = new Map<string, string>();
+      for (const d of defs?.content || []) {
+        if (d?.id != null) codeById.set(String(d.id), d.tagCode);
+      }
+      setTags(
+        (data || []).map((t) => ({
+          ...t,
+          tagKey: t.tagKey ?? (t.tagId != null ? codeById.get(String(t.tagId)) : undefined),
+        })),
       );
-      setTags(data || []);
     } catch {
       // 错误已由 axios 拦截器统一提示
       setTags([]);
@@ -147,6 +176,11 @@ export default function CustomerTags() {
       okType: 'danger',
       cancelText: '取消',
       onOk: async () => {
+        // tagKey 由 tagId 映射而来，映射失败时不能盲删
+        if (!record.tagKey) {
+          message.error('无法确定该标签的编码，删除已取消');
+          return;
+        }
         try {
           await apiClient.delete(
             `/scrm/customers/${record.customerId}/tags/${encodeURIComponent(record.tagKey)}`,

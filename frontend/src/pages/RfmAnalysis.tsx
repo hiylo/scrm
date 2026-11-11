@@ -67,11 +67,10 @@ function segmentColor(segment?: string): string {
 interface ScrmRfmConfig {
   id: string;
   configName: string;
-  configCode: string;
-  analyzePeriodDays?: number;
-  recencyWeight?: number;
-  frequencyWeight?: number;
-  monetaryWeight?: number;
+  /** 回溯天数由后端 lastCalculatedAt 等字段体现，无 analyzePeriodDays */
+  rWeight?: number;
+  fWeight?: number;
+  mWeight?: number;
   status?: string;
   description?: string;
   createTime?: string;
@@ -166,7 +165,7 @@ export default function RfmAnalysis() {
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ analyzePeriodDays: 90, recencyWeight: 1, frequencyWeight: 1, monetaryWeight: 1 });
+    form.setFieldsValue({ analyzePeriodDays: 90, rWeight: 1, fWeight: 1, mWeight: 1 });
     setOpen(true);
   };
 
@@ -243,13 +242,11 @@ export default function RfmAnalysis() {
   /** 表格列 */
   const columns: ColumnsType<ScrmRfmConfig> = useMemo(() => [
     { title: '配置名称', dataIndex: 'configName', render: (v: string) => <span style={{ fontWeight: 600 }}>{v}</span> },
-    { title: '配置编码', dataIndex: 'configCode', width: 140, render: (v?: string) => (v ? <Text code>{v}</Text> : '-') },
-    { title: '分析周期', dataIndex: 'analyzePeriodDays', width: 100, render: (v?: number) => (v != null ? `${v} 天` : '-') },
     {
       title: '权重 (R/F/M)',
       key: 'weights',
       width: 140,
-      render: (_, r) => `${r.recencyWeight ?? 0} / ${r.frequencyWeight ?? 0} / ${r.monetaryWeight ?? 0}`,
+      render: (_, r) => `${r.rWeight ?? 0} / ${r.fWeight ?? 0} / ${r.mWeight ?? 0}`,
     },
     {
       title: '状态',
@@ -333,9 +330,9 @@ export default function RfmAnalysis() {
             <InputNumber min={1} style={{ width: 160 }} />
           </Form.Item>
           <Space size={16} wrap>
-            <Form.Item name="recencyWeight" label="R 权重"><InputNumber min={0} step={0.1} style={{ width: 100 }} /></Form.Item>
-            <Form.Item name="frequencyWeight" label="F 权重"><InputNumber min={0} step={0.1} style={{ width: 100 }} /></Form.Item>
-            <Form.Item name="monetaryWeight" label="M 权重"><InputNumber min={0} step={0.1} style={{ width: 100 }} /></Form.Item>
+            <Form.Item name="rWeight" label="R 权重"><InputNumber min={0} step={0.1} style={{ width: 100 }} /></Form.Item>
+            <Form.Item name="fWeight" label="F 权重"><InputNumber min={0} step={0.1} style={{ width: 100 }} /></Form.Item>
+            <Form.Item name="mWeight" label="M 权重"><InputNumber min={0} step={0.1} style={{ width: 100 }} /></Form.Item>
           </Space>
           <Form.Item name="description" label="描述">
             <Input.TextArea rows={2} placeholder="配置说明" />

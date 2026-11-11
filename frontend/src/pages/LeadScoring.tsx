@@ -67,8 +67,10 @@ interface ScrmLeadScore {
   maxScore?: number;
   scorePercent?: number;
   grade?: string;
-  qualified?: boolean;
-  calcTime?: string;
+  /** 是否合格线索（后端字段名 isQualified） */
+  isQualified?: boolean;
+  /** 最近计算时间（后端字段名 lastCalculatedAt） */
+  lastCalculatedAt?: string;
 }
 
 /** Spring Page 分页响应 */
@@ -342,8 +344,8 @@ export default function LeadScoring() {
     { title: '总分', dataIndex: 'totalScore', width: 80, render: (v?: number) => <Text strong>{v ?? '-'}</Text> },
     { title: '百分比', dataIndex: 'scorePercent', width: 90, render: (v?: number) => (v != null ? `${v.toFixed(1)}%` : '-') },
     { title: '等级', dataIndex: 'grade', width: 80, render: (v?: string) => (v ? <Tag color={gradeColor(v)}>{v}</Tag> : '-') },
-    { title: '合格', dataIndex: 'qualified', width: 80, render: (v?: boolean) => (v ? <Tag color="green">合格</Tag> : <Tag color="orange">待跟进</Tag>) },
-    { title: '计算时间', dataIndex: 'calcTime', width: 150, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-') },
+    { title: '合格', dataIndex: 'isQualified', width: 80, render: (v?: boolean) => (v ? <Tag color="green">合格</Tag> : <Tag color="orange">待跟进</Tag>) },
+    { title: '计算时间', dataIndex: 'lastCalculatedAt', width: 150, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-') },
   ];
 
   return (

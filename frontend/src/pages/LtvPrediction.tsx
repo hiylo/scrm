@@ -45,8 +45,10 @@ interface ScrmLtvModel {
   modelName: string;
   modelCode: string;
   modelType: string; // HISTORICAL / PREDICTIVE / MIXED
-  timeWindowDays?: number;
-  predictionPeriodDays?: number;
+  /** 历史回溯天数（后端字段名 lookbackDays） */
+  lookbackDays?: number;
+  /** 预测期天数（后端字段名 forecastDays） */
+  forecastDays?: number;
   parameters?: string;
   description?: string;
   status: string; // DRAFT / PUBLISHED
@@ -70,7 +72,8 @@ interface ScrmCustomerLtv {
 interface ScrmCohort {
   id: string;
   cohortName: string;
-  cohortMonth?: string;
+  /** 同期群起始日期（后端字段名 cohortStartDate） */
+  cohortStartDate?: string;
   customerCount?: number;
   retentionRate?: number;
   avgRevenue?: number;
@@ -250,8 +253,8 @@ export default function LtvPrediction() {
     { title: '模型编码', dataIndex: 'modelCode', width: 120, render: (v: string) => <Text code>{v}</Text> },
     { title: '类型', dataIndex: 'modelType', width: 100, render: (v: string) => { const c = modelTypeConfig[v] || { color: 'default', label: v }; return <Tag color={c.color}>{c.label}</Tag>; } },
     { title: '状态', dataIndex: 'status', width: 90, render: (v: string) => { const c = modelStatusConfig[v] || { color: 'default', label: v }; return <Tag color={c.color}>{c.label}</Tag>; } },
-    { title: '历史窗口(天)', dataIndex: 'timeWindowDays', width: 110, render: (v?: number) => v ?? '-' },
-    { title: '预测期(天)', dataIndex: 'predictionPeriodDays', width: 110, render: (v?: number) => v ?? '-' },
+    { title: '历史窗口(天)', dataIndex: 'lookbackDays', width: 110, render: (v?: number) => v ?? '-' },
+    { title: '预测期(天)', dataIndex: 'forecastDays', width: 110, render: (v?: number) => v ?? '-' },
     { title: '创建时间', dataIndex: 'createTime', width: 140, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-') },
     {
       title: '操作',
@@ -344,8 +347,8 @@ export default function LtvPrediction() {
                   locale={{ emptyText: <Empty description="暂无同期群数据" /> }}
                   columns={[
                     { title: '同期群', dataIndex: 'cohortName', render: (v: string) => <span style={{ fontWeight: 600 }}>{v}</span> },
-                    { title: '月份', dataIndex: 'cohortMonth', width: 100, render: (v?: string) => v || '-' },
-                    { title: '客户数', dataIndex: 'customerCount', width: 90, render: (v?: number) => v ?? '-' },
+                    { title: '月份', dataIndex: 'cohortStartDate', width: 100, render: (v?: string) => v || '-' },
+                    { title: '客户数', dataIndex: 'cohortSize', width: 90, render: (v?: number) => v ?? '-' },
                     { title: '留存率', dataIndex: 'retentionRate', width: 100, render: (v?: number) => (v != null ? `${(v * 100).toFixed(1)}%` : '-') },
                     { title: '客均收入', dataIndex: 'avgRevenue', width: 110, render: (v?: number) => (v != null ? `¥${v.toLocaleString()}` : '-') },
                     { title: '总收入', dataIndex: 'totalRevenue', width: 120, render: (v?: number) => (v != null ? `¥${v.toLocaleString()}` : '-') },
@@ -377,7 +380,7 @@ export default function LtvPrediction() {
             <Form.Item name="modelType" label="模型类型" rules={[{ required: true }]}>
               <Select style={{ width: 160 }} options={Object.entries(modelTypeConfig).map(([v, cfg]) => ({ value: v, label: cfg.label }))} />
             </Form.Item>
-            <Form.Item name="timeWindowDays" label="历史窗口 (天)">
+            <Form.Item name="lookbackDays" label="历史窗口 (天)">
               <InputNumber min={1} style={{ width: 130 }} />
             </Form.Item>
             <Form.Item name="predictionPeriodDays" label="预测期 (天)">

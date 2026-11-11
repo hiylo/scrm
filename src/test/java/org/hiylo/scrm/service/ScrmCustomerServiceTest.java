@@ -12,6 +12,7 @@ import org.hiylo.scrm.dto.ScrmCustomerDto;
 import org.hiylo.scrm.entity.ScrmCustomerEntity;
 import org.hiylo.scrm.entity.ScrmCustomerGroupEntity;
 import org.hiylo.scrm.entity.ScrmCustomerLifecycleHistoryEntity;
+import org.hiylo.scrm.entity.ScrmCustomerTagEntity;
 import org.hiylo.scrm.entity.ScrmTagCustomerEntity;
 import org.hiylo.scrm.exception.ScrmException;
 import org.hiylo.scrm.repository.ScrmCustomerGroupMemberRepository;
@@ -302,4 +303,39 @@ class ScrmCustomerServiceTest {
     }
 
     
+
+    @Test
+    @DisplayName("addTag: 新建标签关联时必须设置 tagSource（库中为 NOT NULL）")
+    void addTag_setsTagSourceOnCreate() throws ScrmException {
+        // 回归保护：scrm_tag_customer.tag_source 是 NOT NULL，此前 addTag 未赋值，
+        // 真实库直接报 null value in column "tag_source" violates not-null constraint，
+        // 手动打标签功能 100% 失败。mock 仓库不校验约束，必须显式断言。
+        ScrmCustomerEntity customer = new ScrmCustomerEntity();
+        customer.setId(100L);
+        when(customerRepository.findById(100L)).thenReturn(Optional.of(customer));
+
+        ScrmCustomerTagEntity def = new ScrmCustomerTagEntity();
+        def.setId(30L);
+        def.setTagCode("UI_CONS_LEVEL");
+        when(tagRepository.findByTagCode("UI_CONS_LEVEL")).thenReturn(Optional.of(def));
+        when(tagCustomerRepository.findByCustomerIdAndTagId(100L, 30L)).thenReturn(Optional.empty());
+        when(tagCustomerRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(tagCustomerRepository.findByCustomerId(100L)).thenReturn(List.of());
+
+        service.addTag(100L, "UI_CONS_LEVEL", "高");
+
+        ArgumentCaptor<ScrmTagCustomerEntity> captor =
+                ArgumentCaptor.forClass(ScrmTagCustomerEntity.class);
+        verify(tagCustomerRepository).save(captor.capture());
+        ScrmTagCustomerEntity saved = captor.getValue();
+        // 三列在库中均为 NOT NULL：tag_source / assigned_at / is_auto
+        assertThat(saved.getTagSource()).as("tagSource 不能为空").isNotNull();
+        assertThat(saved.getTagSource()).isEqualTo("MANUAL");
+        assertThat(saved.getAssignedAt()).as("assignedAt 不能为空").isNotNull();
+        assertThat(saved.getIsAuto()).as("isAuto 不能为空").isFalse();
+        assertThat(saved.getTagValue()).isEqualTo("高");
+        assertThat(saved.getCustomerId()).isEqualTo(100L);
+        assertThat(saved.getTagId()).isEqualTo(30L);
+    }
+
 }
