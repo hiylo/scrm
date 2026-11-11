@@ -171,7 +171,7 @@ describe('OpeningBalancePanel', () => {
     }));
   });
 
-  it('有未录期初的主体时显示总览条，点击可切换主体', async () => {
+  it('有未录期初的**其他**主体时显示总览条，点击可切换', async () => {
     get.mockImplementation(async (url: string) => {
       if (url === '/scrm/vouchers/opening-balance/summary') {
         return {
@@ -198,12 +198,12 @@ describe('OpeningBalancePanel', () => {
     const user = userEvent.setup();
     renderWithProviders(<OpeningBalancePanel companyId="1" onSwitchCompany={onSwitchCompany} />);
 
-    expect(await screen.findByText('还有 1 户尚未录入期初余额')).toBeInTheDocument();
+    expect(await screen.findByText('其他还有 1 户尚未录入期初余额')).toBeInTheDocument();
     await user.click(screen.getByText('甲客户'));
     expect(onSwitchCompany).toHaveBeenCalledWith('2');
   });
 
-  it('没有未录期初的主体时不渲染总览条', async () => {
+  it('没有未录期初的其他主体时不渲染总览条', async () => {
     get.mockImplementation(async (url: string) => {
       if (url === '/scrm/vouchers/opening-balance/summary') {
         return { items: [], pendingCount: 0, totalCount: 0 } as never;
@@ -218,5 +218,76 @@ describe('OpeningBalancePanel', () => {
 
     await screen.findByText('银行存款');
     expect(screen.queryByText(/尚未录入期初余额/)).not.toBeInTheDocument();
+  });
+
+  it('当前户自己在待录名单里时，不把自己列进总览条', async () => {
+    get.mockImplementation(async (url: string) => {
+      if (url === '/scrm/vouchers/opening-balance/summary') {
+        return {
+          items: [
+            {
+              companyId: '1',
+              companyName: '当前户',
+              configured: false,
+              totalDebit: 0,
+              totalCredit: 0,
+              balanced: false,
+              subjectCount: 32,
+              configuredSubjectCount: 0,
+              suggestOpening: true,
+            },
+            {
+              companyId: '2',
+              companyName: '另一户',
+              configured: false,
+              totalDebit: 0,
+              totalCredit: 0,
+              balanced: false,
+              subjectCount: 32,
+              configuredSubjectCount: 0,
+              suggestOpening: true,
+            },
+          ],
+          pendingCount: 2,
+          totalCount: 2,
+        } as never;
+      }
+      return view({ configured: false, openingPeriod: 202601 }) as never;
+    });
+    renderWithProviders(<OpeningBalancePanel companyId="1" />);
+
+    // 只提示「其他 1 户」，不把正在录入的当前户算进去
+    expect(await screen.findByText('其他还有 1 户尚未录入期初余额')).toBeInTheDocument();
+    expect(screen.queryByText('当前户')).not.toBeInTheDocument();
+  });
+
+  it('只有当前户自己待录时，整条总览不渲染', async () => {
+    get.mockImplementation(async (url: string) => {
+      if (url === '/scrm/vouchers/opening-balance/summary') {
+        return {
+          items: [
+            {
+              companyId: '1',
+              companyName: '当前户',
+              configured: false,
+              totalDebit: 0,
+              totalCredit: 0,
+              balanced: false,
+              subjectCount: 32,
+              configuredSubjectCount: 0,
+              suggestOpening: true,
+            },
+          ],
+          pendingCount: 1,
+          totalCount: 1,
+        } as never;
+      }
+      return view({ configured: false, openingPeriod: 202601 }) as never;
+    });
+    renderWithProviders(<OpeningBalancePanel companyId="1" />);
+
+    await screen.findByText(/共 \d+ 个科目/);
+    // 面板自身的「尚未录入期初余额」提示仍应存在，只是总览条（带「其他还有」）不该出现
+    expect(screen.queryByText(/其他还有 .* 户尚未录入期初余额/)).not.toBeInTheDocument();
   });
 });

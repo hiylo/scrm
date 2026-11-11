@@ -214,10 +214,16 @@ export default function OpeningBalancePanel({
     [rows, showAll],
   );
 
-  /** 需要录期初的主体（未录且已建科目） */
-  const pendingRows = useMemo(
-    () => summaryRows.filter((row) => row.suggestOpening),
-    [summaryRows],
+  /**
+   * 还需要录期初的**其他**主体（未录期初 + 已建科目，且不是当前这户）。
+   * <p>
+   * 排除当前户是必要的：会计正站在这户的录入页上填余额，提示条再说「这户没录」
+   * 只会让人困惑「我正在录，为什么说我没录」。所以这里的语义是「除当前户以外」。
+   * </p>
+   */
+  const otherPendingRows = useMemo(
+    () => summaryRows.filter((row) => row.suggestOpening && row.companyId !== companyId),
+    [summaryRows, companyId],
   );
 
   /** 更新某行 */
@@ -430,24 +436,22 @@ export default function OpeningBalancePanel({
         </Space>
       }
     >
-      {pendingRows.length > 0 && (
+      {otherPendingRows.length > 0 && (
         <Alert
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message={`还有 ${pendingRows.length} 户尚未录入期初余额`}
+          message={`其他还有 ${otherPendingRows.length} 户尚未录入期初余额`}
           description={
             <Space wrap size={[8, 8]} style={{ marginTop: 4 }}>
-              {pendingRows.map((row) => (
+              {otherPendingRows.map((row) => (
                 <Tag
                   key={row.companyId}
-                  color={row.companyId === companyId ? 'blue' : 'default'}
-                  style={{ cursor: onSwitchCompany ? 'pointer' : 'default', marginInlineEnd: 0 }}
-                  onClick={() => {
-                    if (row.companyId !== companyId) {
-                      onSwitchCompany?.(row.companyId);
-                    }
+                  style={{
+                    cursor: onSwitchCompany ? 'pointer' : 'default',
+                    marginInlineEnd: 0,
                   }}
+                  onClick={() => onSwitchCompany?.(row.companyId)}
                 >
                   {row.companyName}
                 </Tag>
