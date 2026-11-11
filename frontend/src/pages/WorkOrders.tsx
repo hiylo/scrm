@@ -42,7 +42,7 @@ import { apiClient } from '../api/client';
 
 const { Text } = Typography;
 
-/** 工单实体 */
+/** 工单实体（字段名与后端 ScrmWorkOrderDto 对齐） */
 interface ScrmWorkOrder {
   id: string;
   orderNo: string;
@@ -51,13 +51,18 @@ interface ScrmWorkOrder {
   orderType: string;
   orderCategory?: string;
   priority: string; // URGENT / HIGH / MEDIUM / LOW
-  status: string; // PENDING / ASSIGNED / ACCEPTED / IN_PROGRESS / RESOLVED / CLOSED / CANCELLED / REOPENED
+  /** 工单状态: OPEN / ASSIGNED / IN_PROGRESS / PENDING_CUSTOMER / RESOLVED / CLOSED / CANCELLED / REOPENED */
+  orderStatus: string;
   customerId?: string;
   customerName?: string;
-  assigneeId?: string;
-  assigneeName?: string;
-  slaDueAt?: string;
-  slaStatus?: string;
+  /** 处理人名称（后端字段名 assignedTo） */
+  assignedTo?: string;
+  /** 处理人 ID（后端字段名 assignedToId） */
+  assignedToId?: string;
+  /** SLA 解决期限（后端字段名 slaResolutionDue） */
+  slaResolutionDue?: string;
+  /** SLA 是否达成（后端字段名 slaResolutionMet） */
+  slaResolutionMet?: boolean;
   createTime?: string;
 }
 
@@ -80,12 +85,12 @@ interface Page<T> {
   size: number;
 }
 
-/** 状态映射 */
+/** 状态映射（与后端 ScrmWorkOrderCrudService 的状态常量一致） */
 const statusConfig: Record<string, { color: string; label: string }> = {
-  PENDING: { color: 'orange', label: '待分配' },
+  OPEN: { color: 'orange', label: '待分配' },
   ASSIGNED: { color: 'blue', label: '已分配' },
-  ACCEPTED: { color: 'cyan', label: '已接单' },
   IN_PROGRESS: { color: 'processing', label: '处理中' },
+  PENDING_CUSTOMER: { color: 'gold', label: '待客户反馈' },
   RESOLVED: { color: 'green', label: '已解决' },
   CLOSED: { color: 'default', label: '已关闭' },
   CANCELLED: { color: 'red', label: '已取消' },
@@ -105,10 +110,33 @@ const priorityConfig: Record<string, { color: string; label: string }> = {
  * <p>后端实际只用到 SERVICE / REPAIR / COMPLAINT 三种（自由字符串字段，
  * 原先是让用户手敲），固定成下拉避免拼错导致筛选/统计对不上。</p>
  */
+/** 工单类型（与后端 ScrmWorkOrderCrudService.VALID_ORDER_TYPES 保持一致） */
 const orderTypeConfig: Record<string, string> = {
-  SERVICE: '服务请求',
-  REPAIR: '维修',
+  CONSULTATION: '咨询',
   COMPLAINT: '投诉',
+  REPAIR: '维修',
+  MAINTENANCE: '维护',
+  INSTALLATION: '安装',
+  SERVICE_REQUEST: '服务请求',
+  TECH_SUPPORT: '技术支持',
+  BILLING: '账务',
+  RETURN: '退货',
+  EXCHANGE: '换货',
+  FEEDBACK: '反馈',
+  OTHER: '其他',
+};
+
+/** 工单来源（与后端 ScrmWorkOrderCrudService.VALID_SOURCES 保持一致） */
+const sourceConfig: Record<string, string> = {
+  PHONE: '电话',
+  EMAIL: '邮件',
+  WEB: '网页',
+  APP: 'App',
+  WECHAT: '微信',
+  WALK_IN: '上门',
+  REFERRAL: '转介绍',
+  SYSTEM: '系统',
+  OTHER: '其他',
 };
 
 /**
@@ -171,7 +199,7 @@ export default function WorkOrders() {
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ orderType: 'SERVICE', priority: 'MEDIUM' });
+    form.setFieldsValue({ orderType: 'CONSULTATION', priority: 'MEDIUM', source: 'PHONE' });
     setOpen(true);
   };
 
@@ -222,7 +250,20 @@ export default function WorkOrders() {
       cancel: '取消', reopen: '重开', escalate: '升级',
     };
     try {
-      await apiClient.post(`/scrm/work-orders/orders/${record.id}/${action}`, {});
+      // 接单接口要求 acceptorId 作为查询参数（后端 @RequestParam Long acceptorId）
+      if (action === 'accept') {
+        const acceptorId = localStorage.getItem('userId');
+        if (!acceptorId) {
+          message.warning('当前登录信息缺少用户 ID，无法接单，请重新登录');
+          return;
+        }
+        await apiClient.post(
+          `/scrm/work-orders/orders/${record.id}/accept?acceptorId=${encodeURIComponent(acceptorId)}`,
+          {},
+        );
+      } else {
+        await apiClient.post(`/scrm/work-orders/orders/${record.id}/${action}`, {});
+      }
       message.success(`工单已${labelMap[action] || action}`);
       loadList();
     } catch {
@@ -286,14 +327,14 @@ export default function WorkOrders() {
     },
     {
       title: '状态',
-      dataIndex: 'status',
+      dataIndex: 'orderStatus',
       width: 90,
       render: (v: string) => {
         const cfg = statusConfig[v] || { color: 'default', label: v };
         return <Tag color={cfg.color}>{cfg.label}</Tag>;
       },
     },
-    { title: '处理人', dataIndex: 'assigneeName', width: 100, render: (v?: string) => v || '-' },
+    { title: '处理人', dataIndex: 'assignedTo', width: 100, render: (v?: string) => v || '-' },
     { title: '创建时间', dataIndex: 'createTime', width: 130, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-') },
     {
       title: '操作',
@@ -305,42 +346,42 @@ export default function WorkOrders() {
           <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => openDetail(r)}>
             明细
           </Button>
-          {r.status === 'PENDING' && (
+          {r.orderStatus === 'OPEN' && (
             <Button type="link" size="small" icon={<UserOutlined />} onClick={() => { setAssignTarget(r); assignForm.resetFields(); }}>
               分配
             </Button>
           )}
-          {r.status === 'ASSIGNED' && (
+          {(r.orderStatus === 'OPEN' || r.orderStatus === 'ASSIGNED' || r.orderStatus === 'REOPENED') && (
             <Button type="link" size="small" onClick={() => changeStatus(r, 'accept')}>
               接单
             </Button>
           )}
-          {r.status === 'ACCEPTED' && (
+          {r.orderStatus === 'ASSIGNED' && (
             <Button type="link" size="small" onClick={() => changeStatus(r, 'start')}>
               开始
             </Button>
           )}
-          {r.status === 'IN_PROGRESS' && (
+          {r.orderStatus === 'IN_PROGRESS' && (
             <Button type="link" size="small" icon={<CheckCircleOutlined />} onClick={() => changeStatus(r, 'resolve')}>
               解决
             </Button>
           )}
-          {(r.status === 'RESOLVED' || r.status === 'REOPENED') && (
+          {(r.orderStatus === 'RESOLVED' || r.orderStatus === 'REOPENED') && (
             <Button type="link" size="small" onClick={() => changeStatus(r, 'close')}>
               关闭
             </Button>
           )}
-          {r.status === 'CLOSED' && (
+          {r.orderStatus === 'CLOSED' && (
             <Button type="link" size="small" onClick={() => changeStatus(r, 'reopen')}>
               重开
             </Button>
           )}
-          {(r.status === 'PENDING' || r.status === 'ASSIGNED' || r.status === 'ACCEPTED') && (
+          {(r.orderStatus === 'OPEN' || r.orderStatus === 'ASSIGNED') && (
             <Button type="link" size="small" danger icon={<StopOutlined />} onClick={() => changeStatus(r, 'cancel')}>
               取消
             </Button>
           )}
-          {r.priority !== 'URGENT' && r.status === 'IN_PROGRESS' && (
+          {r.priority !== 'URGENT' && r.orderStatus === 'IN_PROGRESS' && (
             <Button type="link" size="small" icon={<ArrowUpOutlined />} onClick={() => changeStatus(r, 'escalate')}>
               升级
             </Button>
@@ -427,6 +468,12 @@ export default function WorkOrders() {
             </Form.Item>
             <Form.Item name="priority" label="优先级" rules={[{ required: true }]}>
               <Select style={{ width: 120 }} options={Object.entries(priorityConfig).map(([v, c]) => ({ value: v, label: c.label }))} />
+            </Form.Item>
+            <Form.Item name="source" label="来源" rules={[{ required: true, message: '请选择来源' }]}>
+              <Select
+                style={{ width: 120 }}
+                options={Object.entries(sourceConfig).map(([v, l]) => ({ value: v, label: l }))}
+              />
             </Form.Item>
           </Space>
           <Form.Item name="customerId" label="客户 ID">

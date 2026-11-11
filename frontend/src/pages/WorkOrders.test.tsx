@@ -43,9 +43,10 @@ function wo(id: string, overrides: Record<string, unknown> = {}) {
     id,
     orderNo: `WO-2026${id}`,
     title: `工单${id}`,
-    orderType: 'SERVICE',
+    orderType: 'CONSULTATION',
     priority: 'MEDIUM',
-    status: 'PENDING',
+    orderStatus: 'OPEN',
+    assignedTo: undefined,
     createTime: '2026-10-08T10:00:00',
     ...overrides,
   } as never;
@@ -86,7 +87,7 @@ describe('WorkOrders', () => {
     await userEvent.type(screen.getByLabelText('工单标题'), '系统故障');
     // 工单类型/优先级已在 openCreate 预填 (orderType=SERVICE, priority=MEDIUM), 无需重复输入
     fireEvent.click(screen.getByRole('button', { name: cn('确定') }));
-    await waitFor(() => expect(post).toHaveBeenCalledWith('/scrm/work-orders/orders', expect.objectContaining({ title: '系统故障', orderType: 'SERVICE' })));
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/scrm/work-orders/orders', expect.objectContaining({ title: '系统故障', orderType: 'CONSULTATION' })));
   });
 
   it('分配工单: 待分配打开弹窗后 assign', async () => {
@@ -94,7 +95,7 @@ describe('WorkOrders', () => {
       if (url.includes('/orders/list')) return Promise.resolve(page([wo('1')]));
       return Promise.resolve(page([]));
     });
-    post.mockResolvedValue(wo('1', { status: 'ASSIGNED' }));
+    post.mockResolvedValue(wo('1', { orderStatus: 'ASSIGNED' }));
 
     renderPage();
     await waitFor(() => expect(screen.getByText('WO-20261')).toBeInTheDocument());
@@ -105,9 +106,31 @@ describe('WorkOrders', () => {
     await waitFor(() => expect(post).toHaveBeenCalledWith('/scrm/work-orders/orders/assign', expect.objectContaining({ orderId: 1, assigneeId: 'u1' })));
   });
 
+  it('接单: 必须把 acceptorId 作为查询参数传给后端', async () => {
+    // 后端 acceptOrder 签名是 @RequestParam Long acceptorId，漏传会 400
+    localStorage.setItem('userId', '366396655429357568');
+    get.mockImplementation((url: string) => {
+      if (url.includes('/orders/list')) return Promise.resolve(page([wo('1', { orderStatus: 'ASSIGNED' })]));
+      return Promise.resolve(page([]));
+    });
+    post.mockResolvedValue(wo('1', { orderStatus: 'IN_PROGRESS' }));
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('WO-20261')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: cn('接单') }));
+
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        expect.stringContaining('/accept?acceptorId=366396655429357568'),
+        expect.anything(),
+      ),
+    );
+    localStorage.removeItem('userId');
+  });
+
   it('查看明细: 打开抽屉加载日志', async () => {
     get.mockImplementation((url: string) => {
-      if (url.includes('/orders/list')) return Promise.resolve(page([wo('1', { status: 'IN_PROGRESS' })]));
+      if (url.includes('/orders/list')) return Promise.resolve(page([wo('1', { orderStatus: 'IN_PROGRESS' })]));
       if (url.includes('/logs')) {
         return Promise.resolve([{ id: 'l1', orderId: '1', action: 'START', operatorName: '小李', detail: '开始处理', createdAt: '2026-10-08T10:00:00' }]);
       }
