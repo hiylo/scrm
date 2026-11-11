@@ -94,7 +94,8 @@ export default function CustomerTags() {
       const [data, defs] = await Promise.all([
         apiClient.get<ScrmCustomerTag[]>(`/scrm/customers/${customerId}/tags`),
         apiClient
-          .get<{ content?: ScrmTagDefinition[] }>('/scrm/customer-tags', {
+          // 标签定义列表：真实路径是 /list 子路径（/scrm/customer-tags 只支持 POST）
+          .get<{ content?: ScrmTagDefinition[] }>('/scrm/customer-tags/list', {
             params: { page: 0, size: 500 },
           })
           .catch(() => null),

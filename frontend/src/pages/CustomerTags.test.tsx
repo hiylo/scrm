@@ -101,8 +101,8 @@ describe('CustomerTags', () => {
           { id: 'tc1', customerId: '366599420550189056', tagId: '378843255812526080', tagValue: '高' },
         ] as never);
       }
-      // 标签定义：id → tagCode
-      if (url === '/scrm/customer-tags') {
+      // 标签定义：id → tagCode（真实路径是 /list 子路径）
+      if (url === '/scrm/customer-tags/list') {
         return Promise.resolve({
           content: [{ id: '378843255812526080', tagCode: 'UI_CONS_LEVEL', tagName: '消费层级' }],
         } as never);
