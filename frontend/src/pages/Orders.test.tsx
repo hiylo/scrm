@@ -86,7 +86,7 @@ describe('Orders', () => {
     fireEvent.click(screen.getByRole('button', { name: cn('新建订单') }));
     await waitFor(() => expect(screen.getByLabelText('客户 ID')).toBeInTheDocument());
     await userEvent.type(screen.getByLabelText('客户 ID'), '1');
-    await userEvent.type(screen.getByLabelText('订单金额 (¥)'), '2000');
+    // 订单金额改为只读自动计算，不再手填
     await userEvent.type(screen.getByLabelText('产品名称'), '服务套餐');
     await userEvent.type(screen.getByLabelText('单价 (¥)'), '1000');
     fireEvent.click(screen.getByRole('button', { name: cn('确定') }));
@@ -97,6 +97,8 @@ describe('Orders', () => {
     // 后端 @NotEmpty：items 必填，且不接受扁平的 productName/unitPrice
     expect(Array.isArray(payload.items)).toBe(true);
     expect((payload.items as unknown[]).length).toBe(1);
+    // 手填金额已废弃，不得再发送后端不认识的 orderAmount
+    expect(payload.orderAmount).toBeUndefined();
     expect(payload.productName).toBeUndefined();
     expect(payload.unitPrice).toBeUndefined();
 

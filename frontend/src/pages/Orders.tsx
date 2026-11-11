@@ -48,14 +48,20 @@ interface ScrmOrder {
   orderNo: string;
   customerId: string;
   customerName?: string;
-  orderType?: string;
+  orderType?: string; // SALE / REFUND / EXCHANGE / PRE_ORDER
+  /** 订单总金额（后端字段名，不是 orderAmount） */
+  totalAmount?: number;
+  paidAmount?: number;
+  remark?: string;
+  orderStatus: string; // PENDING / CONFIRMED / PAID / SHIPPED / DELIVERED / COMPLETED / CANCELLED
+  /** 创建时间（后端字段名，不是 createdAt） */
+  createTime?: string;
+  /** 订单项（列表接口会返回） */
+  items?: ScrmOrderItem[];
+  // 以下三项仅在新建/编辑表单里使用，不属于列表返回结构
   productName?: string;
   productQuantity?: number;
   unitPrice?: number;
-  orderAmount?: number;
-  remark?: string;
-  orderStatus: string; // PENDING / CONFIRMED / PAID / SHIPPED / DELIVERED / COMPLETED / CANCELLED
-  createdAt?: string;
 }
 
 /** 订单明细行 */
@@ -120,6 +126,9 @@ export default function Orders() {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
+  /** 表单内单价与数量，用于实时展示自动计算的订单金额 */
+  const watchUnitPrice = Form.useWatch('unitPrice', form);
+  const watchQuantity = Form.useWatch('productQuantity', form);
   /** 明细抽屉 */
   const [detailOrder, setDetailOrder] = useState<ScrmOrder | null>(null);
   const [items, setItems] = useState<ScrmOrderItem[]>([]);
@@ -172,7 +181,7 @@ export default function Orders() {
       } else {
         // 后端创建订单要求 items 非空（@NotEmpty），且不接受扁平的
         // productName/productQuantity/unitPrice，这里组装成订单项。
-        const { productName, productQuantity, unitPrice, ...rest } = values;
+        const { productName, productQuantity, unitPrice, orderAmount: _ignored, ...rest } = values;
         const item =
           productName && unitPrice != null
             ? [
@@ -227,10 +236,21 @@ export default function Orders() {
     { title: '订单号', dataIndex: 'orderNo', width: 140, render: (v: string) => <Text code>{v}</Text> },
     { title: '客户', dataIndex: 'customerName', width: 120, render: (v?: string, r?: ScrmOrder) => v || r?.customerId || '-' },
     { title: '类型', dataIndex: 'orderType', width: 100, render: (v?: string) => { const c = orderTypeConfig[v || ''] || { label: v || '-', color: 'default' }; return <Tag color={c.color}>{c.label}</Tag>; } },
-    { title: '产品', dataIndex: 'productName', ellipsis: true, render: (v?: string) => v || '-' },
+    {
+      title: '产品',
+      dataIndex: 'items',
+      ellipsis: true,
+      // 订单列表不返回顶层 productName，产品信息在 items 里
+      render: (_: unknown, r: ScrmOrder) => {
+        const list = r.items || [];
+        if (list.length === 0) return '-';
+        const first = list[0]?.productName || '-';
+        return list.length > 1 ? `${first} 等 ${list.length} 项` : first;
+      },
+    },
     {
       title: '金额',
-      dataIndex: 'orderAmount',
+      dataIndex: 'totalAmount',
       width: 110,
       render: (v?: number) => (v != null ? <Text strong>¥{v.toLocaleString()}</Text> : '-'),
     },
@@ -240,7 +260,7 @@ export default function Orders() {
       width: 90,
       render: (v: string) => { const c = orderStatusConfig[v] || { color: 'default', label: v }; return <Tag color={c.color}>{c.label}</Tag>; },
     },
-    { title: '创建时间', dataIndex: 'createdAt', width: 150, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-') },
+    { title: '创建时间', dataIndex: 'createTime', width: 150, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-') },
     {
       title: '操作',
       key: 'actions',
@@ -353,8 +373,14 @@ export default function Orders() {
             <Form.Item name="orderType" label="订单类型" rules={[{ required: true }]}>
               <Select style={{ width: 150 }} options={Object.entries(orderTypeConfig).map(([v, c]) => ({ value: v, label: c.label }))} />
             </Form.Item>
-            <Form.Item name="orderAmount" label="订单金额 (¥)" rules={[{ required: true }]}>
-              <InputNumber min={0} style={{ width: 150 }} />
+            {/* 后端按订单项汇总 totalAmount，手填金额会被忽略，这里改为只读展示 */}
+            <Form.Item label="订单金额 (¥)" tooltip="按 单价 × 数量 自动计算，后端以此为准">
+              <InputNumber
+                style={{ width: 150 }}
+                value={Number(watchUnitPrice ?? 0) * Number(watchQuantity ?? 1)}
+                readOnly
+                disabled
+              />
             </Form.Item>
           </Space>
           <Form.Item
@@ -387,7 +413,7 @@ export default function Orders() {
       >
         {detailOrder && (
           <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
-            <Statistic title="订单金额" value={detailOrder.orderAmount ?? 0} prefix="¥" />
+            <Statistic title="订单金额" value={detailOrder.totalAmount ?? 0} prefix="¥" />
           </div>
         )}
         <Table
