@@ -29,6 +29,7 @@ import {
   CheckCircleOutlined,
   StopOutlined,
   LockOutlined,
+  EditOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useDebounce } from '../hooks/useDebounce';
@@ -350,7 +351,7 @@ export default function Users() {
       width: 260,
       render: (_, record) => (
         <Space size={0}>
-          <Button type="link" size="small" icon={<span aria-hidden>✏️</span>} onClick={() => openEdit(record)}>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEdit(record)}>
             编辑
           </Button>
           <Button

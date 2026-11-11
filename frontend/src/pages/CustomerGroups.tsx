@@ -86,16 +86,25 @@ export default function CustomerGroups() {
   const [customerOptions, setCustomerOptions] = useState<{ label: string; value: number }[]>([]);
   const [customerSearchLoading, setCustomerSearchLoading] = useState(false);
 
-  /** 拉取分组列表 */
-  const fetchGroups = useCallback(async () => {
-    if (ownerAccountId == null) {
+  /**
+   * 拉取分组列表。
+   * <p>
+   * 允许显式传入账号 ID，用于「新建分组后立即刷新」——此时 ownerAccountId 状态
+   * 可能尚未更新或是同一个值（赋值不触发 effect），必须按新账号直接拉取。
+   * </p>
+   *
+   * @param accountId 目标账号 ID，缺省取当前过滤条件
+   */
+  const fetchGroups = useCallback(async (accountId?: string) => {
+    const target = accountId ?? ownerAccountId;
+    if (target == null) {
       setGroups([]);
       return;
     }
     setLoading(true);
     try {
       const data = await apiClient.get<ScrmCustomerGroup[]>(
-        `/scrm/customers/groups?ownerAccountId=${ownerAccountId}`,
+        `/scrm/customers/groups?ownerAccountId=${target}`,
       );
       setGroups(data || []);
     } catch {
@@ -140,6 +149,8 @@ export default function CustomerGroups() {
       setModalOpen(false);
       // 创建后将归属账号回填到过滤条件, 便于看到新建的分组
       setOwnerAccountId(values.ownerAccountId);
+      // 显式按新分组所属账号刷新: 若刚才过滤条件已是同一账号, setState 不会触发 effect
+      void fetchGroups(values.ownerAccountId);
     } catch {
       // 表单校验失败或请求失败; 请求失败已由 axios 拦截器统一提示
     } finally {
@@ -380,7 +391,7 @@ export default function CustomerGroups() {
           </Col>
           <Col flex="auto">
             <Space style={{ float: 'right' }} wrap>
-              <Button icon={<ReloadOutlined />} onClick={fetchGroups}>
+              <Button icon={<ReloadOutlined />} onClick={() => void fetchGroups()}>
                 刷新
               </Button>
               <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
