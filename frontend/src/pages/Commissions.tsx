@@ -14,6 +14,10 @@ import {
   Card,
   Drawer,
   Empty,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
   Space,
   Spin,
   Statistic,
@@ -92,6 +96,11 @@ export default function Commissions() {
   const [page, setPage] = useState(0);
   const pageSize = 10;
   /** 汇总抽屉 */
+  /** 计算弹窗：后端 ScrmCommissionCalculateDto 要求 planId 与 salesPersonId 必填，
+   *  原先直接提交空对象，接口必然返回 400 */
+  const [calcOpen, setCalcOpen] = useState(false);
+  const [calcSaving, setCalcSaving] = useState(false);
+  const [calcForm] = Form.useForm();
   const [statsOpen, setStatsOpen] = useState(false);
   const [stats, setStats] = useState<Record<string, number> | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -117,14 +126,30 @@ export default function Commissions() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
-  /** 触发计算 */
+  /** 打开计算弹窗 */
+  const openCalculate = () => {
+    calcForm.resetFields();
+    setCalcOpen(true);
+  };
+
+  /** 提交计算：必须带 planId 与 salesPersonId */
   const handleCalculate = async () => {
+    let values: Record<string, unknown>;
     try {
-      await apiClient.post('/scrm/commissions/records/calculate', {});
+      values = await calcForm.validateFields();
+    } catch {
+      return;
+    }
+    setCalcSaving(true);
+    try {
+      await apiClient.post('/scrm/commissions/records/calculate', values);
       message.success('佣金计算完成');
+      setCalcOpen(false);
       loadList();
     } catch {
       // 拦截器已弹出错误
+    } finally {
+      setCalcSaving(false);
     }
   };
 
@@ -219,7 +244,7 @@ export default function Commissions() {
             <Button icon={<BarChartOutlined />} onClick={openStats}>
               汇总
             </Button>
-            <Button type="primary" icon={<CalculatorOutlined />} onClick={handleCalculate}>
+            <Button type="primary" icon={<CalculatorOutlined />} onClick={openCalculate}>
               计算
             </Button>
           </Space>
@@ -239,6 +264,41 @@ export default function Commissions() {
           }}
         />
       </Card>
+
+      {/* 计算弹窗：planId / salesPersonId 为后端必填 */}
+      <Modal
+        title="计算佣金"
+        open={calcOpen}
+        onCancel={() => setCalcOpen(false)}
+        onOk={handleCalculate}
+        confirmLoading={calcSaving}
+        okText="开始计算"
+        cancelText="取消"
+      >
+        <Form form={calcForm} layout="vertical">
+          <Form.Item
+            name="planId"
+            label="佣金方案 ID"
+            rules={[{ required: true, message: '请输入佣金方案 ID' }]}
+            tooltip="后端要求必填；方案必须处于已激活状态"
+          >
+            <InputNumber style={{ width: '100%' }} placeholder="如: 378800000000000000" />
+          </Form.Item>
+          <Form.Item
+            name="salesPersonId"
+            label="销售人员 ID"
+            rules={[{ required: true, message: '请输入销售人员 ID' }]}
+          >
+            <Input placeholder="如: 366396655429357568" />
+          </Form.Item>
+          <Form.Item name="orderId" label="订单 ID" tooltip="可选，指定关联订单">
+            <InputNumber style={{ width: '100%' }} placeholder="可选" />
+          </Form.Item>
+          <Form.Item name="orderAmount" label="订单金额 (¥)" tooltip="可选，不填则由后端按订单取">
+            <InputNumber min={0} style={{ width: '100%' }} placeholder="可选" />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       {/* 统计抽屉 */}
       <Drawer

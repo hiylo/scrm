@@ -88,7 +88,7 @@ describe('Commissions', () => {
     await waitFor(() => expect(post).toHaveBeenCalledWith('/scrm/commissions/payouts/clawback', expect.objectContaining({ recordIds: [1] })));
   });
 
-  it('触发计算: 调用 records/calculate', async () => {
+  it('触发计算: 必须携带后端必填的 planId 与 salesPersonId', async () => {
     get.mockImplementation((url: string) => {
       if (url.startsWith('/scrm/commissions/records/list')) return Promise.resolve(page([commission('1')]));
       return Promise.resolve(page([]));
@@ -99,7 +99,27 @@ describe('Commissions', () => {
     await waitFor(() => expect(screen.getByText('YJ-20261')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: cn('计算') }));
 
-    await waitFor(() => expect(post).toHaveBeenCalledWith('/scrm/commissions/records/calculate', expect.anything()));
+    // 原先直接提交空对象 {}，后端 ScrmCommissionCalculateDto 要求两个必填，
+    // 接口必然 400。这里断言弹窗出现且两字段必填。
+    await waitFor(() => expect(screen.getByLabelText('佣金方案 ID')).toBeInTheDocument());
+    expect(screen.getByLabelText('销售人员 ID')).toBeInTheDocument();
+
+    // 空表单直接提交不会发请求（前端校验拦住）
+    fireEvent.click(screen.getAllByRole('button', { name: cn('开始计算') })[0]);
+    await waitFor(() => expect(post).not.toHaveBeenCalled());
+
+    await userEvent.type(screen.getByLabelText('佣金方案 ID'), '378800000000000001');
+    await userEvent.type(screen.getByLabelText('销售人员 ID'), '366396655429357568');
+    fireEvent.click(screen.getAllByRole('button', { name: cn('开始计算') })[0]);
+
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        '/scrm/commissions/records/calculate',
+        expect.objectContaining({ planId: 378800000000000001 }),
+      ),
+    );
+    const payload = post.mock.calls.find((c) => c[0] === '/scrm/commissions/records/calculate')?.[1] as Record<string, unknown>;
+    expect(payload.salesPersonId).toBe('366396655429357568');
   });
 
   it('支付佣金: 已计算调用 mark-paid', async () => {
