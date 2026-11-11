@@ -139,6 +139,52 @@ public class ScrmVoucherController {
      * @return 更新后的科目
      * @throws ScrmException 科目不存在
      */
+    /**
+     * 检查科目能否删除（纠正误建科目用）。
+     * <p>
+     * 期初余额和凭证分录都靠科目编码<b>字符串</b>关联、没有外键，直接删科目会留下
+     * 孤儿数据导致静默错账。因此删除前先给出引用检查结果：只有从未被引用的空白科目
+     * 才可删除；有引用的科目永久不可删，应改用「停用」保留历史。
+     * </p>
+     *
+     * @param id 科目 ID
+     * @return {subjectId, subjectCode, subjectName, status, openingRefCount,
+     *         entryRefCount, deletable, reason}
+     * @throws ScrmException 科目不存在
+     */
+    @RequirePermission(resource = "scrm_voucher", action = "read")
+    @GetMapping("/subjects/{id}/deletable")
+    public OperationResponse<Map<String, Object>> checkSubjectDeletable(
+            @PathVariable Long id) throws ScrmException {
+        return OperationResponse.build(voucherService.checkSubjectDeletable(id));
+    }
+
+    /**
+     * 删除从未被引用过的空白科目（纠正误建）。
+     * <p>
+     * 有期初余额或凭证分录引用的科目一律拒绝删除（422/409），因为删掉会留下孤儿数据、
+     * 使历史报表缺行或算错；这类科目请改用「停用」——停用后不可再新增凭证，历史照常可查。
+     * </p>
+     *
+     * @param id 科目 ID
+     * @return 删除结果 {deleted, subjectCode, subjectName}
+     * @throws ScrmException 科目不存在 / 已被引用不可删除
+     */
+    @RequirePermission(resource = "scrm_voucher", action = "delete")
+    @DeleteMapping("/subjects/{id}")
+    public OperationResponse<Map<String, Object>> deleteSubject(
+            @PathVariable Long id) throws ScrmException {
+        return OperationResponse.build(voucherService.deleteSubject(id));
+    }
+
+    /**
+     * 启用/停用科目。
+     *
+     * @param id     科目 ID
+     * @param status 目标状态（ACTIVE/DISABLED）
+     * @return 更新后的科目
+     * @throws ScrmException 科目不存在
+     */
     @RequirePermission(resource = "scrm_voucher", action = "update")
     @PutMapping("/subjects/{id}/status")
     public OperationResponse<ScrmAccountSubjectEntity> updateSubjectStatus(

@@ -15,6 +15,7 @@ import org.hiylo.scrm.entity.ScrmCompanyEntity;
 import org.hiylo.scrm.entity.ScrmVoucherEntity;
 import org.hiylo.scrm.entity.ScrmVoucherEntryEntity;
 import org.hiylo.scrm.exception.ScrmException;
+import org.hiylo.scrm.repository.ScrmAccountOpeningBalanceRepository;
 import org.hiylo.scrm.repository.ScrmAccountSubjectRepository;
 import org.hiylo.scrm.repository.ScrmCompanyRepository;
 import org.hiylo.scrm.repository.ScrmVoucherEntryRepository;
@@ -90,6 +91,10 @@ class ScrmVoucherServiceTest {
     @Mock
     private ScrmAccountOpeningBalanceService openingBalanceService;
 
+    /** 期初余额仓储（科目删除前的引用检查） */
+    @Mock
+    private ScrmAccountOpeningBalanceRepository openingBalanceRepository;
+
 
     /** 被测服务 */
     private ScrmVoucherService service;
@@ -108,7 +113,7 @@ class ScrmVoucherServiceTest {
     void setUp() {
         service = new ScrmVoucherService(subjectRepository, voucherRepository,
                 entryRepository, companyRepository, periodCloseService, financeDataScope,
-                attachmentService, openingBalanceService);
+                attachmentService, openingBalanceService, openingBalanceRepository);
         // 透传合并：不设置期初余额时行为与改造前完全一致
         when(openingBalanceService.mergeInto(any(), any(), any()))
                 .thenAnswer(inv -> inv.getArgument(0));
@@ -629,5 +634,78 @@ class ScrmVoucherServiceTest {
                     .as("启用期当期凭证不应因期初校验被拒")
                     .doesNotContain("账套启用期间");
         }
+    }
+
+    // ==================== 科目删除（只允许删从未被引用的空白科目）====================
+
+    @Test
+    @DisplayName("从未被引用的空白科目可以删除")
+    void allowsDeletingUnreferencedSubject() throws Exception {
+        ScrmAccountSubjectEntity spare = new ScrmAccountSubjectEntity();
+        spare.setId(77L);
+        spare.setCompanyId(100L);
+        spare.setSubjectCode("9999");
+        spare.setSubjectName("误建科目");
+        spare.setStatus(ScrmAccountSubjectEntity.STATUS_ACTIVE);
+        when(subjectRepository.findById(77L)).thenReturn(Optional.of(spare));
+        when(openingBalanceRepository.countByCompanyIdAndSubjectCode(100L, "9999")).thenReturn(0L);
+        when(entryRepository.countByCompanyIdAndSubjectCode(100L, "9999")).thenReturn(0L);
+
+        Map<String, Object> check = service.checkSubjectDeletable(77L);
+        assertThat(check.get("deletable")).isEqualTo(true);
+
+        Map<String, Object> result = service.deleteSubject(77L);
+        assertThat(result.get("deleted")).isEqualTo(true);
+        assertThat(result.get("subjectCode")).isEqualTo("9999");
+    }
+
+    @Test
+    @DisplayName("被期初余额引用的科目不可删除，且说明原因")
+    void rejectsDeletingSubjectReferencedByOpening() {
+        ScrmAccountSubjectEntity used = subject(78L, "1002");
+        when(subjectRepository.findById(78L)).thenReturn(Optional.of(used));
+        when(openingBalanceRepository.countByCompanyIdAndSubjectCode(100L, "1002")).thenReturn(2L);
+        when(entryRepository.countByCompanyIdAndSubjectCode(100L, "1002")).thenReturn(0L);
+
+        Map<String, Object> check = service.checkSubjectDeletable(78L);
+        assertThat(check.get("deletable")).isEqualTo(false);
+        assertThat(check.get("openingRefCount")).isEqualTo(2L);
+        assertThat(String.valueOf(check.get("reason")))
+                .contains("期初余额 2 行")
+                .contains("停用");
+    }
+
+    @Test
+    @DisplayName("被凭证分录引用的科目不可删除")
+    void rejectsDeletingSubjectReferencedByEntry() {
+        ScrmAccountSubjectEntity used = subject(79L, "5602");
+        when(subjectRepository.findById(79L)).thenReturn(Optional.of(used));
+        when(openingBalanceRepository.countByCompanyIdAndSubjectCode(100L, "5602")).thenReturn(0L);
+        when(entryRepository.countByCompanyIdAndSubjectCode(100L, "5602")).thenReturn(3L);
+
+        assertThatThrownBy(() -> service.deleteSubject(79L))
+                .isInstanceOf(ScrmException.class)
+                .hasMessageContaining("凭证分录 3 行");
+    }
+
+    @Test
+    @DisplayName("科目不存在时返回 notFound，不做任何删除")
+    void rejectsDeletingMissingSubject() {
+        when(subjectRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.deleteSubject(999L))
+                .isInstanceOf(ScrmException.class)
+                .hasMessageContaining("科目不存在");
+    }
+
+    /** 造一个科目。 */
+    private ScrmAccountSubjectEntity subject(Long id, String code) {
+        ScrmAccountSubjectEntity e = new ScrmAccountSubjectEntity();
+        e.setId(id);
+        e.setCompanyId(100L);
+        e.setSubjectCode(code);
+        e.setSubjectName("科目" + code);
+        e.setStatus(ScrmAccountSubjectEntity.STATUS_ACTIVE);
+        return e;
     }
 }

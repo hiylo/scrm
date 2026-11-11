@@ -12,6 +12,7 @@ import org.hiylo.scrm.entity.ScrmCompanyEntity;
 import org.hiylo.scrm.entity.ScrmVoucherEntity;
 import org.hiylo.scrm.entity.ScrmVoucherEntryEntity;
 import org.hiylo.scrm.exception.ScrmException;
+import org.hiylo.scrm.repository.ScrmAccountOpeningBalanceRepository;
 import org.hiylo.scrm.repository.ScrmAccountSubjectRepository;
 import org.hiylo.scrm.repository.ScrmCompanyRepository;
 import org.hiylo.scrm.repository.ScrmVoucherEntryRepository;
@@ -85,6 +86,10 @@ class ScrmVoucherBatchTest {
     @Mock
     private ScrmAccountOpeningBalanceService openingBalanceService;
 
+    /** 期初余额仓储（科目删除前的引用检查） */
+    @Mock
+    private ScrmAccountOpeningBalanceRepository openingBalanceRepository;
+
     /** 被测服务 */
     private ScrmVoucherService service;
 
@@ -104,7 +109,7 @@ class ScrmVoucherBatchTest {
     void setUp() {
         service = new ScrmVoucherService(subjectRepository, voucherRepository,
                 entryRepository, companyRepository, periodCloseService, financeDataScope,
-                attachmentService, openingBalanceService);
+                attachmentService, openingBalanceService, openingBalanceRepository);
         // 透传合并：不设置期初余额时行为与改造前完全一致
         when(openingBalanceService.mergeInto(any(), any(), any()))
                 .thenAnswer(inv -> inv.getArgument(0));

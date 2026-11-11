@@ -19,6 +19,7 @@ import org.hiylo.scrm.entity.ScrmCompanyEntity;
 import org.hiylo.scrm.entity.ScrmVoucherEntity;
 import org.hiylo.scrm.entity.ScrmVoucherEntryEntity;
 import org.hiylo.scrm.exception.ScrmException;
+import org.hiylo.scrm.repository.ScrmAccountOpeningBalanceRepository;
 import org.hiylo.scrm.repository.ScrmAccountSubjectRepository;
 import org.hiylo.scrm.repository.ScrmCompanyRepository;
 import org.hiylo.scrm.repository.ScrmVoucherEntryRepository;
@@ -92,6 +93,9 @@ public class ScrmVoucherService {
 
     /** 期初余额服务（接户结转数并进试算平衡的期初口径） */
     private final ScrmAccountOpeningBalanceService openingBalanceService;
+
+    /** 期初余额仓储（科目删除前的引用检查，需按科目统计行数） */
+    private final ScrmAccountOpeningBalanceRepository openingBalanceRepository;
 
     // ============================================================
     // 科目
@@ -186,6 +190,96 @@ public class ScrmVoucherService {
                 .orElseThrow(() -> ScrmException.notFound("科目不存在: " + id));
         entity.setStatus(status);
         return subjectRepository.save(entity);
+    }
+
+    /**
+     * 检查科目能否删除，并给出不能删除的原因。
+     * <p>
+     * <b>为什么需要这个检查</b>：期初余额（{@code scrm_account_opening_balance}）和凭证分录
+     * （{@code scrm_voucher_entry}）都是靠 {@code subject_code} <b>字符串</b>关联科目，
+     * 数据库层面没有任何外键约束。直接删科目不会报错，只会留下指向不存在科目的孤儿数据，
+     * 报表要么缺行、要么算错，而且静默无提示。
+     * </p>
+     * <p>
+     * <b>允许删除的唯一情形</b>：科目建错了，从没被任何期初行、任何凭证分录引用过。
+     * 一旦有引用就永久不可删除——已作废凭证的分录同样算引用，因为历史痕迹不能被抹掉。
+     * 需要「不再使用但保留历史」请改用停用（{@link #updateSubjectStatus}）。
+     * </p>
+     *
+     * @param id 科目 ID
+     * @return {subjectId, subjectCode, subjectName, deletable, openingRefCount,
+     *         entryRefCount, status, reason}
+     * @throws ScrmException 科目不存在
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> checkSubjectDeletable(Long id) throws ScrmException {
+        ScrmAccountSubjectEntity subject = subjectRepository.findById(id)
+                .orElseThrow(() -> ScrmException.notFound("科目不存在: " + id));
+        long openingRef = openingBalanceRepository.countByCompanyIdAndSubjectCode(
+                subject.getCompanyId(), subject.getSubjectCode());
+        long entryRef = entryRepository.countByCompanyIdAndSubjectCode(
+                subject.getCompanyId(), subject.getSubjectCode());
+        boolean deletable = openingRef == 0 && entryRef == 0;
+
+        String reason;
+        if (deletable) {
+            reason = "该科目从未被期初余额或凭证分录引用，可以删除";
+        } else {
+            StringBuilder sb = new StringBuilder("该科目已被引用，不能删除：");
+            if (openingRef > 0) {
+                sb.append("期初余额 ").append(openingRef).append(" 行");
+            }
+            if (entryRef > 0) {
+                if (openingRef > 0) {
+                    sb.append("、");
+                }
+                sb.append("凭证分录 ").append(entryRef).append(" 行");
+            }
+            sb.append("。如需停止使用，请改为「停用」——停用后不可再新增凭证，历史报表照常可查");
+            reason = sb.toString();
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("subjectId", String.valueOf(subject.getId()));
+        result.put("subjectCode", subject.getSubjectCode());
+        result.put("subjectName", subject.getSubjectName());
+        result.put("status", subject.getStatus());
+        result.put("openingRefCount", openingRef);
+        result.put("entryRefCount", entryRef);
+        result.put("deletable", deletable);
+        result.put("reason", reason);
+        return result;
+    }
+
+    /**
+     * 删除从未被引用过的空白科目（纠正误建）。
+     * <p>
+     * 与「停用」的分工：停用用于「科目还要保留历史数据，只是不再新增分录」；
+     * 删除只用于「科目建错了，从没被用过」。有引用的科目永久不可删除，
+     * 因为期初与分录都靠科目编码字符串关联，删掉会留下孤儿数据、导致静默错账。
+     * </p>
+     *
+     * @param id 科目 ID
+     * @return 删除结果 {deleted, subjectCode, subjectName}
+     * @throws ScrmException 科目不存在 / 已被引用不可删除
+     */
+    @Transactional
+    public Map<String, Object> deleteSubject(Long id) throws ScrmException {
+        Map<String, Object> check = checkSubjectDeletable(id);
+        if (!Boolean.TRUE.equals(check.get("deletable"))) {
+            throw ScrmException.conflict(String.valueOf(check.get("reason")));
+        }
+        ScrmAccountSubjectEntity subject = subjectRepository.findById(id)
+                .orElseThrow(() -> ScrmException.notFound("科目不存在: " + id));
+        subjectRepository.delete(subject);
+        log.info("[科目-删除] id={}, code={}, name={}",
+                id, subject.getSubjectCode(), subject.getSubjectName());
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("deleted", true);
+        result.put("subjectCode", subject.getSubjectCode());
+        result.put("subjectName", subject.getSubjectName());
+        return result;
     }
 
     /**

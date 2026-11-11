@@ -64,4 +64,14 @@ public interface ScrmAccountOpeningBalanceRepository
             + "count(o), max(o.updateTime) from ScrmAccountOpeningBalanceEntity o "
             + "group by o.companyId")
     List<Object[]> summarizeByCompany();
+
+    /**
+     * 统计某主体某科目在期初余额表里的引用行数（科目删除前检查用）。
+     *
+     * @param companyId   公司主体 ID
+     * @param subjectCode 科目编码
+     * @return 引用行数，0 表示期初未使用该科目
+     */
+    long countByCompanyIdAndSubjectCode(@Param("companyId") Long companyId,
+                                        @Param("subjectCode") String subjectCode);
 }
