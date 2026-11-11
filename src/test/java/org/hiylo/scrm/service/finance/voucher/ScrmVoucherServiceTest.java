@@ -561,4 +561,73 @@ class ScrmVoucherServiceTest {
                 .isInstanceOf(ScrmException.class)
                 .hasMessageContaining("凭证不存在");
     }
+
+    // ==================== 已录期初时禁止早于启用期的凭证 ====================
+
+    @Test
+    @DisplayName("已录期初时，不能在启用期之前新增凭证（否则与期初重复计算）")
+    void rejectsCreateBeforeOpeningPeriod() {
+        when(openingBalanceService.openingPeriod(100L)).thenReturn(202611);
+
+        assertThatThrownBy(() -> service.createVoucher(100L, voucher(List.of(
+                entry("1002", "5000", null), entry("5001", null, "5000")))))
+                .isInstanceOf(ScrmException.class)
+                .hasMessageContaining("202611")
+                .hasMessageContaining("期初");
+    }
+
+    @Test
+    @DisplayName("已录期初时，不能在启用期之前修改凭证")
+    void rejectsUpdateBeforeOpeningPeriod() {
+        when(openingBalanceService.openingPeriod(100L)).thenReturn(202611);
+        ScrmVoucherEntity draft = new ScrmVoucherEntity();
+        draft.setId(9L);
+        draft.setCompanyId(100L);
+        draft.setStatus(ScrmVoucherEntity.STATUS_DRAFT);
+        draft.setVoucherWord(ScrmVoucherEntity.WORD_JI);
+        draft.setVoucherNo(1);
+        when(voucherRepository.findById(9L)).thenReturn(java.util.Optional.of(draft));
+
+        assertThatThrownBy(() -> service.updateVoucher(9L, voucher(List.of(
+                entry("1002", "5000", null), entry("5001", null, "5000")))))
+                .isInstanceOf(ScrmException.class)
+                .hasMessageContaining("修改");
+    }
+
+    @Test
+    @DisplayName("已录期初时，不能在启用期之前记账")
+    void rejectsPostBeforeOpeningPeriod() {
+        when(openingBalanceService.openingPeriod(100L)).thenReturn(202611);
+        ScrmVoucherEntity draft = new ScrmVoucherEntity();
+        draft.setId(9L);
+        draft.setCompanyId(100L);
+        draft.setStatus(ScrmVoucherEntity.STATUS_DRAFT);
+        draft.setPeriodYear(2026);
+        draft.setPeriodMonth(10);
+        draft.setVoucherWord(ScrmVoucherEntity.WORD_JI);
+        draft.setVoucherNo(1);
+        when(voucherRepository.findById(9L)).thenReturn(java.util.Optional.of(draft));
+
+        assertThatThrownBy(() -> service.postVoucher(9L))
+                .isInstanceOf(ScrmException.class)
+                .hasMessageContaining("记账");
+    }
+
+    @Test
+    @DisplayName("启用期当期的凭证不受期初校验影响（只拦早于启用期的）")
+    void allowsVoucherInOpeningPeriod() {
+        when(openingBalanceService.openingPeriod(100L)).thenReturn(202610);
+
+        // 启用期是 202610，同期凭证不应被期初校验拦住。
+        // 这里用 assertThatCode 断言「不是因为期初原因失败」：
+        // 若后续其他校验抛异常，异常信息里不含期初启用期间的提示即可。
+        try {
+            service.createVoucher(100L, voucher(List.of(
+                    entry("1002", "5000", null), entry("5001", null, "5000"))));
+        } catch (ScrmException e) {
+            assertThat(e.getMessage())
+                    .as("启用期当期凭证不应因期初校验被拒")
+                    .doesNotContain("账套启用期间");
+        }
+    }
 }

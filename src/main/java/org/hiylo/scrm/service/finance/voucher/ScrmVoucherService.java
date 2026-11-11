@@ -224,6 +224,7 @@ public class ScrmVoucherService {
             throw ScrmException.conflict("该期间已结账，不可新增凭证: "
                     + dto.getPeriodYear() + "-" + dto.getPeriodMonth() + "；如需补录请先反结账");
         }
+        assertNotBeforeOpeningPeriod(companyId, dto.getPeriodYear(), dto.getPeriodMonth(), "新增");
 
         ScrmVoucherEntity voucher = new ScrmVoucherEntity();
         voucher.setCompanyId(companyId);
@@ -281,6 +282,8 @@ public class ScrmVoucherService {
             throw ScrmException.conflict("该期间已结账，不可修改凭证: "
                     + dto.getPeriodYear() + "-" + dto.getPeriodMonth());
         }
+        assertNotBeforeOpeningPeriod(voucher.getCompanyId(),
+                dto.getPeriodYear(), dto.getPeriodMonth(), "修改");
         List<ScrmVoucherEntryEntity> entries = validateAndBuildEntries(
                 voucher.getCompanyId(), voucher.getId(), dto.getEntries());
 
@@ -330,6 +333,8 @@ public class ScrmVoucherService {
             throw ScrmException.conflict("该期间已结账，不可记账: "
                     + voucher.getPeriodYear() + "-" + voucher.getPeriodMonth());
         }
+        assertNotBeforeOpeningPeriod(voucher.getCompanyId(),
+                voucher.getPeriodYear(), voucher.getPeriodMonth(), "记账");
         // 以库里分录为准重新校验，不信任 header 上可能过期的合计
         List<ScrmVoucherEntryEntity> entries = entryRepository.findByVoucherIdOrderByLineNoAsc(id);
         assertBalanced(entries, voucher.getVoucherLabel());
@@ -803,6 +808,45 @@ public class ScrmVoucherService {
      * @param label   凭证标识（用于错误信息）
      * @throws ScrmException 借贷不平或合计为零
      */
+    /**
+     * 已录期初的主体，不允许在启用期<b>之前</b>创建/修改/记账凭证。
+     * <p>
+     * <b>为什么必须在凭证侧也拦</b>：期初录入时已经校验过「启用期前不得有凭证」
+     * （{@code ScrmAccountOpeningBalanceService.save}），但那只能挡住「先有凭证后录期初」。
+     * 反向的「先录期初后补凭证」当时完全没有防线，实测可正常创建并记账，
+     * 结果是试算平衡里该科目的期初被启用前凭证的发生额冲抵（例：录入 80000，
+     * 补一张 10 月贷记 5000 的凭证后，2026-11 期初显示 75000）。
+     * </p>
+     * <p>
+     * 这种错误尤其危险：数字看起来「合理」，会计不会察觉两份口径被混算，
+     * 而错值会被后续每一张报表继承。
+     * </p>
+     *
+     * @param companyId 公司主体 ID
+     * @param year      凭证年度
+     * @param month     凭证月份
+     * @param action    动作描述（新增/修改/记账），用于错误提示
+     * @throws ScrmException 凭证期间早于已设置的期初启用期间
+     */
+    private void assertNotBeforeOpeningPeriod(Long companyId, Integer year, Integer month,
+                                              String action) throws ScrmException {
+        Integer openingPeriod = openingBalanceService.openingPeriod(companyId);
+        if (openingPeriod == null) {
+            // 未录期初的户不受此约束
+            return;
+        }
+        if (year == null || month == null) {
+            return;
+        }
+        int target = year * 100 + month;
+        if (target < openingPeriod) {
+            throw ScrmException.conflict("该企业已把账套启用期间设为 " + openingPeriod
+                    + "，不能" + action + " " + target + " 期间的凭证；"
+                    + "启用期之前的余额请改为录入期初余额，否则会与期初重复计算。"
+                    + "如需补录该期间凭证，请先把期初改为更早的启用期间");
+        }
+    }
+
     private void assertBalanced(List<ScrmVoucherEntryEntity> entries, String label)
             throws ScrmException {
         if (entries == null || entries.isEmpty()) {
