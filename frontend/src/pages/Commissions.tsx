@@ -281,8 +281,11 @@ export default function Commissions() {
             label="佣金方案 ID"
             rules={[{ required: true, message: '请输入佣金方案 ID' }]}
             tooltip="后端要求必填；方案必须处于已激活状态"
+            extra="ID 为 18 位长整型，必须按字符串提交，用数字输入会丢精度"
           >
-            <InputNumber style={{ width: '100%' }} placeholder="如: 378800000000000000" />
+            {/* 用 Input 而不是 InputNumber：JS Number 只有 53 位精度，
+                18 位 ID 会被舍入导致「方案不存在」 */}
+            <Input placeholder="如: 378840870478286848" />
           </Form.Item>
           <Form.Item
             name="salesPersonId"
@@ -292,7 +295,7 @@ export default function Commissions() {
             <Input placeholder="如: 366396655429357568" />
           </Form.Item>
           <Form.Item name="orderId" label="订单 ID" tooltip="可选，指定关联订单">
-            <InputNumber style={{ width: '100%' }} placeholder="可选" />
+            <Input placeholder="可选" />
           </Form.Item>
           <Form.Item name="orderAmount" label="订单金额 (¥)" tooltip="可选，不填则由后端按订单取">
             <InputNumber min={0} style={{ width: '100%' }} placeholder="可选" />

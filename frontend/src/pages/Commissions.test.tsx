@@ -115,11 +115,13 @@ describe('Commissions', () => {
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith(
         '/scrm/commissions/records/calculate',
-        expect.objectContaining({ planId: 378800000000000001 }),
+        expect.objectContaining({ planId: '378800000000000001' }),
       ),
     );
     const payload = post.mock.calls.find((c) => c[0] === '/scrm/commissions/records/calculate')?.[1] as Record<string, unknown>;
     expect(payload.salesPersonId).toBe('366396655429357568');
+    // 18 位长整型必须以字符串提交，否则 JS Number 会丢精度
+    expect(typeof payload.planId).toBe('string');
   });
 
   it('支付佣金: 已计算调用 mark-paid', async () => {
