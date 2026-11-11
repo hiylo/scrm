@@ -68,8 +68,10 @@ interface ScrmPublicSeaCustomer {
 /** 分配记录行 */
 interface ScrmLeadAssignment {
   id: string;
-  assigneeName?: string;
-  assignType?: string;
+  /** 分配对象（后端 ScrmLeadAssignmentEntity.assignedTo） */
+  assignedTo?: string;
+  /** 分配类型（后端字段名 assignmentType） */
+  assignmentType?: string;
   assignedAt?: string;
 }
 
@@ -337,8 +339,8 @@ export default function PublicSea() {
                 pagination={false}
                 locale={{ emptyText: <Empty description="暂无分配记录" /> }}
                 columns={[
-                  { title: '处理人', dataIndex: 'assigneeName', width: 100, render: (v?: string) => v || '-' },
-                  { title: '类型', dataIndex: 'assignType', width: 100, render: (v?: string) => v || '-' },
+                  { title: '处理人', dataIndex: 'assignedTo', width: 100, render: (v?: string) => v || '-' },
+                  { title: '类型', dataIndex: 'assignmentType', width: 100, render: (v?: string) => v || '-' },
                   { title: '时间', dataIndex: 'assignedAt', width: 150, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-') },
                 ]}
               />

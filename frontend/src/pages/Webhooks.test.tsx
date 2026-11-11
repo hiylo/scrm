@@ -59,8 +59,8 @@ function log(id: string, overrides: Record<string, unknown> = {}) {
     webhookName: '配置1',
     eventType: 'CUSTOMER_CREATED',
     status: 'SUCCESS',
-    responseCode: 200,
-    deliveredAt: '2026-10-08T10:00:00',
+    responseStatus: 200,
+    sentAt: '2026-10-08T10:00:00',
     ...overrides,
   } as never;
 }
@@ -146,5 +146,20 @@ describe('Webhooks', () => {
 
     await waitFor(() => expect(screen.getAllByText('CUSTOMER_CREATED').length).toBeGreaterThan(0));
     expect(screen.getByText('timeout')).toBeInTheDocument();
+  });
+
+  it('日志响应码与投递时间按后端 responseStatus/sentAt 渲染', async () => {
+    get.mockImplementation((url: string) => {
+      if (url.includes('/configs/list')) return Promise.resolve(page([config('1')]));
+      if (url.includes('/logs/list')) return Promise.resolve(page([log('1')]));
+      return Promise.resolve(page([]));
+    });
+
+    renderPage();
+    fireEvent.click(screen.getByRole('tab', { name: '事件日志' }));
+
+    // responseCode/deliveredAt 是后端不存在的字段名，写错这两列就是空白
+    await waitFor(() => expect(screen.getByText('200')).toBeInTheDocument());
+    expect(screen.getByText('2026-10-08 10:00:00')).toBeInTheDocument();
   });
 });

@@ -64,7 +64,6 @@ interface ScrmAccount {
   loginState: string; // LOGIN / LOGOUT / FROZEN / UNKNOWN
   deviceId?: string;
   personaId?: string;
-  healthScore?: number; // 健康度 (0-100)
   lastLoginAt?: string;
   createTime?: string;
   updateTime?: string;
@@ -547,25 +546,6 @@ export default function Accounts() {
       ellipsis: true,
     },
     {
-      title: '健康度',
-      dataIndex: 'healthScore',
-      key: 'healthScore',
-      width: 160,
-      // 支持按健康度排序 (客户端排序, 缺失值视为 0)
-      sorter: (a, b) => (a.healthScore || 0) - (b.healthScore || 0),
-      render: (value?: number) => {
-        if (value == null) return '-';
-        return (
-          <Progress
-            percent={value}
-            size="small"
-            strokeColor={healthColor(value)}
-            format={(p) => `${p}`}
-          />
-        );
-      },
-    },
-    {
       title: '登录状态',
       dataIndex: 'loginState',
       key: 'loginState',
@@ -960,11 +940,6 @@ export default function Accounts() {
                           <Tag color={cfg.color} icon={cfg.icon}>{cfg.label}</Tag>
                         );
                       })()}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="健康度评分">
-                      {detailAccount.healthScore != null ? (
-                        <Progress percent={detailAccount.healthScore} size="small" strokeColor={healthColor(detailAccount.healthScore)} format={(p) => `${p}`} />
-                      ) : '-'}
                     </Descriptions.Item>
                     <Descriptions.Item label="设备 ID">
                       {detailAccount.deviceId || '-'}

@@ -63,6 +63,13 @@ const enrollStatusConfig: Record<string, { color: string; label: string }> = {
 };
 
 /** 触发事件映射 */
+/** 入旅程方式（后端 entryType: EVENT/MANUAL/API） */
+const entryTypeLabel: Record<string, string> = {
+  EVENT: '事件触发',
+  MANUAL: '手动加入',
+  API: 'API 接入',
+};
+
 const triggerEventConfig: Record<string, string> = {
   CUSTOMER_CREATED: '创建客户',
   ORDER_PAID: '订单支付',
@@ -74,12 +81,12 @@ const triggerEventConfig: Record<string, string> = {
 interface ScrmCustomerJourney {
   id: string;
   journeyName: string;
-  journeyCode: string;
   triggerEvent?: string;
   triggerCondition?: string;
   status?: string;
   description?: string;
-  enrollmentCount?: number;
+  /** 已入组人数（后端字段名 enrolledCount） */
+  enrolledCount?: number;
   completedCount?: number;
   createTime?: string;
   updateTime?: string;
@@ -170,7 +177,7 @@ export default function CustomerJourneys() {
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ triggerEvent: 'CUSTOMER_CREATED' });
+    
     setOpen(true);
   };
 
@@ -245,12 +252,11 @@ export default function CustomerJourneys() {
   /** 表格列 */
   const columns: ColumnsType<ScrmCustomerJourney> = useMemo(() => [
     { title: '旅程名称', dataIndex: 'journeyName', render: (v: string) => <span style={{ fontWeight: 600 }}>{v}</span> },
-    { title: '旅程编码', dataIndex: 'journeyCode', width: 150, render: (v: string) => <Text code>{v}</Text> },
     {
-      title: '触发事件',
-      dataIndex: 'triggerEvent',
-      width: 130,
-      render: (v?: string) => (v ? triggerEventConfig[v] || v : '-'),
+      title: '入旅程方式',
+      dataIndex: 'entryType',
+      width: 120,
+      render: (v?: string) => entryTypeLabel[v || ''] || v || '-',
     },
     {
       title: '状态',
@@ -261,7 +267,7 @@ export default function CustomerJourneys() {
         return <Tag color={cfg.color}>{cfg.label}</Tag>;
       },
     },
-    { title: '入组数', dataIndex: 'enrollmentCount', width: 90, render: (v?: number) => v ?? 0 },
+    { title: '入组数', dataIndex: 'enrolledCount', width: 90, render: (v?: number) => v ?? 0 },
     { title: '完成数', dataIndex: 'completedCount', width: 90, render: (v?: number) => v ?? 0 },
     { title: '创建时间', dataIndex: 'createTime', width: 140, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-') },
     {
@@ -337,14 +343,26 @@ export default function CustomerJourneys() {
           <Form.Item name="journeyName" label="旅程名称" rules={[{ required: true, message: '请输入旅程名称' }]}>
             <Input placeholder="如: 新客首单培育旅程" maxLength={200} />
           </Form.Item>
-          <Form.Item name="journeyCode" label="旅程编码" rules={[{ required: true, message: '请输入旅程编码' }]}>
-            <Input placeholder="如: NEW_CUSTOMER_ONBOARD" maxLength={100} />
-          </Form.Item>
-          <Form.Item name="triggerEvent" label="触发事件" rules={[{ required: true, message: '请输入触发事件' }]}>
-            <Input placeholder="如: CUSTOMER_CREATED / ORDER_PAID" />
-          </Form.Item>
-          <Form.Item name="triggerCondition" label="触发条件 JSON">
+          {/* 后端 ScrmCustomerJourneyDto 没有 journeyCode/triggerEvent/triggerCondition，
+              必填项为 entryCondition，entryType 受 @Pattern 约束 */}
+          <Form.Item
+            name="entryCondition"
+            label="入旅程条件 (JSON)"
+            rules={[{ required: true, message: '请输入入旅程条件' }]}
+          >
             <Input.TextArea rows={2} placeholder='{"lifecycle":"NEW"}' />
+          </Form.Item>
+          <Form.Item name="entryType" label="入旅程方式" initialValue="EVENT">
+            <Select
+              options={[
+                { value: 'EVENT', label: '事件触发' },
+                { value: 'MANUAL', label: '手动加入' },
+                { value: 'API', label: 'API 接入' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name="goal" label="旅程目标">
+            <Input placeholder="如: 提升首单转化率" maxLength={200} />
           </Form.Item>
           <Form.Item name="description" label="描述">
             <Input.TextArea rows={2} placeholder="旅程说明" />

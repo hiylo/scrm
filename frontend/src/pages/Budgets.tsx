@@ -60,9 +60,11 @@ interface ScrmBudgetPlan {
   id: string;
   planName: string;
   planCode: string;
-  budgetPeriod?: string;
+  /** 财年周期（后端字段名 fiscalPeriod） */
+  fiscalPeriod?: string;
   totalBudget?: number;
-  usedBudget?: number;
+  /** 已用预算（后端字段名 spentBudget） */
+  spentBudget?: number;
   remainingBudget?: number;
   status?: string;
   alertThreshold?: number;
@@ -262,16 +264,16 @@ export default function Budgets() {
   const planColumns: ColumnsType<ScrmBudgetPlan> = useMemo(() => [
     { title: '计划名称', dataIndex: 'planName', width: 180, render: (v: string) => <span style={{ fontWeight: 600 }}>{v}</span> },
     { title: '计划编码', dataIndex: 'planCode', width: 140, render: (v: string) => <Text code>{v}</Text> },
-    { title: '周期', dataIndex: 'budgetPeriod', width: 100, render: (v?: string) => v || '-' },
+    { title: '周期', dataIndex: 'fiscalPeriod', width: 100, render: (v?: string) => v || '-' },
     { title: '总预算', dataIndex: 'totalBudget', width: 120, render: (v?: number) => (v != null ? `¥${v.toLocaleString()}` : '-') },
-    { title: '已用', dataIndex: 'usedBudget', width: 110, render: (v?: number) => (v != null ? `¥${v.toLocaleString()}` : '-') },
+    { title: '已用', dataIndex: 'spentBudget', width: 110, render: (v?: number) => (v != null ? `¥${v.toLocaleString()}` : '-') },
     { title: '剩余', dataIndex: 'remainingBudget', width: 110, render: (v?: number) => (v != null ? `¥${v.toLocaleString()}` : '-') },
     {
       title: '使用率',
       key: 'usage',
       width: 180,
       render: (_, r) => {
-        const percent = r.totalBudget ? Math.round(((r.usedBudget || 0) / r.totalBudget) * 100) : 0;
+        const percent = r.totalBudget ? Math.round(((r.spentBudget || 0) / r.totalBudget) * 100) : 0;
         return (
           <Progress
             percent={percent}
@@ -420,7 +422,7 @@ export default function Budgets() {
             <Input placeholder="如: BUDGET_2026" maxLength={50} />
           </Form.Item>
           <Space size={16} wrap>
-            <Form.Item name="budgetPeriod" label="周期">
+            <Form.Item name="fiscalPeriod" label="周期">
               <Input placeholder="如: FY2026" style={{ width: 140 }} />
             </Form.Item>
             <Form.Item name="totalBudget" label="总预算 (¥)" rules={[{ required: true }]}>

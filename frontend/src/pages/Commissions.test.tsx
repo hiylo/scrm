@@ -41,12 +41,12 @@ function page<T>(rows: T[], total = rows.length) {
 function commission(id: string, overrides: Record<string, unknown> = {}) {
   return {
     id,
-    commissionNo: `YJ-2026${id}`,
+    recordNo: `YJ-2026${id}`,
     salespersonId: 'u1',
-    salespersonName: '小张',
-    commissionType: 'SALES',
+    salesPersonName: '小张',
+    bonusAmount: 200,
     commissionAmount: 500,
-    orderNo: 'DD-100',
+    orderId: '100',
     status: 'CALCULATED',
     createTime: '2026-10-08T10:00:00',
     ...overrides,

@@ -31,7 +31,8 @@ interface ExternalContact {
 interface GroupChat {
   chatId?: string;
   name?: string;
-  owner?: string;
+  /** 群主（后端字段名 ownerUserId，不是 owner） */
+  ownerUserId?: string;
   memberCount?: number;
 }
 
@@ -250,8 +251,8 @@ function Wework({ defaultTab = 'contacts', singleView = false }: WeworkProps) {
     },
     {
       title: '群主',
-      dataIndex: 'owner',
-      key: 'owner',
+      dataIndex: 'ownerUserId',
+      key: 'ownerUserId',
       width: 150,
       render: (owner: string) => owner || '-',
     },

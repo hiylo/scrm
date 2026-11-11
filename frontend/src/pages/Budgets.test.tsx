@@ -43,9 +43,9 @@ function plan(id: string, overrides: Record<string, unknown> = {}) {
     id,
     planName: `计划${id}`,
     planCode: `B-${id}`,
-    budgetPeriod: 'FY2026',
+    fiscalPeriod: 'FY2026',
     totalBudget: 100000,
-    usedBudget: 30000,
+    spentBudget: 30000,
     remainingBudget: 70000,
     status: 'DRAFT',
     alertThreshold: 80,
@@ -67,6 +67,20 @@ beforeEach(() => {
 });
 
 describe('Budgets', () => {
+  it('周期与已用预算按后端 fiscalPeriod/spentBudget 渲染', async () => {
+    get.mockImplementation((url: string) => {
+      if (url.includes('/budgets/plans/list')) return Promise.resolve(page([plan('1')]));
+      return Promise.resolve(page([]));
+    });
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('计划1')).toBeInTheDocument());
+    // budgetPeriod/usedBudget 是后端不存在的字段名，写错这两列就是空白
+    expect(screen.getByText('FY2026')).toBeInTheDocument();
+    expect(screen.getByText('¥30,000')).toBeInTheDocument();
+  });
+
   it('加载预算计划列表', async () => {
     get.mockImplementation((url: string) => {
       if (url.includes('/plans/list')) return Promise.resolve(page([plan('1'), plan('2')]));

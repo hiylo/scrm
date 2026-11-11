@@ -58,7 +58,8 @@ interface ScrmAttributionModel {
   modelName: string;
   modelCode: string;
   modelType: string;
-  attributionWindowDays?: number;
+  /** 回溯窗口天数（后端字段名 lookbackDays，不是 attributionWindowDays） */
+  lookbackDays?: number;
   status: string;
   description?: string;
   createTime?: string;
@@ -163,7 +164,7 @@ export default function Attribution() {
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ modelType: 'LAST_TOUCH', attributionWindowDays: 30 });
+    form.setFieldsValue({ modelType: 'LAST_TOUCH', lookbackDays: 30 });
     setOpen(true);
   };
 
@@ -240,7 +241,7 @@ export default function Attribution() {
         return <Tag color={cfg.color}>{cfg.label}</Tag>;
       },
     },
-    { title: '归因窗口', dataIndex: 'attributionWindowDays', width: 100, render: (v?: number) => (v != null ? `${v} 天` : '-') },
+    { title: '归因窗口', dataIndex: 'lookbackDays', width: 100, render: (v?: number) => (v != null ? `${v} 天` : '-') },
     {
       title: '状态',
       dataIndex: 'status',
@@ -356,7 +357,7 @@ export default function Attribution() {
             <Form.Item name="modelType" label="归因类型" rules={[{ required: true }]}>
               <Select style={{ width: 180 }} options={Object.entries(modelTypeConfig).map(([v, c]) => ({ value: v, label: c.label }))} />
             </Form.Item>
-            <Form.Item name="attributionWindowDays" label="归因窗口 (天)">
+            <Form.Item name="lookbackDays" label="归因窗口 (天)">
               <InputNumber min={1} style={{ width: 140 }} />
             </Form.Item>
           </Space>

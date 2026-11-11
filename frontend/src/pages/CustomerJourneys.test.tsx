@@ -42,10 +42,10 @@ function journey(id: string, overrides: Record<string, unknown> = {}) {
   return {
     id,
     journeyName: `旅程${id}`,
-    journeyCode: `J-${id}`,
-    triggerEvent: 'CUSTOMER_CREATED',
+
+    entryType: 'EVENT',
     status: 'DRAFT',
-    enrollmentCount: 0,
+    enrolledCount: 0,
     completedCount: 0,
     createTime: '2026-10-08T10:00:00',
     ...overrides,
@@ -85,10 +85,22 @@ describe('CustomerJourneys', () => {
     fireEvent.click(screen.getByRole('button', { name: cn('新建旅程') }));
     await waitFor(() => expect(screen.getByLabelText('旅程名称')).toBeInTheDocument());
     await userEvent.type(screen.getByLabelText('旅程名称'), '新客培育');
-    await userEvent.type(screen.getByLabelText('旅程编码'), 'ONBOARD');
-    await userEvent.type(screen.getByLabelText('触发事件'), 'CUSTOMER_CREATED');
+    // 后端必填 entryCondition；journeyCode/triggerEvent 后端并不存在，表单已移除
+    // userEvent.type 会把 { } 当成键盘描述符，JSON 内容改用 fireEvent.change
+    fireEvent.change(screen.getByLabelText('入旅程条件 (JSON)'), {
+      target: { value: '{"lifecycle":"NEW"}' },
+    });
     fireEvent.click(screen.getByRole('button', { name: cn('确定') }));
-    await waitFor(() => expect(post).toHaveBeenCalledWith('/scrm/customer-journeys', expect.objectContaining({ journeyName: '新客培育', journeyCode: 'ONBOARD' })));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        '/scrm/customer-journeys',
+        expect.objectContaining({ journeyName: '新客培育', entryCondition: '{"lifecycle":"NEW"}' }),
+      ),
+    );
+    // 不得再提交后端不识别的字段
+    const payload = post.mock.calls.find((c) => c[0] === '/scrm/customer-journeys')?.[1] as Record<string, unknown>;
+    expect(payload.journeyCode).toBeUndefined();
+    expect(payload.triggerEvent).toBeUndefined();
   });
 
   it('查看旅程步骤: 打开抽屉加载 steps', async () => {

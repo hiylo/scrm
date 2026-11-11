@@ -90,9 +90,11 @@ interface ScrmWebhookLog {
   webhookName?: string;
   eventType?: string;
   status?: string;
-  responseCode?: number;
+  /** HTTP 响应码（后端字段名 responseStatus） */
+  responseStatus?: number;
   errorMessage?: string;
-  deliveredAt?: string;
+  /** 发送时间（后端字段名 sentAt） */
+  sentAt?: string;
 }
 
 /** Spring Page 分页响应 */
@@ -328,9 +330,9 @@ export default function Webhooks() {
         return <Tag color={cfg.color}>{cfg.label}</Tag>;
       },
     },
-    { title: '响应码', dataIndex: 'responseCode', width: 90, render: (v?: number) => v ?? '-' },
+    { title: '响应码', dataIndex: 'responseStatus', width: 90, render: (v?: number) => v ?? '-' },
     { title: '错误信息', dataIndex: 'errorMessage', ellipsis: true, render: (v?: string) => v || '-' },
-    { title: '投递时间', dataIndex: 'deliveredAt', width: 150, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm:ss') : '-') },
+    { title: '投递时间', dataIndex: 'sentAt', width: 150, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm:ss') : '-') },
     // eslint-disable-next-line react-hooks/exhaustive-deps
   ], []);
 

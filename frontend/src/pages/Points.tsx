@@ -394,9 +394,10 @@ export default function Points() {
         return <span style={{ color, fontWeight: 600 }}>{v > 0 ? `+${v}` : v}</span>;
       },
     },
-    { title: '变动后余额', dataIndex: 'balance', width: 110, render: (v?: number) => v ?? '-' },
-    { title: '原因', dataIndex: 'reason', ellipsis: true, render: (v?: string) => v || '-' },
-    { title: '时间', dataIndex: 'createTime', width: 150, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-') },
+    // 后端 ScrmPointsTransactionEntity: balanceAfter / description / createdAt
+    { title: '变动后余额', dataIndex: 'balanceAfter', width: 110, render: (v?: number) => v ?? '-' },
+    { title: '原因', dataIndex: 'description', ellipsis: true, render: (v?: string) => v || '-' },
+    { title: '时间', dataIndex: 'createdAt', width: 150, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-') },
   ], []);
 
   /** 兑换商品列 */

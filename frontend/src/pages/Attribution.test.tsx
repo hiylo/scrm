@@ -44,7 +44,7 @@ function model(id: string, overrides: Record<string, unknown> = {}) {
     modelName: `模型${id}`,
     modelCode: `ATTR-${id}`,
     modelType: 'LAST_TOUCH',
-    attributionWindowDays: 30,
+    lookbackDays: 30,
     status: 'DRAFT',
     ...overrides,
   } as never;
@@ -59,6 +59,19 @@ beforeEach(() => {
 });
 
 describe('Attribution', () => {
+  it('归因窗口按后端 lookbackDays 渲染（不是 attributionWindowDays）', async () => {
+    get.mockImplementation((url: string) => {
+      if (url.includes('/attribution/models/list')) return Promise.resolve(page([model('1')]));
+      return Promise.resolve(page([]));
+    });
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('模型1')).toBeInTheDocument());
+    // 字段名写错时这一列会渲染 '-'，断言渲染 30 天才能锁住契约
+    expect(screen.getByText('30 天')).toBeInTheDocument();
+  });
+
   it('加载归因模型列表', async () => {
     get.mockImplementation((url: string) => {
       if (url.includes('/models/list')) return Promise.resolve(page([model('1'), model('2')]));

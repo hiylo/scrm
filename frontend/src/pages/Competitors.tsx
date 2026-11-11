@@ -65,9 +65,11 @@ interface ScrmCompetitorProduct {
   competitorId: string;
   productName: string;
   productCategory?: string;
-  price?: number;
+  /** 现价（后端字段名，不是 price） */
+  currentPrice?: number;
   currency?: string;
-  lastPriceChangeAt?: string;
+  /** 最近调价日期（后端字段名，不是 lastPriceChangeAt；类型为 LocalDate） */
+  lastPriceChangeDate?: string;
 }
 
 /** Spring Page 分页响应 */
@@ -310,9 +312,9 @@ export default function Competitors() {
           columns={[
             { title: '产品名称', dataIndex: 'productName', render: (v: string) => <span style={{ fontWeight: 600 }}>{v}</span> },
             { title: '分类', dataIndex: 'productCategory', width: 100, render: (v?: string) => v || '-' },
-            { title: '价格', dataIndex: 'price', width: 100, render: (v?: number) => (v != null ? `¥${v.toLocaleString()}` : '-') },
+            { title: '价格', dataIndex: 'currentPrice', width: 100, render: (v?: number) => (v != null ? `¥${v.toLocaleString()}` : '-') },
             { title: '币种', dataIndex: 'currency', width: 70, render: (v?: string) => v || '-' },
-            { title: '最近调价', dataIndex: 'lastPriceChangeAt', width: 140, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD') : '-') },
+            { title: '最近调价', dataIndex: 'lastPriceChangeDate', width: 140, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD') : '-') },
           ]}
         />
       </Drawer>

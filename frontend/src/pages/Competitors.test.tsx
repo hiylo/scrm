@@ -108,7 +108,7 @@ describe('Competitors', () => {
     get.mockImplementation((url: string) => {
       if (url.startsWith('/scrm/competitors/list')) return Promise.resolve(page([comp('1')]));
       if (url.includes('/products/by-competitor/')) {
-        return Promise.resolve(page([{ id: 'p1', competitorId: '1', productName: '企业版', price: 9999, currency: 'CNY' }]));
+        return Promise.resolve(page([{ id: 'p1', competitorId: '1', productName: '企业版', currentPrice: 9999, currency: 'CNY' }]));
       }
       return Promise.resolve(page([]));
     });

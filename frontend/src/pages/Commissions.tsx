@@ -54,10 +54,12 @@ const commissionTypeConfig: Record<string, { color: string; label: string }> = {
 /** 佣金记录 */
 interface ScrmCommissionRecord {
   id: string;
-  commissionNo: string;
+  /** 佣金记录号（后端字段名 recordNo） */
+  recordNo: string;
   salespersonId?: string;
   salespersonName?: string;
-  commissionType?: string;
+  /** 奖金（后端无 commissionType，用 bonusAmount 反映浮动部分） */
+  bonusAmount?: number;
   commissionAmount?: number;
   orderNo?: string;
   status: string;
@@ -164,18 +166,15 @@ export default function Commissions() {
 
   /** 表格列 */
   const columns: ColumnsType<ScrmCommissionRecord> = useMemo(() => [
-    { title: '佣金单号', dataIndex: 'commissionNo', width: 140, render: (v: string) => <Text code>{v}</Text> },
-    { title: '业务员', dataIndex: 'salespersonName', width: 110, render: (v?: string) => v || '-' },
+    { title: '佣金单号', dataIndex: 'recordNo', width: 140, render: (v: string) => (v ? <Text code>{v}</Text> : '-') },
+    { title: '业务员', dataIndex: 'salesPersonName', width: 110, render: (v?: string) => v || '-' },
     {
-      title: '佣金类型',
-      dataIndex: 'commissionType',
+      title: '奖金',
+      dataIndex: 'bonusAmount',
       width: 110,
-      render: (v?: string) => {
-        const cfg = commissionTypeConfig[v || ''] || { color: 'default', label: v || '-' };
-        return <Tag color={cfg.color}>{cfg.label}</Tag>;
-      },
+      render: (v?: number) => (v != null ? `¥${v.toLocaleString()}` : '-'),
     },
-    { title: '关联订单', dataIndex: 'orderNo', width: 120, render: (v?: string) => v || '-' },
+    { title: '关联订单', dataIndex: 'orderId', width: 120, render: (v?: string) => (v ? <Text code>{v}</Text> : '-') },
     { title: '佣金金额', dataIndex: 'commissionAmount', width: 110, render: (v?: number) => (v != null ? `¥${v.toLocaleString()}` : '-') },
     {
       title: '状态',
