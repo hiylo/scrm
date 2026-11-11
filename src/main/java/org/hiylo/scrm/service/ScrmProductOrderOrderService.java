@@ -160,6 +160,13 @@ public class ScrmProductOrderOrderService {
         order.setShippingPhone(createDto.getShippingPhone());
         order.setRemark(createDto.getRemark());
         order.setCreatedBy(createDto.getCreatedBy());
+        // total_amount 在库中是 NOT NULL，而真实金额要等订单项算完才能确定。
+        // 首次 save 仅用于拿到自增 ID 供订单项关联，这里先占位 0，
+        // 待订单项汇总后再覆盖为真实金额。
+        order.setTotalAmount(0d);
+        order.setDiscountAmount(0d);
+        order.setShippingAmount(0d);
+        order.setTaxAmount(0d);
         order = orderRepository.save(order);
 
         // 创建订单项并扣库存

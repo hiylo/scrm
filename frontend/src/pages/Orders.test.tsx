@@ -44,7 +44,7 @@ function order(id: string, overrides: Record<string, unknown> = {}) {
     orderNo: `DD-2026${id}`,
     customerId: '1',
     customerName: '张三',
-    orderType: 'PRODUCT',
+    orderType: 'SALE',
     productName: '基础套餐',
     orderAmount: 2000,
     orderStatus: 'PENDING',
@@ -74,7 +74,7 @@ describe('Orders', () => {
     expect(screen.getByText('DD-20262')).toBeInTheDocument();
   });
 
-  it('新建订单: 打开弹窗填写后 POST', async () => {
+  it('新建订单: 提交 items 且订单类型落在后端白名单内', async () => {
     get.mockImplementation((url: string) => {
       if (url.startsWith('/scrm/orders/list')) return Promise.resolve(page([]));
       return Promise.resolve(page([]));
@@ -87,8 +87,21 @@ describe('Orders', () => {
     await waitFor(() => expect(screen.getByLabelText('客户 ID')).toBeInTheDocument());
     await userEvent.type(screen.getByLabelText('客户 ID'), '1');
     await userEvent.type(screen.getByLabelText('订单金额 (¥)'), '2000');
+    await userEvent.type(screen.getByLabelText('产品名称'), '服务套餐');
+    await userEvent.type(screen.getByLabelText('单价 (¥)'), '1000');
     fireEvent.click(screen.getByRole('button', { name: cn('确定') }));
-    await waitFor(() => expect(post).toHaveBeenCalledWith('/scrm/orders', expect.objectContaining({ customerId: '1', orderAmount: 2000 })));
+
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/scrm/orders', expect.anything()));
+    const payload = post.mock.calls.find((c) => c[0] === '/scrm/orders')?.[1] as Record<string, unknown>;
+
+    // 后端 @NotEmpty：items 必填，且不接受扁平的 productName/unitPrice
+    expect(Array.isArray(payload.items)).toBe(true);
+    expect((payload.items as unknown[]).length).toBe(1);
+    expect(payload.productName).toBeUndefined();
+    expect(payload.unitPrice).toBeUndefined();
+
+    // 后端 @Pattern：orderType 只允许 SALE/REFUND/EXCHANGE/PRE_ORDER
+    expect(['SALE', 'REFUND', 'EXCHANGE', 'PRE_ORDER']).toContain(payload.orderType);
   });
 
   it('确认订单: 待确认调用 confirm', async () => {

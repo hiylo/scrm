@@ -41,6 +41,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -362,6 +363,31 @@ class ScrmProductOrderServiceTest {
         assertThat(result.getCustomerName()).isEqualTo("Alice");
         // 无关联商品, 不扣库存
         verify(productRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("createOrder: 首次落库时金额字段不能为 null（total_amount 为 NOT NULL）")
+    void createOrder_firstSaveFillsNotNullAmounts() throws ScrmException {
+        // 回归保护：曾因首次 save 前未给 totalAmount 赋值，导致真实库报
+        // null value in column "total_amount" violates not-null constraint，
+        // 任何订单都创建失败；mock 仓库不校验约束，所以必须显式断言首存内容。
+        ScrmOrderCreateDto dto = buildOrderCreateDto();
+        dto.setItems(List.of(buildOrderItemDto("测试商品", 10.0, 2)));
+        when(orderRepository.countByOrderNoStartingWith(anyString())).thenReturn(0L);
+        when(customerRepository.findById(20L))
+                .thenReturn(Optional.of(buildCustomerEntity(20L, "Alice")));
+        when(orderRepository.save(any(ScrmOrderEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(orderItemRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.createOrder(dto);
+
+        ArgumentCaptor<ScrmOrderEntity> captor = ArgumentCaptor.forClass(ScrmOrderEntity.class);
+        verify(orderRepository, atLeastOnce()).save(captor.capture());
+        ScrmOrderEntity firstSaved = captor.getAllValues().get(0);
+        assertThat(firstSaved.getTotalAmount()).as("首次 save 的 totalAmount").isNotNull();
+        assertThat(firstSaved.getDiscountAmount()).as("首次 save 的 discountAmount").isNotNull();
+        assertThat(firstSaved.getShippingAmount()).as("首次 save 的 shippingAmount").isNotNull();
+        assertThat(firstSaved.getTaxAmount()).as("首次 save 的 taxAmount").isNotNull();
     }
 
     @Test

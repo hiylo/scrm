@@ -78,8 +78,12 @@ interface Page<T> {
 
 /** 订单类型映射 */
 const orderTypeConfig: Record<string, { label: string; color: string }> = {
-  PRODUCT: { label: '产品订单', color: 'blue' },
-  SERVICE: { label: '服务订单', color: 'green' },
+  // 与后端 ScrmOrderDto.orderType 的 @Pattern 白名单保持一致：
+  // SALE|REFUND|EXCHANGE|PRE_ORDER，写错会导致新建订单 400
+  SALE: { label: '销售订单', color: 'blue' },
+  REFUND: { label: '退款订单', color: 'red' },
+  EXCHANGE: { label: '换货订单', color: 'purple' },
+  PRE_ORDER: { label: '预售订单', color: 'cyan' },
 };
 
 /** 订单状态映射 (状态机: PENDING→CONFIRMED→PAID→SHIPPED→DELIVERED→COMPLETED) */
@@ -148,7 +152,7 @@ export default function Orders() {
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ orderType: 'PRODUCT', productQuantity: 1 });
+    form.setFieldsValue({ orderType: 'SALE', productQuantity: 1 });
     setOpen(true);
   };
 
@@ -166,7 +170,22 @@ export default function Orders() {
         await apiClient.put(`/scrm/orders/${editing.id}`, values);
         message.success('订单已更新');
       } else {
-        await apiClient.post('/scrm/orders', values);
+        // 后端创建订单要求 items 非空（@NotEmpty），且不接受扁平的
+        // productName/productQuantity/unitPrice，这里组装成订单项。
+        const { productName, productQuantity, unitPrice, ...rest } = values;
+        const item =
+          productName && unitPrice != null
+            ? [
+                {
+                  productName,
+                  quantity: productQuantity ?? 1,
+                  unitPrice,
+                  subtotal:
+                    unitPrice * (productQuantity ?? 1),
+                },
+              ]
+            : [];
+        await apiClient.post('/scrm/orders', { ...rest, items: item });
         message.success('订单已创建');
       }
       setOpen(false);
@@ -338,14 +357,18 @@ export default function Orders() {
               <InputNumber min={0} style={{ width: 150 }} />
             </Form.Item>
           </Space>
-          <Form.Item name="productName" label="产品名称">
+          <Form.Item
+            name="productName"
+            label="产品名称"
+            rules={[{ required: true, message: '请填写产品名称（后端订单项必填）' }]}
+          >
             <Input placeholder="产品名称" />
           </Form.Item>
           <Space size={16} wrap>
             <Form.Item name="productQuantity" label="数量">
               <InputNumber min={1} style={{ width: 120 }} />
             </Form.Item>
-            <Form.Item name="unitPrice" label="单价 (¥)">
+            <Form.Item name="unitPrice" label="单价 (¥)" rules={[{ required: true, message: '请填写单价' }]}>
               <InputNumber min={0} style={{ width: 120 }} />
             </Form.Item>
           </Space>
