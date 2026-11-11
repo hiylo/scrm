@@ -61,11 +61,16 @@ interface ScrmCustomerLtv {
   modelId?: string;
   customerId?: string;
   customerName?: string;
+  /** 预测 LTV */
   predictedLtv?: number;
-  remainingLtv?: number;
-  predictedLifespanMonths?: number;
-  churnRisk?: number;
-  calcTime?: string;
+  /** 历史 LTV */
+  historicalLtv?: number;
+  /** 流失概率 0-1（后端字段名 churnProbability，不是 churnRisk） */
+  churnProbability?: number;
+  /** 价值分层 */
+  valueTier?: string;
+  /** 计算时间（后端字段名 calculatedAt，不是 calcTime） */
+  calculatedAt?: string;
 }
 
 /** 同期群留存数据 */
@@ -230,12 +235,13 @@ export default function LtvPrediction() {
     setDetailModel(record);
     setPredLoading(true);
     try {
+      // 后端路由是 GET /scrm/ltv/list（无 customers 子路径），
+      // 且不支持按 modelId 过滤，这里按分页拉全部预测结果。
       const params = new URLSearchParams({
-        modelId: String(record.id),
         page: String(targetPage),
         size: String(predPageSize),
       });
-      const data = await apiClient.get<Page<ScrmCustomerLtv>>(`/scrm/ltv/customers/list?${params.toString()}`);
+      const data = await apiClient.get<Page<ScrmCustomerLtv>>(`/scrm/ltv/list?${params.toString()}`);
       const rows = data.content || [];
       setPredictions(targetPage === 0 ? rows : prev => [...prev, ...rows]);
       setPredTotal(data.totalElements || 0);
@@ -412,16 +418,16 @@ export default function LtvPrediction() {
           locale={{ emptyText: <Empty description="暂无预测数据" /> }}
           columns={[
             { title: '客户', dataIndex: 'customerName', width: 120, render: (v?: string, r?: ScrmCustomerLtv) => v || r?.customerId || '-' },
+            { title: '历史 LTV', dataIndex: 'historicalLtv', width: 110, render: (v?: number) => (v != null ? `¥${v.toLocaleString()}` : '-') },
             { title: '预测 LTV', dataIndex: 'predictedLtv', width: 110, render: (v?: number) => (v != null ? <Text strong>¥{v.toLocaleString()}</Text> : '-') },
-            { title: '剩余价值', dataIndex: 'remainingLtv', width: 100, render: (v?: number) => (v != null ? `¥${v.toLocaleString()}` : '-') },
-            { title: '预测生命周期', dataIndex: 'predictedLifespanMonths', width: 110, render: (v?: number) => (v != null ? `${v} 月` : '-') },
+            { title: '价值分层', dataIndex: 'valueTier', width: 100, render: (v?: string) => (v ? <Tag color="blue">{v}</Tag> : '-') },
             {
-              title: '流失风险',
-              dataIndex: 'churnRisk',
+              title: '流失概率',
+              dataIndex: 'churnProbability',
               width: 100,
               render: (v?: number) => (v != null ? <Tag color={riskColor(v)}>{(v * 100).toFixed(0)}%</Tag> : '-'),
             },
-            { title: '计算时间', dataIndex: 'calcTime', width: 150, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-') },
+            { title: '计算时间', dataIndex: 'calculatedAt', width: 150, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-') },
           ]}
         />
         {predictions.length < predTotal && (

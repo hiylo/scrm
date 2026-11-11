@@ -91,13 +91,17 @@ interface ScrmRfmAnalysis {
   configId?: string;
   customerId?: string;
   customerName?: string;
-  recencyScore?: number;
-  frequencyScore?: number;
-  monetaryScore?: number;
-  rfmScore?: string;
-  segment?: string;
+  /** R 分值（后端字段名 rScore，不是 recencyScore） */
+  rScore?: number;
+  /** F 分值（后端字段名 fScore） */
+  fScore?: number;
+  /** M 分值（后端字段名 mScore） */
+  mScore?: number;
+  /** RFM 分群标识（后端字段名 rfmSegment，不是 rfmScore） */
+  rfmSegment?: string;
   segmentName?: string;
-  calcTime?: string;
+  /** 计算时间（后端字段名 calculatedAt） */
+  calculatedAt?: string;
 }
 
 /** Spring Page 分页响应 */
@@ -223,10 +227,12 @@ export default function RfmAnalysis() {
       }
     }
     try {
+      // 真实路径是 GET /scrm/rfm/analysis/list；后端不支持按 configId 过滤，
+      // 只支持按分群 segmentCode / segmentCategory 过滤。
       const params = new URLSearchParams({ page: String(targetPage), size: String(customerPageSize) });
-      if (segmentFilter) params.set('segment', segmentFilter);
+      if (segmentFilter) params.set('segmentCode', segmentFilter);
       const data = await apiClient.get<Page<ScrmRfmAnalysis>>(
-        `/scrm/rfm/configs/${config.id}/customers/list?${params.toString()}`,
+        `/scrm/rfm/analysis/list?${params.toString()}`,
       );
       setCustomers(prev => (targetPage === 0 ? data.content || [] : [...prev, ...(data.content || [])]));
       setCustomersTotal(data.totalElements || 0);
@@ -376,17 +382,19 @@ export default function RfmAnalysis() {
           locale={{ emptyText: <Empty description="暂无客户数据, 请先触发计算" /> }}
           columns={[
             { title: '客户', dataIndex: 'customerName', width: 120, render: (v?: string, r?: ScrmRfmAnalysis) => v || r?.customerId || '-' },
-            { title: 'R', dataIndex: 'recencyScore', width: 60, render: (v?: number) => v ?? '-' },
-            { title: 'F', dataIndex: 'frequencyScore', width: 60, render: (v?: number) => v ?? '-' },
-            { title: 'M', dataIndex: 'monetaryScore', width: 60, render: (v?: number) => v ?? '-' },
-            { title: 'RFM', dataIndex: 'rfmScore', width: 80, render: (v?: string) => <Text code>{v || '-'}</Text> },
+            { title: 'R', dataIndex: 'rScore', width: 60, render: (v?: number) => v ?? '-' },
+            { title: 'F', dataIndex: 'fScore', width: 60, render: (v?: number) => v ?? '-' },
+            { title: 'M', dataIndex: 'mScore', width: 60, render: (v?: number) => v ?? '-' },
+            { title: 'RFM', dataIndex: 'rfmSegment', width: 80, render: (v?: string) => <Text code>{v || '-'}</Text> },
             {
               title: '分群',
-              dataIndex: 'segment',
+              dataIndex: 'rfmSegment',
               width: 130,
-              render: (v?: string, r?: ScrmRfmAnalysis) => <Tag color={segmentColor(v)}>{r?.segmentName || v || '-'}</Tag>,
+              render: (v?: string, r?: ScrmRfmAnalysis) => (
+                <Tag color={segmentColor(v)}>{r?.segmentName || v || '-'}</Tag>
+              ),
             },
-            { title: '计算时间', dataIndex: 'calcTime', width: 150, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-') },
+            { title: '计算时间', dataIndex: 'calculatedAt', width: 150, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-') },
           ]}
         />
         {customers.length < customersTotal && (

@@ -110,8 +110,11 @@ describe('RfmAnalysis', () => {
       if (url.includes('/segments')) {
         return Promise.resolve([{ id: 's1', configId: '1', segmentCode: 'CHAMPIONS', segmentName: '忠诚客户', customerCount: 50 }]);
       }
-      if (url.includes('/customers/list')) {
-        return Promise.resolve(page([{ id: 'a1', configId: '1', customerId: '1', customerName: '张三', rfmScore: '555', segment: 'CHAMPIONS', segmentName: '忠诚客户' }]));
+      // 真实路径 /scrm/rfm/analysis/list，字段对齐 ScrmRfmAnalysisDto
+      if (url.includes('/analysis/list')) {
+        return Promise.resolve(page([
+          { id: 'a1', configId: '1', customerId: '1', customerName: '张三', rScore: 5, fScore: 5, mScore: 5, rfmSegment: '555', segmentName: '忠诚客户', calculatedAt: '2026-10-08T10:00:00' },
+        ]));
       }
       return Promise.resolve(page([]));
     });
@@ -120,7 +123,34 @@ describe('RfmAnalysis', () => {
     await waitFor(() => expect(screen.getByText('配置1')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: cn('明细') }));
 
-    await waitFor(() => expect(screen.getByText('忠诚客户')).toBeInTheDocument());
-    expect(screen.getByText('张三')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('张三')).toBeInTheDocument());
+
+    // 契约断言：R/F/M/RFM 与计算时间必须来自后端真实字段
+    // （recencyScore/calcTime 等错误命名会让这些格子渲染成 '-'）
+    const row = screen.getByText('张三').closest('tr') as HTMLElement;
+    const cells = [...row.querySelectorAll('td')].map((td) => td.textContent?.trim());
+    expect(cells).toContain('5');            // rScore / fScore / mScore
+    expect(cells).toContain('555');          // rfmSegment
+    expect(cells).toContain('2026-10-08 10:00'); // calculatedAt
+    expect(cells).not.toContain('-');
+  });
+
+  it('客户明细走 /rfm/analysis/list，不再请求不存在的 customers/list', async () => {
+    get.mockImplementation((url: string) => {
+      if (url.includes('/configs/list')) return Promise.resolve(page([config('1')]));
+      if (url.includes('/segments')) return Promise.resolve([] as never);
+      if (url.includes('/analysis/list')) return Promise.resolve(page([]));
+      return Promise.resolve(page([]));
+    });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('配置1')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: cn('明细') }));
+
+    await waitFor(() =>
+      expect(get).toHaveBeenCalledWith(expect.stringContaining('/scrm/rfm/analysis/list?')),
+    );
+    // /configs/{id}/customers/list 后端不存在，会落到 SPA 兜底返回 HTML
+    expect(get).not.toHaveBeenCalledWith(expect.stringContaining('/customers/list'));
   });
 });

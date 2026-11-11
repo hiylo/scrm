@@ -124,8 +124,11 @@ describe('LtvPrediction', () => {
     get.mockImplementation((url: string) => {
       if (url.includes('/models/list')) return Promise.resolve(page([model('1', { status: 'PUBLISHED' })]));
       if (url.includes('/cohorts/list')) return Promise.resolve(page([]));
-      if (url.includes('/customers/list')) {
-        return Promise.resolve(page([{ id: 'p1', customerId: '1', customerName: '张三', predictedLtv: 5000, predictedLifespanMonths: 12, churnRisk: 0.2 }]));
+      // 真实路径 /scrm/ltv/list，字段对齐 ScrmCustomerLtvDto
+      if (url.includes('/ltv/list')) {
+        return Promise.resolve(page([
+          { id: 'p1', customerId: '1', customerName: '张三', historicalLtv: 3000, predictedLtv: 5000, valueTier: 'HIGH', churnProbability: 0.2, calculatedAt: '2026-10-08T10:00:00' },
+        ]));
       }
       return Promise.resolve(page([]));
     });
@@ -135,6 +138,18 @@ describe('LtvPrediction', () => {
     fireEvent.click(screen.getByRole('button', { name: cn('预测') }));
 
     await waitFor(() => expect(screen.getByText('张三')).toBeInTheDocument());
-    expect(screen.getByText('¥5,000')).toBeInTheDocument();
+
+    // 契约断言：预测明细必须走 /scrm/ltv/list，
+    // /ltv/customers/list 后端不存在（会返回 SPA 兜底 HTML）
+    expect(get).toHaveBeenCalledWith(expect.stringContaining('/scrm/ltv/list?'));
+    expect(get).not.toHaveBeenCalledWith(expect.stringContaining('/ltv/customers/list'));
+
+    // 字段名对齐 ScrmCustomerLtvDto：predictedLtv / churnProbability / calculatedAt
+    const row = screen.getByText('张三').closest('tr') as HTMLElement;
+    const cells = [...row.querySelectorAll('td')].map((td) => td.textContent?.trim());
+    expect(cells).toContain('¥5,000');        // predictedLtv
+    expect(cells).toContain('¥3,000');        // historicalLtv
+    expect(cells).toContain('20%');           // churnProbability
+    expect(cells).toContain('2026-10-08 10:00'); // calculatedAt
   });
 });
