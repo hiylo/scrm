@@ -65,24 +65,30 @@ beforeEach(() => {
 
 describe('DataDictionaries', () => {
   it('加载字典列表', async () => {
-    get.mockImplementation((url: string) => {
+    post.mockImplementation((url: string) => {
       if (url.startsWith('/scrm/data-dictionaries/list')) return Promise.resolve(page([dict('1'), dict('2')]));
-      return Promise.resolve(page([]));
+      return Promise.resolve(undefined);
     });
+    get.mockResolvedValue(page([]) as never);
 
     renderPage();
 
     await waitFor(() => expect(screen.getByText('字典1')).toBeInTheDocument());
     expect(screen.getByText('字典2')).toBeInTheDocument();
+    // 契约：后端字典列表是 POST /list；若改回 GET 会落到 /{id} 报「参数 id 类型错误」
+    expect(post).toHaveBeenCalledWith(
+      expect.stringContaining('/scrm/data-dictionaries/list'),
+      expect.anything(),
+    );
+    expect(get).not.toHaveBeenCalledWith(expect.stringContaining('/data-dictionaries/list'));
   });
 
   it('新建字典: 打开弹窗填写后 POST', async () => {
-    get.mockImplementation((url: string) => {
+    post.mockImplementation((url: string) => {
       if (url.startsWith('/scrm/data-dictionaries/list')) return Promise.resolve(page([]));
-      return Promise.resolve(page([]));
+      return Promise.resolve(dict('1'));
     });
-    post.mockResolvedValue(dict('1'));
-
+    get.mockResolvedValue(page([]) as never);
     renderPage();
 
     fireEvent.click(screen.getByRole('button', { name: cn('新建字典') }));
@@ -94,10 +100,13 @@ describe('DataDictionaries', () => {
   });
 
   it('查看字典项: 打开抽屉加载 items', async () => {
-    get.mockImplementation((url: string) => {
+    post.mockImplementation((url: string) => {
       if (url.startsWith('/scrm/data-dictionaries/list')) return Promise.resolve(page([dict('1')]));
+      return Promise.resolve(undefined);
+    });
+    get.mockImplementation((url: string) => {
       if (url.includes('/items')) return Promise.resolve([item('1'), item('2')]);
-      return Promise.resolve(page([]));
+      return Promise.resolve(page([]) as never);
     });
 
     renderPage();
@@ -109,13 +118,14 @@ describe('DataDictionaries', () => {
   });
 
   it('新增字典项: drawTopen 弹窗填写后 POST items', async () => {
-    get.mockImplementation((url: string) => {
+    post.mockImplementation((url: string) => {
       if (url.startsWith('/scrm/data-dictionaries/list')) return Promise.resolve(page([dict('1')]));
-      if (url.includes('/items')) return Promise.resolve([item('1')]);
-      return Promise.resolve(page([]));
+      return Promise.resolve(item('2'));
     });
-    post.mockResolvedValue(item('2'));
-
+    get.mockImplementation((url: string) => {
+      if (url.includes('/items')) return Promise.resolve([item('1')]);
+      return Promise.resolve(page([]) as never);
+    });
     renderPage();
     await waitFor(() => expect(screen.getByText('字典1')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: cn('项') }));

@@ -303,7 +303,17 @@ function Wework({ defaultTab = 'contacts', singleView = false }: WeworkProps) {
         loading={loading}
         pagination={{ pageSize: 20 }}
         size="middle"
-        locale={{ emptyText: '暂无外部联系人数据' }}
+        locale={{
+          emptyText: contactsUserId ? (
+            '该成员名下没有外部联系人'
+          ) : (
+            <span>
+              先在上方输入成员 userid 再点「查询」。
+              <br />
+              系统按成员拉取其添加的外部联系人，未输入时不会发起请求。
+            </span>
+          ),
+        }}
       />
     </>
   );

@@ -119,7 +119,11 @@ export default function DataDictionaries() {
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(targetPage), size: String(pageSize) });
-      const data = await apiClient.get<Page<ScrmDataDictionary>>(`/scrm/data-dictionaries/list?${params.toString()}`);
+      // 后端字典列表是 POST /list（GET /list 会落到 /{id} 导致「参数 id 类型错误」）
+      const data = await apiClient.post<Page<ScrmDataDictionary>>(
+        `/scrm/data-dictionaries/list?${params.toString()}`,
+        {},
+      );
       setList(data.content || []);
       setTotal(data.totalElements || 0);
     } catch {

@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
+  Alert,
   App,
   Button,
   Card,
@@ -63,6 +64,8 @@ export default function CustomerTags() {
   // 添加标签弹窗
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  /** 提交失败原因（如后端提示标签定义不存在），留在弹窗内展示，用户改完可直接重试 */
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [form] = Form.useForm<TagFormValues>();
 
   /** 拉取客户标签列表 */
@@ -102,6 +105,7 @@ export default function CustomerTags() {
   /** 打开添加标签弹窗 */
   const openCreate = () => {
     form.resetFields();
+    setSubmitError(null);
     setModalOpen(true);
   };
 
@@ -114,6 +118,7 @@ export default function CustomerTags() {
     try {
       const values = await form.validateFields();
       setSubmitting(true);
+      setSubmitError(null);
       const params = new URLSearchParams();
       params.set('tagKey', values.tagKey);
       if (values.tagValue) params.set('tagValue', values.tagValue);
@@ -121,8 +126,13 @@ export default function CustomerTags() {
       message.success('标签已添加');
       setModalOpen(false);
       fetchTags();
-    } catch {
-      // 表单校验失败或请求失败; 请求失败已由 axios 拦截器统一提示
+    } catch (err) {
+      // 表单校验失败时 validateFields 抛出的是字段错误对象，无 message，不当作请求失败处理；
+      // 请求失败（如后端提示「标签定义不存在」）则把原因留在弹窗内，用户改完可直接重试
+      const msg = (err as { message?: string })?.message;
+      if (msg) {
+        setSubmitError(msg);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -273,6 +283,15 @@ export default function CustomerTags() {
         confirmLoading={submitting}
         destroyOnHidden
       >
+        {submitError && (
+          <Alert
+            type="error"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message={submitError}
+            description="标签需先有「标签定义」才能打到客户身上。请到标签定义页创建对应标签，或换一个已存在的标签键。"
+          />
+        )}
         <Form form={form} layout="vertical" preserve={false}>
           <Form.Item
             name="tagKey"

@@ -198,7 +198,8 @@ export default function Approvals() {
     try {
       const params = new URLSearchParams({ page: String(targetPage), size: String(instancePageSize) });
       if (keyword) params.set('keyword', keyword);
-      const data = await apiClient.get<Page<ScrmApprovalInstance>>(`/scrm/approvals/approvals/list?${params.toString()}`);
+      // 后端审批实例列表挂在 /scrm/approvals/list（前缀已是 /scrm/approvals，不能再加一层）
+      const data = await apiClient.get<Page<ScrmApprovalInstance>>(`/scrm/approvals/list?${params.toString()}`);
       setInstances(data.content || []);
       setInstanceTotal(data.totalElements || 0);
     } catch {

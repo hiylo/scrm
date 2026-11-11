@@ -101,7 +101,7 @@ describe('Approvals', () => {
   it('切换到实例 Tab, 审批通过', async () => {
     get.mockImplementation((url: string) => {
       if (url.includes('/flows/list')) return Promise.resolve(page([]));
-      if (url.includes('/approvals/list')) return Promise.resolve(page([instance('1')]));
+      if (url.startsWith('/scrm/approvals/list')) return Promise.resolve(page([instance('1')]));
       return Promise.resolve(page([]));
     });
     post.mockResolvedValue(instance('1', { status: 'APPROVED' }));
@@ -109,6 +109,9 @@ describe('Approvals', () => {
     renderPage();
     fireEvent.click(screen.getByRole('tab', { name: '审批实例' }));
     await waitFor(() => expect(screen.getByText('审批1')).toBeInTheDocument());
+    // 契约：实例列表在 /scrm/approvals/list；写成 /approvals/approvals/list 会 404
+    expect(get).toHaveBeenCalledWith(expect.stringMatching(/^\/scrm\/approvals\/list\?/));
+    expect(get).not.toHaveBeenCalledWith(expect.stringContaining('/approvals/approvals/'));
     fireEvent.click(screen.getByRole('button', { name: cn('通过') }));
     await waitFor(() => expect(screen.getByPlaceholderText('审批意见 (可选)')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: cn('确定') }));
@@ -119,7 +122,7 @@ describe('Approvals', () => {
   it('查看审批日志: 打开抽屉加载 timeline', async () => {
     get.mockImplementation((url: string) => {
       if (url.includes('/flows/list')) return Promise.resolve(page([]));
-      if (url.includes('/approvals/list')) return Promise.resolve(page([instance('1')]));
+      if (url.startsWith('/scrm/approvals/list')) return Promise.resolve(page([instance('1')]));
       if (url.includes('/logs/timeline/')) {
         return Promise.resolve([{ id: 'l1', instanceId: '1', nodeName: '财务审批', action: 'APPROVE', operatorName: '李总', comment: '同意', createdAt: '2026-10-08T10:00:00' }]);
       }

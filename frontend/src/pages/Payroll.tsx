@@ -904,8 +904,12 @@ export default function Payroll() {
                     type="warning"
                     showIcon
                     style={{ marginBottom: 16 }}
-                    message="当前所属期还没有社保明细"
-                    description="点右上「生成本月社保/个税」，按在职员工批量计算分项；已存在的记录会跳过，不会覆盖人工调整过的数据。"
+                    message={companyId ? '当前所属期还没有社保明细' : '请先在页面顶部选择企业'}
+                    description={
+                      companyId
+                        ? '点右上「生成本月社保/个税」，按在职员工批量计算分项；已存在的记录会跳过，不会覆盖人工调整过的数据。'
+                        : '社保与个税按「企业 + 所属期」生成，未选企业时无法批量计算。选择企业后，再点右上「生成本月社保/个税」。'
+                    }
                   />
                 )}
 
