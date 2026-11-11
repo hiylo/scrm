@@ -51,7 +51,10 @@ interface ScrmLtvModel {
   forecastDays?: number;
   parameters?: string;
   description?: string;
-  status: string; // DRAFT / PUBLISHED
+  /** 是否已发布（后端字段名 isPublished；模型实体没有 status 字段） */
+  isPublished?: boolean;
+  /** 是否默认模型 */
+  isDefault?: boolean;
   createTime?: string;
 }
 
@@ -258,7 +261,13 @@ export default function LtvPrediction() {
     { title: '模型名称', dataIndex: 'modelName', render: (v: string) => <span style={{ fontWeight: 600 }}>{v}</span> },
     { title: '模型编码', dataIndex: 'modelCode', width: 120, render: (v: string) => <Text code>{v}</Text> },
     { title: '类型', dataIndex: 'modelType', width: 100, render: (v: string) => { const c = modelTypeConfig[v] || { color: 'default', label: v }; return <Tag color={c.color}>{c.label}</Tag>; } },
-    { title: '状态', dataIndex: 'status', width: 90, render: (v: string) => { const c = modelStatusConfig[v] || { color: 'default', label: v }; return <Tag color={c.color}>{c.label}</Tag>; } },
+    {
+      title: '状态',
+      dataIndex: 'isPublished',
+      width: 90,
+      render: (v?: boolean, r?: ScrmLtvModel) =>
+        v ? <Tag color="green">已发布</Tag> : r?.isDefault ? <Tag color="blue">默认</Tag> : <Tag>未发布</Tag>,
+    },
     { title: '历史窗口(天)', dataIndex: 'lookbackDays', width: 110, render: (v?: number) => v ?? '-' },
     { title: '预测期(天)', dataIndex: 'forecastDays', width: 110, render: (v?: number) => v ?? '-' },
     { title: '创建时间', dataIndex: 'createTime', width: 140, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-') },
@@ -269,12 +278,14 @@ export default function LtvPrediction() {
       fixed: 'right',
       render: (_, r) => (
         <Space size={4}>
-          {r.status === 'DRAFT' && (
+          {/* 后端模型没有 status 字段，只有 isPublished，
+              原先按 r.status 判断导致「发布」「预测」两个按钮永不渲染 */}
+          {!r.isPublished && (
             <Button type="link" size="small" icon={<SendOutlined />} onClick={() => handlePublish(r)}>
               发布
             </Button>
           )}
-          {r.status === 'PUBLISHED' && (
+          {r.isPublished && (
             <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => openDetail(r)}>
               预测
             </Button>

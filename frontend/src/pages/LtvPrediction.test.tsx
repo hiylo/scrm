@@ -46,7 +46,7 @@ function model(id: string, overrides: Record<string, unknown> = {}) {
     modelType: 'HISTORICAL',
     timeWindowDays: 365,
     predictionPeriodDays: 365,
-    status: 'DRAFT',
+    isPublished: false,
     ...overrides,
   } as never;
 }
@@ -97,7 +97,7 @@ describe('LtvPrediction', () => {
       if (url.includes('/cohorts/list')) return Promise.resolve(page([]));
       return Promise.resolve(page([]));
     });
-    post.mockResolvedValue(model('1', { status: 'PUBLISHED' }));
+    post.mockResolvedValue(model('1', { isPublished: true }));
 
     renderPage();
     await waitFor(() => expect(screen.getByText('模型1')).toBeInTheDocument());
@@ -120,9 +120,36 @@ describe('LtvPrediction', () => {
     expect(screen.getByText('30.0%')).toBeInTheDocument();
   });
 
+  it('发布/预测按钮按 isPublished 渲染（后端无 status 字段）', async () => {
+    get.mockImplementation((url: string) => {
+      if (url.includes('/models/list')) {
+        return Promise.resolve(page([model('1', { isPublished: false }), model('2', { isPublished: true })]));
+      }
+      return Promise.resolve(page([]));
+    });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('模型1')).toBeInTheDocument());
+
+    const row1 = screen.getByText('模型1').closest('tr') as HTMLElement;
+    const row2 = screen.getByText('模型2').closest('tr') as HTMLElement;
+    const btnTexts = (el: HTMLElement) =>
+      [...el.querySelectorAll('button')].map((b) => b.textContent?.replace(/\s/g, ''));
+
+    // 未发布：有「发布」，无「预测」
+    expect(btnTexts(row1)).toContain('发布');
+    expect(btnTexts(row1)).not.toContain('预测');
+    // 已发布：有「预测」，无「发布」
+    expect(btnTexts(row2)).toContain('预测');
+    expect(btnTexts(row2)).not.toContain('发布');
+    // 状态列不能是空白
+    expect(row1.textContent).toContain('未发布');
+    expect(row2.textContent).toContain('已发布');
+  });
+
   it('查看预测明细: 打开抽屉加载客户预测', async () => {
     get.mockImplementation((url: string) => {
-      if (url.includes('/models/list')) return Promise.resolve(page([model('1', { status: 'PUBLISHED' })]));
+      if (url.includes('/models/list')) return Promise.resolve(page([model('1', { isPublished: true })]));
       if (url.includes('/cohorts/list')) return Promise.resolve(page([]));
       // 真实路径 /scrm/ltv/list，字段对齐 ScrmCustomerLtvDto
       if (url.includes('/ltv/list')) {

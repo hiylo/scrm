@@ -47,7 +47,7 @@ function config(id: string, overrides: Record<string, unknown> = {}) {
     recencyWeight: 1,
     frequencyWeight: 1,
     monetaryWeight: 1,
-    status: 'ACTIVE',
+    enabled: true,
     ...overrides,
   } as never;
 }
@@ -133,6 +133,24 @@ describe('RfmAnalysis', () => {
     expect(cells).toContain('555');          // rfmSegment
     expect(cells).toContain('2026-10-08 10:00'); // calculatedAt
     expect(cells).not.toContain('-');
+  });
+
+  it('状态列按后端 enabled 渲染（配置实体没有 status 字段）', async () => {
+    get.mockImplementation((url: string) => {
+      if (url.includes('/configs/list')) {
+        return Promise.resolve(page([config('1', { enabled: true }), config('2', { enabled: false })]));
+      }
+      return Promise.resolve(page([]));
+    });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('配置1')).toBeInTheDocument());
+
+    const row1 = screen.getByText('配置1').closest('tr') as HTMLElement;
+    const row2 = screen.getByText('配置2').closest('tr') as HTMLElement;
+    // 字段名写成 status 时这一列会渲染成 '-'
+    expect(row1.textContent).toContain('已启用');
+    expect(row2.textContent).toContain('未启用');
   });
 
   it('客户明细走 /rfm/analysis/list，不再请求不存在的 customers/list', async () => {

@@ -71,7 +71,8 @@ interface ScrmRfmConfig {
   rWeight?: number;
   fWeight?: number;
   mWeight?: number;
-  status?: string;
+  /** 是否启用（后端字段名 enabled，配置实体没有 status） */
+  enabled?: boolean;
   description?: string;
   createTime?: string;
 }
@@ -256,13 +257,9 @@ export default function RfmAnalysis() {
     },
     {
       title: '状态',
-      dataIndex: 'status',
+      dataIndex: 'enabled',
       width: 90,
-      render: (v?: string) => {
-        if (!v) return '-';
-        const cfg = statusConfig[v] || { color: 'default', label: v };
-        return <Tag color={cfg.color}>{cfg.label}</Tag>;
-      },
+      render: (v?: boolean) => (v ? <Tag color="green">已启用</Tag> : <Tag>未启用</Tag>),
     },
     { title: '创建时间', dataIndex: 'createTime', width: 140, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-') },
     {
