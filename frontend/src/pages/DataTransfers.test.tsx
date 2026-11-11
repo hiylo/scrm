@@ -2,7 +2,7 @@
  * Copyright(c) 2016 - Present, Hsi Chu (hiylo.org). All rights reserved.
  * Project : scrm
  * File : DataTransfers.test.tsx
- * Description : 数据导入导出页面的任务加载 / 新建任务 / 明细测试
+ * Description : 数据导入模板页面测试 - 列表加载 / 新建模板 / 启停
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -37,20 +37,17 @@ function page<T>(rows: T[], total = rows.length) {
   return { content: rows, totalElements: total, totalPages: 1, number: 0, size: 10 } as never;
 }
 
-/** 任务行 */
-function task(id: string, overrides: Record<string, unknown> = {}) {
+/** 导入模板行（字段与后端 ScrmImportTemplateEntity 对齐） */
+function template(id: string, overrides: Record<string, unknown> = {}) {
   return {
     id,
-    taskName: `任务${id}`,
-    taskCode: `TASK_${id}`,
-    transferType: 'EXPORT',
+    templateName: `模板${id}`,
     dataType: 'CUSTOMER',
-    status: 'COMPLETED',
-    totalCount: 100,
-    successCount: 100,
-    failCount: 0,
-    fileUrl: 'https://cdn.example.com/export.xlsx',
-    completedAt: '2026-10-08T10:00:00',
+    columns: '["nickname","phone"]',
+    deduplicationKey: 'phone',
+    updateIfExists: false,
+    enabled: true,
+    createTime: '2026-10-08T10:00:00',
     ...overrides,
   } as never;
 }
@@ -64,48 +61,57 @@ beforeEach(() => {
 });
 
 describe('DataTransfers', () => {
-  it('加载导入导出任务列表', async () => {
-    get.mockImplementation((url: string) => {
-      if (url.startsWith('/scrm/data-transfer/tasks/list')) return Promise.resolve(page([task('1'), task('2')]));
-      return Promise.resolve(page([]));
-    });
+  it('加载导入模板列表', async () => {
+    get.mockResolvedValue(page([template('1'), template('2')]));
 
     renderPage();
 
-    await waitFor(() => expect(screen.getByText('任务1')).toBeInTheDocument());
-    expect(screen.getByText('任务2')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('模板1')).toBeInTheDocument());
+    expect(screen.getByText('模板2')).toBeInTheDocument();
+    // 契约：列表走 templates/list；用 tasks/list 会落到 SPA 兜底返回 HTML
+    expect(get).toHaveBeenCalledWith(expect.stringContaining('/scrm/data-transfer/templates/list'));
+    expect(get).not.toHaveBeenCalledWith(expect.stringContaining('/data-transfer/tasks'));
   });
 
-  it('新建任务: 打开弹窗填写后 POST', async () => {
-    get.mockImplementation((url: string) => {
-      if (url.startsWith('/scrm/data-transfer/tasks/list')) return Promise.resolve(page([]));
-      return Promise.resolve(page([]));
-    });
-    post.mockResolvedValue(task('1'));
+  it('新建模板: 填写列定义后 POST templates', async () => {
+    get.mockResolvedValue(page([]));
+    post.mockResolvedValue(template('1'));
 
     renderPage();
+    await waitFor(() => expect(screen.getByText('还没有导入模板，点右上「新建模板」创建')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: cn('新建任务') }));
-    await waitFor(() => expect(screen.getByLabelText('任务名称')).toBeInTheDocument());
-    await userEvent.type(screen.getByLabelText('任务名称'), '10 月客户导出');
-    await userEvent.type(screen.getByLabelText('任务编码'), 'EXP_OCT');
+    fireEvent.click(screen.getByRole('button', { name: cn('新建模板') }));
+    await waitFor(() => expect(screen.getByLabelText('模板名称')).toBeInTheDocument());
+
+    await userEvent.type(screen.getByLabelText('模板名称'), '客户批量导入');
+    // 列定义是必填项，后端要求 TEXT；花括号用 fireEvent 直接赋值
+    fireEvent.change(screen.getByLabelText('列定义'), {
+      target: { value: '[{"source":"姓名","target":"nickname"}]' },
+    });
+
     fireEvent.click(screen.getByRole('button', { name: cn('确定') }));
-    await waitFor(() => expect(post).toHaveBeenCalledWith('/scrm/data-transfer/tasks', expect.objectContaining({ taskName: '10 月客户导出', taskCode: 'EXP_OCT' })));
+
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        '/scrm/data-transfer/templates',
+        expect.objectContaining({ templateName: '客户批量导入', dataType: 'CUSTOMER' }),
+      ),
+    );
   });
 
-  it('查看任务明细: 打开抽屉加载 records', async () => {
-    get.mockImplementation((url: string) => {
-      if (url.startsWith('/scrm/data-transfer/tasks/list')) return Promise.resolve(page([task('1')]));
-      if (url.includes('/records')) {
-        return Promise.resolve([{ id: 'r1', taskId: '1', rowKey: '2026-001', status: 'SUCCESS', processedAt: '2026-10-08T10:00:00' }]);
-      }
-      return Promise.resolve(page([]));
-    });
+  it('启停模板: 调用 enable/disable 接口', async () => {
+    get.mockResolvedValue(page([template('1', { enabled: true })]));
+    post.mockResolvedValue(undefined);
 
     renderPage();
-    await waitFor(() => expect(screen.getByText('任务1')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: cn('明细') }));
+    await waitFor(() => expect(screen.getByText('模板1')).toBeInTheDocument());
 
-    await waitFor(() => expect(screen.getByText('2026-001')).toBeInTheDocument());
+    const sw = document.querySelector('.ant-table tbody .ant-switch') as HTMLElement;
+    expect(sw).toBeTruthy();
+    fireEvent.click(sw);
+
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(expect.stringContaining('/templates/1/disable'), expect.anything()),
+    );
   });
 });
