@@ -46,6 +46,21 @@ const eventTypeConfig: Record<string, { color: string; label: string }> = {
   CONVERSATION_CREATED: { color: 'geekblue', label: '会话创建' },
 };
 
+/** 解析后端存储的订阅事件（JSON 数组字符串）为事件名列表，兼容历史逗号分隔数据 */
+function parseEvents(raw?: string): string[] {
+  if (!raw) return [];
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('[')) {
+    try {
+      const arr = JSON.parse(trimmed);
+      return Array.isArray(arr) ? arr.map((v) => String(v)).filter(Boolean) : [];
+    } catch {
+      return [];
+    }
+  }
+  return trimmed.split(',').map((v) => v.trim()).filter(Boolean);
+}
+
 /** 事件日志状态映射 */
 const logStatusConfig: Record<string, { color: string; label: string }> = {
   SUCCESS: { color: 'green', label: '成功' },
@@ -168,7 +183,11 @@ export default function Webhooks() {
   /** 打开编辑弹窗 */
   const openEdit = (record: ScrmWebhookConfig) => {
     setEditing(record);
-    form.setFieldsValue(record);
+    form.setFieldsValue({
+      ...record,
+      // 后端存 JSON 数组字符串，多选框需要数组
+      subscribedEvents: parseEvents(record.subscribedEvents),
+    });
     setOpen(true);
   };
 
@@ -181,12 +200,19 @@ export default function Webhooks() {
       return;
     }
     setSaving(true);
+    // 后端要求 subscribedEvents 为 JSON 数组字符串；多选框产出数组，这里统一序列化
+    const payload = {
+      ...values,
+      subscribedEvents: JSON.stringify(
+        Array.isArray(values.subscribedEvents) ? values.subscribedEvents : parseEvents(String(values.subscribedEvents ?? '')),
+      ),
+    };
     try {
       if (editing) {
-        await apiClient.put(`/scrm/webhooks/configs/${editing.id}`, values);
+        await apiClient.put(`/scrm/webhooks/configs/${editing.id}`, payload);
         message.success('Webhook 配置已更新');
       } else {
-        await apiClient.post('/scrm/webhooks/configs', values);
+        await apiClient.post('/scrm/webhooks/configs', payload);
         message.success('Webhook 配置已创建');
       }
       setOpen(false);
@@ -229,9 +255,9 @@ export default function Webhooks() {
       dataIndex: 'subscribedEvents',
       width: 220,
       render: (v?: string) => {
-        if (!v) return '-';
-        return v.split(',').map((e) => {
-          const ev = e.trim();
+        const events = parseEvents(v);
+        if (events.length === 0) return '-';
+        return events.map((ev) => {
           const cfg = eventTypeConfig[ev] || { color: 'default', label: ev };
           return <Tag key={ev} color={cfg.color} style={{ marginBottom: 2 }}>{cfg.label}</Tag>;
         });
@@ -395,8 +421,17 @@ export default function Webhooks() {
               <InputNumber min={1} style={{ width: 110 }} />
             </Form.Item>
           </Space>
-          <Form.Item name="subscribedEvents" label="订阅事件 (逗号分隔)" rules={[{ required: true, message: '请输入订阅事件' }]}>
-            <Input placeholder="如: CUSTOMER_CREATED,ORDER_PAID" />
+          <Form.Item
+            name="subscribedEvents"
+            label="订阅事件"
+            rules={[{ required: true, message: '请选择订阅事件' }]}
+            extra="可多选；后端按 JSON 数组存储与匹配"
+          >
+            <Select
+              mode="multiple"
+              placeholder="请选择要订阅的事件"
+              options={Object.entries(eventTypeConfig).map(([v, c]) => ({ value: v, label: c.label }))}
+            />
           </Form.Item>
           <Form.Item name="secret" label="签名密钥">
             <Input placeholder="HMAC 签名密钥" />

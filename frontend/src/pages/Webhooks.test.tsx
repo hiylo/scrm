@@ -101,9 +101,22 @@ describe('Webhooks', () => {
     await waitFor(() => expect(screen.getByLabelText('配置名称')).toBeInTheDocument());
     await userEvent.type(screen.getByLabelText('配置名称'), '客户创建回调');
     await userEvent.type(screen.getByLabelText('目标 URL'), 'https://example.com/wk');
-    await userEvent.type(screen.getByLabelText('订阅事件 (逗号分隔)'), 'CUSTOMER_CREATED,ORDER_PAID');
+    // 订阅事件是多选框：打开下拉选两个事件
+    const eventsBox = screen.getByLabelText('订阅事件');
+    fireEvent.mouseDown(eventsBox.closest('.ant-select')!.querySelector('.ant-select-selector') as HTMLElement);
+    fireEvent.click(await screen.findByTitle('客户创建'));
+    fireEvent.click(await screen.findByTitle('订单支付'));
     fireEvent.click(screen.getByRole('button', { name: cn('确定') }));
-    await waitFor(() => expect(post).toHaveBeenCalledWith('/scrm/webhooks/configs', expect.objectContaining({ webhookName: '客户创建回调' })));
+    // 契约：subscribedEvents 必须序列化为 JSON 数组字符串，逗号分隔会被后端拒绝
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        '/scrm/webhooks/configs',
+        expect.objectContaining({
+          webhookName: '客户创建回调',
+          subscribedEvents: JSON.stringify(['CUSTOMER_CREATED', 'ORDER_PAID']),
+        }),
+      ),
+    );
   });
 
   it('测试回调: 调用 test', async () => {
