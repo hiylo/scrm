@@ -51,8 +51,6 @@ function contract(id: string, overrides: Record<string, unknown> = {}) {
     startDate: '2026-01-01',
     endDate: '2026-12-31',
     status: 'DRAFT',
-    totalPaid: 0,
-    totalDue: 10000,
     ...overrides,
   } as never;
 }
@@ -110,11 +108,27 @@ describe('Contracts', () => {
     await waitFor(() => expect(post).toHaveBeenCalledWith('/scrm/contracts/1/submit', undefined));
   });
 
-  it('查看回款记录: 打开抽屉加载 payments', async () => {
+  it('查看回款记录: 按后端字段渲染金额/状态/回款时间', async () => {
     get.mockImplementation((url: string) => {
       if (url.startsWith('/scrm/contracts/list')) return Promise.resolve(page([contract('1', { status: 'ACTIVE' })]));
+      if (url.includes('/contract-payments/stats/contract/')) {
+        return Promise.resolve({ totalPaidAmount: 3000, totalUnpaidAmount: 2000 } as never);
+      }
       if (url.includes('/contract-payments/contract/')) {
-        return Promise.resolve([{ id: 'p1', contractId: '1', paymentNo: 'HK001', amount: 5000, paymentDate: '2026-03-01', paymentMethod: 'BANK' }]);
+        // 后端回款 DTO 的真实字段名：plannedAmount / actualDate / paymentStatus
+        // 用错成 amount / paymentDate / status 时页面会渲染空白却不报错，故必须锁字段
+        return Promise.resolve([
+          {
+            id: 'p1',
+            contractId: '1',
+            paymentNo: 'HK001',
+            plannedAmount: 5000,
+            paidAmount: 3000,
+            actualDate: '2026-03-01',
+            paymentMethod: 'BANK',
+            paymentStatus: 'PARTIAL',
+          },
+        ]);
       }
       return Promise.resolve(page([]));
     });
@@ -124,6 +138,48 @@ describe('Contracts', () => {
     fireEvent.click(screen.getByRole('button', { name: cn('回款') }));
 
     await waitFor(() => expect(screen.getByText('HK001')).toBeInTheDocument());
-    expect(screen.getByText('¥5,000')).toBeInTheDocument();
+    // 金额列读 plannedAmount，并带出已收金额
+    expect(screen.getByText(/¥5,000（已收 ¥3,000）/)).toBeInTheDocument();
+    // 状态列读 paymentStatus
+    expect(screen.getByText('PARTIAL')).toBeInTheDocument();
+    // 回款时间列读 actualDate
+    expect(screen.getByText('2026-03-01')).toBeInTheDocument();
+  });
+
+  it('回款抽屉的统计取自 stats 接口，而不是合同对象', async () => {
+    get.mockImplementation((url: string) => {
+      if (url.startsWith('/scrm/contracts/list')) return Promise.resolve(page([contract('1', { status: 'ACTIVE' })]));
+      if (url.includes('/contract-payments/stats/contract/')) {
+        return Promise.resolve({ totalPaidAmount: 4800, totalUnpaidAmount: 5200 } as never);
+      }
+      if (url.includes('/contract-payments/contract/')) return Promise.resolve([] as never);
+      return Promise.resolve(page([]));
+    });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('合同1')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: cn('回款') }));
+
+    // 合同列表接口不返回 totalPaid/totalDue，统计必须来自 stats 接口
+    await waitFor(() =>
+      expect(get).toHaveBeenCalledWith(expect.stringContaining('/scrm/contract-payments/stats/contract/1')),
+    );
+    // Statistic 会把前缀与数值拆成两个节点，直接读统计卡的整块文本
+    const statTexts = () =>
+      [...document.querySelectorAll('.ant-statistic')].map((s) => (s.textContent || '').replace(/\s/g, ''));
+    await waitFor(() => expect(statTexts().some((t) => t.includes('¥4,800'))).toBe(true));
+    expect(statTexts().some((t) => t.includes('¥5,200'))).toBe(true);
+  });
+
+  it('合同列表不再展示后端不存在的「已回款」列', async () => {
+    get.mockImplementation((url: string) => {
+      if (url.startsWith('/scrm/contracts/list')) return Promise.resolve(page([contract('1')]));
+      return Promise.resolve(page([]));
+    });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText('合同1')).toBeInTheDocument());
+    const heads = screen.getAllByRole('columnheader').map((h) => h.textContent?.trim());
+    expect(heads).not.toContain('已回款');
   });
 });

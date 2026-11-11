@@ -69,6 +69,7 @@ interface ScrmContract {
   startDate?: string;
   endDate?: string;
   status: string;
+  /** 以下两项来自 /scrm/contract-payments/stats/contract/{id}，合同对象本身不返回 */
   totalPaid?: number;
   totalDue?: number;
   createTime?: string;
@@ -79,10 +80,16 @@ interface ScrmContractPayment {
   id: string;
   contractId: string;
   paymentNo: string;
-  amount?: number;
-  paymentDate?: string;
+  paymentName?: string;
+  /** 计划金额（后端字段名，不是 amount） */
+  plannedAmount?: number;
+  /** 实收金额 */
+  paidAmount?: number;
+  /** 实际回款日期（后端字段名，不是 paymentDate） */
+  actualDate?: string;
   paymentMethod?: string;
-  status?: string;
+  /** 回款状态（后端字段名，不是 status） */
+  paymentStatus?: string;
 }
 
 /** Spring Page 分页响应 */
@@ -119,6 +126,8 @@ export default function Contracts() {
   const [payContract, setPayContract] = useState<ScrmContract | null>(null);
   const [payments, setPayments] = useState<ScrmContractPayment[]>([]);
   const [payLoading, setPayLoading] = useState(false);
+  /** 回款统计（累计回款/待收款）：后端 stats 接口返回 totalPaidAmount/totalUnpaidAmount */
+  const [payStats, setPayStats] = useState<{ totalPaidAmount: number; totalUnpaidAmount: number } | null>(null);
 
   /** 加载列表 */
   const loadList = useCallback(async (targetPage = page) => {
@@ -189,9 +198,24 @@ export default function Contracts() {
   const openPayments = async (record: ScrmContract) => {
     setPayContract(record);
     setPayLoading(true);
+    setPayStats(null);
     try {
-      const data = await apiClient.get<ScrmContractPayment[]>(`/scrm/contract-payments/contract/${record.id}`);
+      // 回款明细与统计是两个接口，统计口径以后端 stats 为准
+      const [data, stats] = await Promise.all([
+        apiClient.get<ScrmContractPayment[]>(`/scrm/contract-payments/contract/${record.id}`),
+        apiClient
+          .get<{ totalPaidAmount?: number; totalUnpaidAmount?: number }>(
+            `/scrm/contract-payments/stats/contract/${record.id}`,
+          )
+          .catch(() => null),
+      ]);
       setPayments(data || []);
+      if (stats) {
+        setPayStats({
+          totalPaidAmount: Number(stats.totalPaidAmount ?? 0),
+          totalUnpaidAmount: Number(stats.totalUnpaidAmount ?? 0),
+        });
+      }
     } catch {
       setPayments([]);
     } finally {
@@ -214,7 +238,6 @@ export default function Contracts() {
     },
     { title: '客户', dataIndex: 'customerName', width: 110, render: (v?: string) => v || '-' },
     { title: '金额', dataIndex: 'contractAmount', width: 110, render: (v?: number) => (v != null ? `¥${v.toLocaleString()}` : '-') },
-    { title: '已回款', dataIndex: 'totalPaid', width: 100, render: (v?: number) => (v != null ? `¥${v.toLocaleString()}` : '-') },
     {
       title: '状态',
       dataIndex: 'status',
@@ -332,8 +355,18 @@ export default function Contracts() {
         {payContract && (
           <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
             <Statistic title="合同金额" value={payContract.contractAmount ?? 0} prefix="¥" />
-            <Statistic title="累计回款" value={payContract.totalPaid ?? 0} prefix="¥" valueStyle={{ color: '#10b981' }} />
-            <Statistic title="待收款" value={payContract.totalDue ?? 0} prefix="¥" valueStyle={{ color: '#f59e0b' }} />
+            <Statistic
+              title="累计回款"
+              value={payStats?.totalPaidAmount ?? 0}
+              prefix="¥"
+              valueStyle={{ color: '#10b981' }}
+            />
+            <Statistic
+              title="待收款"
+              value={payStats?.totalUnpaidAmount ?? 0}
+              prefix="¥"
+              valueStyle={{ color: '#f59e0b' }}
+            />
           </div>
         )}
         <Table
@@ -345,10 +378,21 @@ export default function Contracts() {
           locale={{ emptyText: <Empty description="暂无回款记录" /> }}
           columns={[
             { title: '回款单号', dataIndex: 'paymentNo', width: 120, render: (v?: string) => (v ? <Text code>{v}</Text> : '-') },
-            { title: '金额', dataIndex: 'amount', width: 100, render: (v?: number) => (v != null ? `¥${v.toLocaleString()}` : '-') },
+            {
+              title: '金额',
+              dataIndex: 'plannedAmount',
+              width: 100,
+              render: (v?: number, r?: ScrmContractPayment) =>
+                v != null ? `¥${v.toLocaleString()}${r?.paidAmount != null ? `（已收 ¥${r.paidAmount.toLocaleString()}）` : ''}` : '-',
+            },
             { title: '方式', dataIndex: 'paymentMethod', width: 100, render: (v?: string) => v || '-' },
-            { title: '状态', dataIndex: 'status', width: 80, render: (v?: string) => v || '-' },
-            { title: '回款时间', dataIndex: 'paymentDate', width: 130, render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD') : '-') },
+            { title: '状态', dataIndex: 'paymentStatus', width: 80, render: (v?: string) => v || '-' },
+            {
+              title: '回款时间',
+              dataIndex: 'actualDate',
+              width: 130,
+              render: (v?: string) => (v ? dayjs(v).format('YYYY-MM-DD') : '-'),
+            },
           ]}
         />
       </Drawer>
