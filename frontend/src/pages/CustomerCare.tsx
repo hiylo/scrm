@@ -19,6 +19,7 @@ import {
   Popconfirm,
   Select,
   Space,
+  Switch,
   Table,
   Tabs,
   Tag,
@@ -39,16 +40,21 @@ import { apiClient } from '../api/client';
 
 const { Text } = Typography;
 
-/** 关怀规则 */
+/** 关怀规则 (字段名与后端 ScrmCareRuleDto 对齐) */
 interface ScrmCareRule {
   id: string;
   ruleName: string;
-  careType: string; // BIRTHDAY / ANNIVERSARY / HOLIDAY / EVENT / MANUAL
-  customerSegment?: string;
+  careType: string;
+  description?: string;
   triggerCondition?: string;
-  messageTemplate?: string;
-  scheduleTime?: string;
-  status: string; // ACTIVE / INACTIVE
+  actionType?: string;
+  actionContent?: string;
+  priority?: number;
+  applicableSegments?: string;
+  applicableLevels?: string;
+  enabled?: boolean;
+  executionCount?: number;
+  lastExecutedAt?: string;
   createTime?: string;
 }
 
@@ -86,18 +92,24 @@ interface Page<T> {
 }
 
 /** 规则状态 */
-const ruleStatusConfig: Record<string, { color: string; label: string }> = {
-  ACTIVE: { color: 'green', label: '启用' },
-  INACTIVE: { color: 'default', label: '停用' },
-};
-
-/** 关怀类型 */
+/** 关怀类型 (与后端 ScrmCareRuleDto.careType 枚举保持一致) */
 const careTypeConfig: Record<string, { color: string; label: string }> = {
   BIRTHDAY: { color: 'magenta', label: '生日' },
+  FESTIVAL: { color: 'orange', label: '节日' },
   ANNIVERSARY: { color: 'gold', label: '纪念日' },
-  HOLIDAY: { color: 'orange', label: '节日' },
-  EVENT: { color: 'blue', label: '事件' },
-  MANUAL: { color: 'cyan', label: '手动' },
+  MEMBERSHIP_EXPIRY: { color: 'volcano', label: '会员到期' },
+  INACTIVITY_REMINDER: { color: 'blue', label: '久未互动提醒' },
+  CUSTOM: { color: 'cyan', label: '自定义' },
+};
+
+/** 关怀动作 (与后端 ScrmCareRuleDto.actionType 枚举保持一致) */
+const actionTypeConfig: Record<string, { color: string; label: string }> = {
+  SEND_MESSAGE: { color: 'cyan', label: '发送消息' },
+  SEND_COUPON: { color: 'gold', label: '发送优惠券' },
+  SEND_GIFT: { color: 'magenta', label: '发送礼品' },
+  CALL: { color: 'geekblue', label: '电话回访' },
+  CREATE_TASK: { color: 'purple', label: '创建任务' },
+  NOTIFY_ASSIGNEE: { color: 'blue', label: '通知负责人' },
 };
 
 /** 任务状态 */
@@ -185,7 +197,7 @@ export default function CustomerCare() {
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ careType: 'BIRTHDAY', status: 'ACTIVE' });
+    form.setFieldsValue({ careType: 'BIRTHDAY', actionType: 'SEND_MESSAGE', enabled: true });
     setOpen(true);
   };
 
@@ -281,16 +293,24 @@ export default function CustomerCare() {
         return <Tag color={cfg.color}>{cfg.label}</Tag>;
       },
     },
-    { title: '客户分群', dataIndex: 'customerSegment', width: 110, render: (v?: string) => v || '-' },
-    { title: '计划时间', dataIndex: 'scheduleTime', width: 130, render: (v?: string) => v || '-' },
+    { title: '适用分群', dataIndex: 'applicableSegments', width: 110, render: (v?: string) => v || '-' },
     {
-      title: '状态',
-      dataIndex: 'status',
-      width: 90,
-      render: (v: string) => {
-        const cfg = ruleStatusConfig[v] || { color: 'default', label: v };
+      title: '关怀动作',
+      dataIndex: 'actionType',
+      width: 110,
+      render: (v?: string) => {
+        if (!v) return '-';
+        const cfg = actionTypeConfig[v] || { color: 'default', label: v };
         return <Tag color={cfg.color}>{cfg.label}</Tag>;
       },
+    },
+    {
+      title: '状态',
+      dataIndex: 'enabled',
+      width: 90,
+      render: (v?: boolean) => (
+        <Tag color={v ? 'green' : 'default'}>{v ? '启用' : '停用'}</Tag>
+      ),
     },
     {
       title: '操作',
@@ -302,7 +322,7 @@ export default function CustomerCare() {
           <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEdit(r)}>
             编辑
           </Button>
-          {r.status === 'ACTIVE' ? (
+          {r.enabled ? (
             <Button type="link" size="small" danger icon={<StopOutlined />} onClick={() => handleToggle(r, false)}>
               停用
             </Button>
@@ -437,21 +457,52 @@ export default function CustomerCare() {
             <Input placeholder="如: 客户生日关怀" maxLength={200} />
           </Form.Item>
           <Space size={16} wrap>
-            <Form.Item name="careType" label="关怀类型" rules={[{ required: true }]}>
-              <Select style={{ width: 150 }} options={Object.entries(careTypeConfig).map(([v, c]) => ({ value: v, label: c.label }))} />
+            <Form.Item name="careType" label="关怀类型" rules={[{ required: true, message: '请选择关怀类型' }]}>
+              <Select style={{ width: 170 }} options={Object.entries(careTypeConfig).map(([v, c]) => ({ value: v, label: c.label }))} />
             </Form.Item>
-            <Form.Item name="customerSegment" label="客户分群">
-              <Input placeholder="如: VIP" style={{ width: 140 }} />
+            <Form.Item name="actionType" label="关怀动作" rules={[{ required: true, message: '请选择关怀动作' }]}>
+              <Select style={{ width: 170 }} options={Object.entries(actionTypeConfig).map(([v, c]) => ({ value: v, label: c.label }))} />
             </Form.Item>
           </Space>
-          <Form.Item name="triggerCondition" label="触发条件 JSON">
+          <Form.Item
+            name="triggerCondition"
+            label="触发条件"
+            rules={[{ required: true, message: '请填写触发条件' }]}
+            extra='JSON 格式, 如 {"daysBefore":7} 表示提前 7 天触发'
+          >
             <Input.TextArea rows={2} placeholder='{"daysBefore":7}' />
           </Form.Item>
-          <Form.Item name="messageTemplate" label="关怀文案模板">
-            <Input.TextArea rows={2} placeholder="支持 ${nickname} 变量" />
+          <Form.Item
+            name="actionContent"
+            label="动作内容"
+            rules={[
+              { required: true, message: '请填写动作内容' },
+              {
+                validator: (_, value) => {
+                  if (!value) return Promise.resolve();
+                  try {
+                    JSON.parse(value);
+                    return Promise.resolve();
+                  } catch {
+                    return Promise.reject(new Error('动作内容必须是合法的 JSON, 如 {"template":"尊敬的用户, 祝您生日快乐"}'));
+                  }
+                },
+              },
+            ]}
+            extra='JSON 格式, 消息文案写在 template 字段, 如 {"template":"尊敬的 ${nickname}, 祝您生日快乐!"}'
+          >
+            <Input.TextArea rows={3} placeholder='{"template":"尊敬的 ${nickname}, 祝您生日快乐!"}' />
           </Form.Item>
-          <Form.Item name="scheduleTime" label="计划执行时间">
-            <Input placeholder="如: 09:00" maxLength={20} />
+          <Space size={16} wrap>
+            <Form.Item name="applicableSegments" label="适用分群">
+              <Input placeholder="如: VIP" style={{ width: 170 }} />
+            </Form.Item>
+            <Form.Item name="priority" label="优先级">
+              <Input type="number" placeholder="数字, 越小越优先" style={{ width: 170 }} />
+            </Form.Item>
+          </Space>
+          <Form.Item name="enabled" label="启用状态" initialValue={true} valuePropName="checked">
+            <Switch checkedChildren="启用" unCheckedChildren="停用" />
           </Form.Item>
         </Form>
       </Modal>

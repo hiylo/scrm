@@ -12,6 +12,7 @@ import {
   App,
   Button,
   Card,
+  DatePicker,
   Empty,
   Form,
   Input,
@@ -38,21 +39,26 @@ const taskStatusConfig: Record<string, { color: string; label: string }> = {
   CANCELLED: { color: 'default', label: '已取消' },
 };
 
-/** 跟进类型映射 */
+/** 跟进类型映射 (与后端 ScrmFollowUpTaskDto.taskType 枚举保持一致) */
 const followTypeConfig: Record<string, { color: string; label: string }> = {
-  PHONE: { color: 'cyan', label: '电话' },
-  WECHAT: { color: 'blue', label: '微信' },
+  CALL: { color: 'cyan', label: '电话' },
+  MESSAGE: { color: 'blue', label: '消息' },
   VISIT: { color: 'purple', label: '拜访' },
   EMAIL: { color: 'gold', label: '邮件' },
+  MEETING: { color: 'geekblue', label: '会议' },
+  OTHER: { color: 'default', label: '其他' },
 };
 
-/** 跟进任务实体 */
+/** 跟进任务实体 (字段名与后端 ScrmFollowUpTaskDto 对齐) */
 interface ScrmFollowUpTask {
   id: string;
-  taskName: string;
+  title: string;
   customerId?: string;
   customerName?: string;
-  followType?: string;
+  taskType?: string;
+  assigneeId?: string;
+  assigneeName?: string;
+  content?: string;
   status: string;
   plannedAt?: string;
   completedAt?: string;
@@ -162,20 +168,29 @@ export default function FollowUps() {
   /** 打开编辑弹窗 */
   const openEdit = (record: ScrmFollowUpTask) => {
     setEditing(record);
-    form.setFieldsValue(record);
+    form.setFieldsValue({
+      ...record,
+      // 后端返回 ISO 字符串, DatePicker 需要 dayjs 对象
+      plannedAt: record.plannedAt ? dayjs(record.plannedAt) : undefined,
+    });
     setOpen(true);
   };
 
   /** 提交任务 */
   const handleSubmit = async () => {
     const values = await form.validateFields();
+    // DatePicker 产出 dayjs 对象, 统一序列化为后端可解析的 ISO 字符串
+    const payload = {
+      ...values,
+      plannedAt: values.plannedAt ? dayjs(values.plannedAt).format('YYYY-MM-DDTHH:mm:ss') : undefined,
+    };
     setSaving(true);
     try {
       if (editing) {
-        await apiClient.put(`/scrm/follow-ups/tasks/${editing.id}`, values);
+        await apiClient.put(`/scrm/follow-ups/tasks/${editing.id}`, payload);
         message.success('任务已更新');
       } else {
-        await apiClient.post('/scrm/follow-ups/tasks', values);
+        await apiClient.post('/scrm/follow-ups/tasks', payload);
         message.success('任务已创建');
       }
       setOpen(false);
@@ -216,11 +231,11 @@ export default function FollowUps() {
 
   /** 任务表格列 */
   const taskColumns: ColumnsType<ScrmFollowUpTask> = [
-    { title: '任务名称', dataIndex: 'taskName', render: (v: string) => <span style={{ fontWeight: 600 }}>{v}</span> },
+    { title: '任务名称', dataIndex: 'title', render: (v: string) => <span style={{ fontWeight: 600 }}>{v}</span> },
     { title: '客户', dataIndex: 'customerName', width: 120, render: (v?: string) => v || '-' },
     {
       title: '类型',
-      dataIndex: 'followType',
+      dataIndex: 'taskType',
       width: 90,
       render: (v?: string) => {
         if (!v) return '-';
@@ -340,13 +355,20 @@ export default function FollowUps() {
         width={520}
       >
         <Form form={form} layout="vertical">
-          <Form.Item name="taskName" label="任务名称" rules={[{ required: true, message: '请输入任务名称' }]}>
+          <Form.Item name="title" label="任务名称" rules={[{ required: true, message: '请输入任务名称' }]}>
             <Input placeholder="如: 跟进高意向客户" maxLength={200} />
           </Form.Item>
           <Form.Item name="customerId" label="客户 ID" rules={[{ required: true, message: '请输入客户 ID' }]}>
             <Input placeholder="客户 ID" />
           </Form.Item>
-          <Form.Item name="followType" label="跟进类型" initialValue="PHONE">
+          <Form.Item
+            name="assigneeId"
+            label="负责人 userId"
+            rules={[{ required: true, message: '请输入负责人 userId' }]}
+          >
+            <Input placeholder="如: admin" maxLength={100} />
+          </Form.Item>
+          <Form.Item name="taskType" label="跟进类型" initialValue="CALL">
             <Select
               placeholder="请选择跟进类型"
               options={Object.entries(followTypeConfig).map(([v, c]) => ({
@@ -355,15 +377,22 @@ export default function FollowUps() {
               }))}
             />
           </Form.Item>
-          <Form.Item name="plannedAt" label="计划时间">
-            <Input placeholder="如 2026-10-10T10:00:00" maxLength={30} />
+          <Form.Item
+            name="plannedAt"
+            label="计划时间"
+            rules={[{ required: true, message: '请选择计划时间' }]}
+          >
+            <DatePicker showTime style={{ width: '100%' }} placeholder="请选择计划跟进时间" />
+          </Form.Item>
+          <Form.Item name="content" label="跟进内容">
+            <Input.TextArea rows={3} placeholder="可选, 填写本次跟进的内容或备注" maxLength={500} />
           </Form.Item>
         </Form>
       </Modal>
 
       {/* 记录抽屉 */}
       <Modal
-        title={recordTask ? `跟进记录 - ${recordTask.taskName}` : '跟进记录'}
+        title={recordTask ? `跟进记录 - ${recordTask.title}` : '跟进记录'}
         open={!!recordTask}
         onCancel={() => setRecordTask(null)}
         footer={null}

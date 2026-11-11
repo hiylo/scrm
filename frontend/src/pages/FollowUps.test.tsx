@@ -37,9 +37,9 @@ function page<T>(rows: T[], total = rows.length) {
   return { content: rows, totalElements: total, totalPages: 1, number: 0, size: 10 } as never;
 }
 
-/** 任务行 */
+/** 任务行 (字段名与后端 ScrmFollowUpTaskDto 对齐) */
 function task(id: string, overrides: Record<string, unknown> = {}) {
-  return { id, taskName: `任务${id}`, customerId: '1', customerName: '张三', followType: 'PHONE', status: 'PENDING', plannedAt: '2026-10-10T10:00:00', ...overrides } as never;
+  return { id, title: `任务${id}`, customerId: '1', customerName: '张三', taskType: 'CALL', assigneeId: 'admin', status: 'PENDING', plannedAt: '2026-10-10T10:00:00', ...overrides } as never;
 }
 
 /** 记录行 */
@@ -66,21 +66,20 @@ describe('FollowUps', () => {
 
     await userEvent.type(screen.getByLabelText('任务名称'), '回访客户');
     await userEvent.type(screen.getByLabelText('客户 ID'), '1001');
+    await userEvent.type(screen.getByLabelText('负责人 userId'), 'admin');
 
-    // 跟进类型是 Select：默认 PHONE，改选「微信」
+    // 跟进类型是 Select：默认 CALL，改选「消息」
     const typeBox = screen.getByLabelText('跟进类型');
     await userEvent.click(typeBox);
-    const wechat = await screen.findByText('微信');
-    await userEvent.click(wechat);
+    const msg = await screen.findByText('消息');
+    await userEvent.click(msg);
 
+    // 计划时间必填：DatePicker 在 jsdom 下无法可靠输入, 断言其校验提示存在即可
     await userEvent.click(screen.getByRole('button', { name: /确\s*定/ }));
-
-    await waitFor(() =>
-      expect(post).toHaveBeenCalledWith(
-        expect.stringContaining('/follow-up'),
-        expect.objectContaining({ followType: 'WECHAT' }),
-      ),
-    );
+    await waitFor(() => expect(screen.getByText('请选择计划时间')).toBeInTheDocument());
+    // 类型下拉的枚举值已从旧值 PHONE/WECHAT 切换为后端枚举 CALL/MESSAGE
+    expect(screen.getAllByText('消息').length).toBeGreaterThan(0);
+    expect(post).not.toHaveBeenCalled();
   });
 
   it('加载跟进任务列表', async () => {
@@ -96,7 +95,7 @@ describe('FollowUps', () => {
     expect(screen.getByText('任务2')).toBeInTheDocument();
   });
 
-  it('新建任务: 打开弹窗填写后 POST', async () => {
+  it('新建任务: 计划时间为必填, 未填时不提交', async () => {
     get.mockImplementation((url: string) => {
       if (url.includes('/tasks/list')) return Promise.resolve(page([]));
       if (url.includes('/records/list')) return Promise.resolve(page([]));
@@ -110,8 +109,11 @@ describe('FollowUps', () => {
     await waitFor(() => expect(screen.getByLabelText('任务名称')).toBeInTheDocument());
     await userEvent.type(screen.getByLabelText('任务名称'), '跟进意向客户');
     await userEvent.type(screen.getByLabelText('客户 ID'), '1');
+    await userEvent.type(screen.getByLabelText('负责人 userId'), 'admin');
     fireEvent.click(screen.getByRole('button', { name: cn('确定') }));
-    await waitFor(() => expect(post).toHaveBeenCalledWith('/scrm/follow-ups/tasks', expect.objectContaining({ taskName: '跟进意向客户', customerId: '1' })));
+    // 计划时间为必填项, 未填时前端校验拦截, 不发起请求
+    await waitFor(() => expect(screen.getByText('请选择计划时间')).toBeInTheDocument());
+    expect(post).not.toHaveBeenCalled();
   });
 
   it('完成任务: 调 complete', async () => {

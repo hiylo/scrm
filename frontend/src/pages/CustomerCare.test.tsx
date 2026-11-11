@@ -39,7 +39,7 @@ function page<T>(rows: T[], total = rows.length) {
 
 /** 规则行 */
 function rule(id: string, overrides: Record<string, unknown> = {}) {
-  return { id, ruleName: `规则${id}`, careType: 'BIRTHDAY', status: 'ACTIVE', scheduleTime: '09:00', ...overrides } as never;
+  return { id, ruleName: `规则${id}`, careType: 'BIRTHDAY', actionType: 'SEND_MESSAGE', actionContent: '生日快乐', triggerCondition: '{"daysBefore":7}', enabled: true, ...overrides } as never;
 }
 
 /** 任务行 */
@@ -82,8 +82,22 @@ describe('CustomerCare', () => {
     fireEvent.click(screen.getByRole('button', { name: cn('新建规则') }));
     await waitFor(() => expect(screen.getByLabelText('规则名称')).toBeInTheDocument());
     await userEvent.type(screen.getByLabelText('规则名称'), '生日关怀');
+    // JSON 里的花括号会被 userEvent 当成特殊键, 用 fireEvent 直接赋值
+    fireEvent.change(screen.getByLabelText('触发条件'), { target: { value: '{"daysBefore":7}' } });
+    fireEvent.change(screen.getByLabelText('动作内容'), { target: { value: '{"template":"生日快乐"}' } });
     fireEvent.click(screen.getByRole('button', { name: cn('确定') }));
-    await waitFor(() => expect(post).toHaveBeenCalledWith('/scrm/customer-care/rules', expect.objectContaining({ ruleName: '生日关怀' })));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        '/scrm/customer-care/rules',
+        expect.objectContaining({
+          ruleName: '生日关怀',
+          careType: 'BIRTHDAY',
+          actionType: 'SEND_MESSAGE',
+          actionContent: '{"template":"生日快乐"}',
+          triggerCondition: '{"daysBefore":7}',
+        }),
+      ),
+    );
   });
 
   it('切换到任务 Tab 执行任务', async () => {
