@@ -181,6 +181,91 @@
 | 工单「页面显示 0 行 = 无数据」 | 分页显示「共 2 条」但表格只数出 1 行，是我再次用 `slice(1)` 跳过首行（antd tbody 无表头行）。同一错误在任务调度 D8 已犯过一次 |
 | 工单「点击接单后状态没变」 | 网络记录显示 `POST /accept?acceptorId=...` 返回 200 且随后重新拉取列表，是在 React 重渲染完成前就读取 |
 
+## 六、字段一致性全量排查（系统性根因）
+
+本轮把「前端字段名 / 枚举与后端不一致」当作独立根因单独排查：这类缺陷的共同
+表现是**页面能打开、接口 200、单元测试全绿，但关键列永远空白或按钮永不渲染**，
+只有对着真实接口响应逐字段比对才能发现。
+
+### 6.1 排查方法（前三版脚本都失败过，记录教训）
+
+1. **静态扫源码不可靠**：用正则抓 DTO 字段会漏掉带默认值的声明
+   （`private String assetCategory = "OTHER";`），并且后端大量接口返回 `Map`
+   （`DocumentArchive.completeness`、账务报表各表、`Campaigns.dailyTrend` 等），
+   这些 key 在 Java 字段里根本不存在。实测 25 个「可疑页面」里最终只有 8 个是真缺陷。
+2. **必须用真实接口响应字段集比对**，且要按「一张表一个接口」配对：
+   第一版拿整页所有 `dataIndex` 撞单个接口，把子表 / 操作列字段全判成错配
+   （`Contracts.paymentNo` 属回款子表、`Companies.nickname` 属待归并清单、
+   `Payroll` 三个 Tab 是三套接口），产生 30+ 误报。
+3. **请求必须严格串行且每请求独立临时文件**：早期版本用共用 `/tmp/f.json`，
+   并发读写导致字段与 URL 完全错位（`fixed-assets` 打出会话字段、
+   `customers` 打出知识库字段），整批结论作废。
+4. **空列表 = 无法判定**，既不算通过也不算失败。为空时必须先造数据，
+   否则「无数据」会被误读成「字段正确」。
+
+### 6.2 经真实响应确认并已修复的缺陷
+
+| # | 页面 | 缺陷 | 后端真实字段 |
+|---|---|---|---|
+| D16 | Contracts | 回款明细金额/时间/状态三列空白；统计卡恒 ¥0；列表多出恒空的「已回款」列 | `plannedAmount`/`actualDate`/`paymentStatus`；统计走 `contract-payments/stats/contract/{id}` |
+| D17 | Orders | 前端枚举 `PRODUCT/SERVICE` 后端只认 `SALE/REFUND/EXCHANGE/PRE_ORDER`，新建必然 400；表单无 `items`（`@NotEmpty`），也无后端必填的 `source` | 见 `ScrmOrderCreateDto` |
+| D18 | Orders | 列表金额/产品/创建时间三列恒空 | `totalAmount`/`items[].productName`/`createTime` |
+| D19 | Accounts | 「健康度」列恒空（健康度是独立实体 `ScrmAccountHealthEntity`，账户 DTO 从不返回 `healthScore`） | 该列已移除 |
+| D20 | Attribution | 「归因窗口」恒空 | `lookbackDays` |
+| D21 | Budgets | 「周期」「已用」恒空，使用率恒 0% | `fiscalPeriod`/`spentBudget` |
+| D22 | Commissions | 单号/业务员/关联订单空白，`commissionType` 后端不存在 | `recordNo`/`salesPersonName`/`orderId`/`bonusAmount` |
+| D23 | Commissions | 「计算」按钮提交空对象 `{}`，后端 `planId`/`salesPersonId` 必填 → 必然 400 | 改为弹窗收集必填参数 |
+| D24 | Commissions | 18 位长整型 ID 放进 `InputNumber`，JS Number 精度丢失（`...848` → `...850`），报「方案不存在」 | 改文本输入按字符串提交 |
+| D25 | CustomerJourneys | 列表入组数恒 0、旅程编码列恒空；**新建设表单三个字段后端全不接收，后端必填的 `entryCondition` 表单里没有 → 新建必然 400** | `enrolledCount`；表单改为 `entryCondition`/`entryType` |
+| D26 | Points | 流水「变动后余额」「原因」「时间」恒空；兑换商品三个字段错配 | `balanceAfter`/`description`/`createdAt`；`itemName`/`itemCategory`/`pointsRequired` |
+| D27 | PublicSea | 分配记录处理人/类型空白 | `assignedTo`/`assignmentType` |
+| D28 | Competitors | 产品价格/最近调价空白 | `currentPrice`/`lastPriceChangeDate` |
+| D29 | Wework | 客户群「群主」列空白 | `ownerUserId` |
+| D30 | Webhooks | 日志响应码/投递时间空白 | `responseStatus`/`sentAt` |
+| D31 | CustomerCare | 关怀记录内容/渠道/时间空白 | `actionDetail`/`careType`/`createTime` |
+| D32 | LeadScoring | 合格标记/计算时间空白 | `isQualified`/`lastCalculatedAt` |
+| D33 | RfmAnalysis | 配置编码/分析周期两列后端无对应字段；权重读错名 | `rWeight`/`fWeight`/`mWeight` |
+| D34 | RfmAnalysis | **明细抽屉请求 `/rfm/configs/{id}/customers/list` 后端不存在（返回 SPA HTML），永远空白**；R/F/M/RFM/计算时间 5 列字段名整体错配 | 真实路由 `/rfm/analysis/list`；`rScore`/`fScore`/`mScore`/`rfmSegment`/`segmentName`/`calculatedAt` |
+| D35 | RfmAnalysis | 状态列空白 | 配置实体只有 `enabled`，无 `status` |
+| D36 | LtvPrediction | **预测明细请求 `/ltv/customers/list` 后端不存在（返回 SPA HTML）**；五个字段名错配 | 真实路由 `/ltv/list`；`historicalLtv`/`predictedLtv`/`valueTier`/`churnProbability`/`calculatedAt` |
+| D37 | LtvPrediction | 状态列空白，且「发布」「预测」两个按钮因依赖 `r.status` **永不渲染**（用户无法发布模型→无法看预测） | 模型只有 `isPublished`/`isDefault` |
+| D38 | CustomerTags | 打标签接口 100% 失败（后端 `tag_source`/`assigned_at`/`is_auto` 三列 NOT NULL 均未赋值） | 后端补齐三列赋值 |
+| D39 | CustomerTags | 标签键列空白、删除拿不到 key：赋值接口只返回 `tagId`，前端却直接读 `tagKey` | 并发拉标签定义做 `tagId → tagCode` 映射 |
+| D40 | CustomerTags | 标签定义列表写成 `/scrm/customer-tags`（该路径只支持 POST，GET 返回 405） | `/scrm/customer-tags/list` |
+
+### 6.3 其中两个后端 P1（非前端问题）
+
+- **订单创建 100% 失败**：`scrm_order.total_amount` 是 NOT NULL，而 `createOrder`
+  在金额计算**之前**就 `save()` 拿自增 ID，此时金额为 null，直接触发约束失败，
+  后面算金额的代码永远执行不到。任何调用方（含 App / 开放 API）都建不出订单。
+- **手动打标签 100% 失败**：`scrm_tag_customer` 的 `tag_source`/`assigned_at`/`is_auto`
+  三列都是 NOT NULL，`addTag` 与 `batchAddTag` 一个都没赋值（同项目
+  `ScrmTagSystemTagService` 早已有正确写法，是这个路径漏了）。修完一列才暴露下一列，
+  需要三列一起补。
+
+### 6.4 已核实为「误报」的候选（不修，避免过度改动）
+
+| 页面 | 字段 | 为什么是正常的 |
+|---|---|---|
+| AccountingReports | `leftName/leftClosing/rightName/rightClosing` 等 16 个 | 前端把「资产」与「负债+权益」拼成左右两栏展示，是本地派生行字段 |
+| Voucher | `openingCredit/periodDebit/closingCredit` 等 | `ScrmLedgerService` 用 `row.put(...)` 写入 Map，真实存在 |
+| Compliance | `qualificationType` | 实体字段（带默认值 `"OTHER"`，正则扫不到） |
+| Inspections | `taskScanned` | 后端 `ScrapeSummary` record 组件 |
+| ClientPortal | `revenueCurrent`/`netProfitCurrent` | `ScrmClientPortalService` Map key |
+| Campaigns | `date`/`count` | 内嵌 VO `DailyExecutionVo`/`ErrorStatsVo` 字段 |
+| Payroll | `idCardMasked` 等 16 个 | 员工/社保/个税是三套接口，之前拿员工接口比对社保表导致误报 |
+| DocumentArchive | `completeness`/`missingTypes` | `ScrmCustomerDocumentService` 的 `result.put` |
+| Customers / Companies / WorkOrders | `row`/`reason`/`nickname`/`phone`/`signals`/`action`/`detail` | 分属导入失败行、待归并清单、操作日志等独立子表 |
+
+### 6.5 这类缺陷为什么长期没被测出来
+
+6 个既有测试文件中，mock 用的正是**后端不存在的字段名**（`status: 'DRAFT'`、
+`orderType: 'PRODUCT'`、`amount`、`churnRisk`、`customers/list` 等）。
+字段名写错时页面只是渲染成 `-`，不会抛错，所以测试一直是绿的——测试跟着错误
+实现一起错，等于给了虚假的安全感。已统一改为后端真实字段，并给关键页补了
+**契约断言**：用真实字段构造响应后，断言关键列确实渲染出内容；以及反向断言
+「不得请求不存在的路径」。
+
 ## 五、覆盖缺口
 
 - ~~西安鼎昊现有凭证均未记账，账务报表各 Tab 均为全零~~ **已补齐并逐表核对**：
@@ -195,6 +280,14 @@
   · 明细账：切到 1002 后显示期初 0.00（借）、本期贷方 1,000.00、期末 -1,000.00（贷），
     流水行含记-0001 / 银行存款 / 贷方 1,000.00 / 余额 -1,000.00 / 方向「贷」。
   · 审计日志记录：POST /scrm/vouchers/{id}/post，资源 scrm_voucher，动作 update，成功。
-- 部分列表页仍只走通空态分支（发票管理、审批中心、报表中心、工单管理、Webhook、
-  数据字典、导入导出、OpenAPI 当前无业务数据），有数据时的交互（编辑/删除/流转）
-  需在产生数据后再验一轮。
+- ~~部分列表页仍只走通空态分支~~ **已补造数据并验证有数据分支**：
+  发票（`INV202611110001` 开票成功）、OpenAPI（应用创建返回 Client ID/限流）、
+  报表明细模板（执行返回结果并打开结果抽屉）、导入模板、Webhook 配置、
+  工单（`WO202611110001/0002` 完整流转）、合同回款（`PAY-UI-20261111`）、
+  订单（`20261111000001/0002`）、归因模型、预算计划、竞品、
+  客户旅程、积分规则、RFM 配置、LTV 模型、评分模型、佣金方案 —— 均已造数据并
+  在真实页面复核渲染结果。
+- 剩余未闭环项：**编辑保存、删除的完整分支没有逐页点完**（本轮验证口径是
+  「新建 → 回显 → 一两个关键流转」）。要全量闭环需再走一轮。
+- 部分报表类页面（账务报表五张表、客户查账）依赖凭证数据，目前只有西安鼎昊
+  记-0001 一笔已记账凭证，报表可正常输出但样本单薄，多科目场景未验。
