@@ -277,7 +277,7 @@ export default function AiAssistant({ initialCustomerId }: AiAssistantProps) {
           <Card
             title={
               <Space>
-                <RobotOutlined style={{ color: 'var(--color-primary, #6366f1)' }} />
+                <RobotOutlined style={{ color: 'var(--color-primary, #111827)' }} />
                 <span>AI 智能对话助手</span>
                 {selectedCustomer && (
                   <Tag color="geekblue">{selectedCustomer.nickname || `客户 ${selectedCustomer.id}`}</Tag>
@@ -301,7 +301,7 @@ export default function AiAssistant({ initialCustomerId }: AiAssistantProps) {
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                       <div
                         style={{
-                          background: 'var(--color-primary, #6366f1)',
+                          background: 'var(--color-primary, #111827)',
                           color: '#fff',
                           padding: '8px 12px',
                           borderRadius: 12,
@@ -316,7 +316,7 @@ export default function AiAssistant({ initialCustomerId }: AiAssistantProps) {
                   {/* AI 回复 */}
                   {currentReply && (
                     <div style={{ display: 'flex', justifyContent: 'flex-start', gap: 8 }}>
-                      <Avatar icon={<RobotOutlined />} style={{ background: 'var(--color-primary, #6366f1)' }} />
+                      <Avatar icon={<RobotOutlined />} style={{ background: 'var(--color-primary, #111827)' }} />
                       <div style={{ maxWidth: '80%' }}>
                         <div
                           style={{

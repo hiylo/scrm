@@ -307,7 +307,7 @@ export default function JourneyCanvas() {
           source: s.id,
           target: next,
           label: s.stepType === StepType.CONDITION ? 'true' : undefined,
-          style: { stroke: '#6366f1', strokeWidth: 2 },
+          style: { stroke: 'var(--color-primary)', strokeWidth: 2 },
         });
       }
     });
@@ -348,7 +348,7 @@ export default function JourneyCanvas() {
 
   /** 手动连线 (step.nextStepId) */
   const onConnect = useCallback((connection: Connection) => {
-    setEdges(eds => addEdge({ ...connection, style: { stroke: '#6366f1', strokeWidth: 2 } }, eds));
+    setEdges(eds => addEdge({ ...connection, style: { stroke: 'var(--color-primary)', strokeWidth: 2 } }, eds));
     if (connection.source && connection.target) {
       setSteps(prev => prev.map(s => s.id === connection.source ? { ...s, nextStepId: String(connection.target) } : s));
     }
@@ -563,7 +563,7 @@ export default function JourneyCanvas() {
                     nodeTypes={nodeTypes}
                     fitView
                     proOptions={{ hideAttribution: true }}
-                    defaultEdgeOptions={{ style: { stroke: '#6366f1', strokeWidth: 2 } }}
+                    defaultEdgeOptions={{ style: { stroke: 'var(--color-primary)', strokeWidth: 2 } }}
                     minZoom={0.3}
                     maxZoom={1.6}
                     onNodeClick={(_, node) => {

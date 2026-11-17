@@ -356,7 +356,7 @@ export default function Login() {
         .login-card::before {
           content: '';
           position: absolute; top: 0; left: 0; right: 0; height: 4px;
-          background: linear-gradient(90deg, #6366f1, #818cf8 55%, #38bdf8);
+          background: linear-gradient(90deg, #111827, #374151 55%, #6b7280);
         }
         .login-mobile-brand { display: none; align-items: center; gap: 12px; margin-bottom: 28px; }
         .login-mobile-brand .login-logo-mark { width: 44px; height: 44px; font-size: 22px; }
@@ -367,7 +367,7 @@ export default function Login() {
         .login-submit { margin-top: 8px; }
         .login-submit .ant-btn {
           height: 44px; border-radius: 8px; font-size: 15px; letter-spacing: 2px;
-          background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+          background: linear-gradient(135deg, #111827 0%, #374151 100%);
           border: none;
           box-shadow: 0 8px 20px rgba(99,102,241,.32);
           transition: transform .15s ease, box-shadow .2s ease, filter .2s ease;
@@ -379,7 +379,7 @@ export default function Login() {
         }
         .login-submit .ant-btn:active { transform: translateY(0); }
         .login-submit .ant-btn[disabled] {
-          background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+          background: linear-gradient(135deg, #111827 0%, #374151 100%);
           opacity: .6;
         }
         .login-foot { text-align: center; font-size: 13px; color: var(--color-text-tertiary); margin-top: 8px; }

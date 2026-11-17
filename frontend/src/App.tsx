@@ -247,16 +247,17 @@ function ThemedApp() {
         token: isDark ? {
           colorPrimary: '#818cf8',
           colorBgContainer: '#1a2332',
-          colorBgElevated: '#1e2a3a',
-          colorBgLayout: '#0c1222',
-          colorBorder: '#2a3548',
-          colorBorderSecondary: '#1e2a3a',
+          colorBgElevated: '#161616',
+          colorBgLayout: '#0a0a0a',
+          colorBorder: '#2a2a2a',
+          colorBorderSecondary: '#222222',
           colorText: '#e2e8f0',
           colorTextSecondary: '#94a3b8',
-          borderRadius: 8,
+          borderRadius: 4,
         } : {
-          colorPrimary: '#6366f1',
-          borderRadius: 8,
+          /* S6 极简瑞士：墨黑主色 + 直角 */
+          colorPrimary: '#111827',
+          borderRadius: 4,
         },
       }}
     >

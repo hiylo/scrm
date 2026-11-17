@@ -37,38 +37,40 @@ body {
 
 /* 主题变量 */
 :root {
-  --color-primary: #6366f1;
-  --color-primary-light: #818cf8;
-  --color-success: #10b981;
-  --color-warning: #f59e0b;
-  --color-error: #ef4444;
-  --color-bg-layout: #f5f5f5;
+  /* S6「极简瑞士」定稿令牌（2026-11-17 拍板）：墨黑主色 + 直角 + 白净底。
+     业务语义色（成功/警告/错误）保持原值，不随主色变。 */
+  --color-primary: #111827;
+  --color-primary-light: #374151;
+  --color-success: #059669;
+  --color-warning: #b45309;
+  --color-error: #b91c1c;
+  --color-bg-layout: #fafafa;
   --color-bg-container: #ffffff;
-  --color-text: #1f2937;
-  --color-text-secondary: #6b7280;
-  --color-border: #e5e7eb;
+  --color-text: #111827;
+  --color-text-secondary: #525252;
+  --color-border: #ececec;
   /* 三级文本颜色 (时间戳、辅助说明等更弱化的文字) */
-  --color-text-tertiary: #9ca3af;
+  --color-text-tertiary: #a3a3a3;
   /* 填充背景色 (消息气泡背景、分隔线背景等) */
-  --color-fill-tertiary: #f0f0f0;
+  --color-fill-tertiary: #f5f5f5;
   /* 主题色浅底背景 (选中态、悬停态背景) */
-  --color-primary-bg: rgba(99, 102, 241, 0.1);
-  /* 登录页背景渐变 (亮色) */
-  --color-bg-gradient: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  --color-primary-bg: rgba(17, 24, 39, 0.06);
+  /* 登录页背景渐变 (亮色)：S6 改为墨黑 -> 深灰，替代原靛蓝 */
+  --color-bg-gradient: linear-gradient(135deg, #111827 0%, #374151 100%);
 }
 
 [data-theme="dark"] {
-  --color-bg-layout: #0c1222;
-  --color-bg-container: #1a2332;
+  --color-bg-layout: #0a0a0a;
+  --color-bg-container: #161616;
   --color-text: #e2e8f0;
   --color-text-secondary: #94a3b8;
-  --color-border: #2a3548;
+  --color-border: #2a2a2a;
   /* 三级文本颜色 (暗色模式下更弱化) */
   --color-text-tertiary: #64748b;
   /* 填充背景色 (暗色模式下使用深色填充) */
-  --color-fill-tertiary: #2a3548;
+  --color-fill-tertiary: #262626;
   /* 主题色浅底背景 (暗色模式下使用 primary-light 提高可读性) */
-  --color-primary-bg: rgba(129, 140, 248, 0.15);
+  --color-primary-bg: rgba(255, 255, 255, 0.10);
   /* 登录页背景渐变 (暗色) */
   --color-bg-gradient: linear-gradient(135deg, #1a2332 0%, #0c1222 100%);
 }

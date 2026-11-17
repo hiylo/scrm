@@ -195,7 +195,7 @@ export default function FinanceOverview() {
       title: '在管主体',
       value: companyTotal,
       icon: <TeamOutlined />,
-      color: '#6366f1',
+      color: 'var(--color-primary)',
       footer: <>公司主体总数</>,
       targetPath: '/companies',
     },

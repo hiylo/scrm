@@ -118,7 +118,7 @@ const metricSeriesName: Record<TrendMetric, string> = {
 
 /** 趋势指标对应主色 */
 const metricColor: Record<TrendMetric, string> = {
-  customers: '#6366f1',
+  customers: '#111827',
   campaigns: '#f59e0b',
   messages: '#10b981',
   risk: '#ef4444',
@@ -512,7 +512,7 @@ export default function Dashboard() {
   const platformOption: EChartsOption = {
     tooltip: { trigger: 'item' },
     legend: { bottom: 0, textStyle: { color: '#64748b' } },
-    color: ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6'],
+    color: ['#111827', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6'],
     series: [
       {
         name: '平台分布',
@@ -574,7 +574,7 @@ export default function Dashboard() {
         data: Object.values(
           overview?.customerOverview?.lifecycleDistribution || {},
         ),
-        itemStyle: { color: '#6366f1' },
+        itemStyle: { color: '#111827' },
       },
     ],
   };
@@ -643,7 +643,7 @@ export default function Dashboard() {
             '客户总数',
             overview?.customerOverview?.totalCustomers,
             <TeamOutlined />,
-            '#6366f1',
+            '#111827',
             <>今日新增 {overview?.customerOverview?.recentNewCustomers?.[(overview?.customerOverview?.recentNewCustomers?.length || 0) - 1]?.count || 0} 人</>,
             '/customers',
             highlight['customers'],
@@ -859,7 +859,7 @@ export default function Dashboard() {
                     type: 'line',
                     smooth: true,
                     data: (overview?.conversationOverview?.recentMessages || []).map((d) => d.count),
-                    itemStyle: { color: '#6366f1' },
+                    itemStyle: { color: '#111827' },
                     areaStyle: { opacity: 0.1 },
                   },
                 ],

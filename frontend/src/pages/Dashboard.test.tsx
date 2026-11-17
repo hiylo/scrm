@@ -260,7 +260,7 @@ describe('Dashboard 图表配置', () => {
     expect(series.type).toBe('line');
     expect(series.smooth).toBe(true);
     expect(series.data).toEqual([3, 4, 5]);
-    expect(series.itemStyle?.color).toBe('#6366f1');
+    expect(series.itemStyle?.color).toBe('#111827');
     expect(axisDataOf(0)).toEqual(['09-06', '09-07', '09-08']);
     // 平均值参考线由前端声明统计类型, 具体数值交给 echarts
     expect(series.markLine?.data).toEqual([{ type: 'average', name: '平均值' }]);
